@@ -210,7 +210,7 @@ export type BalloonGroupByOutputType = {
   _max: BalloonMaxAggregateOutputType | null
 }
 
-type GetBalloonGroupByPayload<T extends BalloonGroupByArgs> = Prisma.PrismaPromise<
+export type GetBalloonGroupByPayload<T extends BalloonGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<BalloonGroupByOutputType, T['by']> &
       {
@@ -1464,6 +1464,11 @@ export type BalloonFindManyArgs<ExtArgs extends runtime.Types.Extensions.Interna
    * Skip the first `n` Balloons.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Balloons.
+   */
   distinct?: Prisma.BalloonScalarFieldEnum | Prisma.BalloonScalarFieldEnum[]
 }
 

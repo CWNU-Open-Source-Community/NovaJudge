@@ -41,10 +41,20 @@ ENV LC_ALL=en_US.UTF-8
 
 # =========================================================
 # 【核心修复】修复 Java 配置文件软链接问题
+# 注意：JDK 目录名随架构变化，不能写死：
+#   amd64 -> java-21-openjdk-amd64
+#   arm64 -> java-21-openjdk-arm64 (Apple Silicon 等)
+# 这里用通配符动态解析实际目录，并额外建立 amd64 兼容软链接，
+# 保证 lib/judge.ts 中硬编码的 java-21-openjdk-amd64 路径
+# 在 arm64 镜像上同样可用。
 # =========================================================
-RUN cp -rL /usr/lib/jvm/java-21-openjdk-amd64/conf /tmp/java-conf && \
-    rm -rf /usr/lib/jvm/java-21-openjdk-amd64/conf && \
-    mv /tmp/java-conf /usr/lib/jvm/java-21-openjdk-amd64/conf
+RUN JDK_DIR=$(ls -d /usr/lib/jvm/java-21-openjdk-*) && \
+    cp -rL "$JDK_DIR/conf" /tmp/java-conf && \
+    rm -rf "$JDK_DIR/conf" && \
+    mv /tmp/java-conf "$JDK_DIR/conf" && \
+    if [ ! -e /usr/lib/jvm/java-21-openjdk-amd64 ]; then \
+        ln -s "$JDK_DIR" /usr/lib/jvm/java-21-openjdk-amd64; \
+    fi
 
 WORKDIR /opt
 

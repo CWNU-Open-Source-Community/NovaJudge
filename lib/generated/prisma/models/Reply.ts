@@ -196,7 +196,7 @@ export type ReplyGroupByOutputType = {
   _max: ReplyMaxAggregateOutputType | null
 }
 
-type GetReplyGroupByPayload<T extends ReplyGroupByArgs> = Prisma.PrismaPromise<
+export type GetReplyGroupByPayload<T extends ReplyGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<ReplyGroupByOutputType, T['by']> &
       {
@@ -1285,6 +1285,11 @@ export type ReplyFindManyArgs<ExtArgs extends runtime.Types.Extensions.InternalA
    * Skip the first `n` Replies.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Replies.
+   */
   distinct?: Prisma.ReplyScalarFieldEnum | Prisma.ReplyScalarFieldEnum[]
 }
 

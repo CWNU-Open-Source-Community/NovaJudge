@@ -22,6 +22,7 @@
     "@prisma/adapter-pg": "^7.2.0",
     "@prisma/client": "^7.2.0",
     "@tailwindcss/typography": "^0.5.19",
+    "@uiw/react-markdown-preview": "5.2.1",
     "@uiw/react-md-editor": "^4.0.11",
     "@uiw/react-textarea-code-editor": "^3.1.1",
     "bcryptjs": "^3.0.3",
@@ -46,6 +47,7 @@
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "rehype-mathjax": "^7.1.0",
+    "rehype-raw": "7.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "sonner": "^2.0.7"

@@ -245,7 +245,7 @@ export type PrintJobGroupByOutputType = {
   _max: PrintJobMaxAggregateOutputType | null
 }
 
-type GetPrintJobGroupByPayload<T extends PrintJobGroupByArgs> = Prisma.PrismaPromise<
+export type GetPrintJobGroupByPayload<T extends PrintJobGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<PrintJobGroupByOutputType, T['by']> &
       {
@@ -1576,6 +1576,11 @@ export type PrintJobFindManyArgs<ExtArgs extends runtime.Types.Extensions.Intern
    * Skip the first `n` PrintJobs.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of PrintJobs.
+   */
   distinct?: Prisma.PrintJobScalarFieldEnum | Prisma.PrintJobScalarFieldEnum[]
 }
 

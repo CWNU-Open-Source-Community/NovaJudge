@@ -186,7 +186,7 @@ export type GlobalUserGroupByOutputType = {
   _max: GlobalUserMaxAggregateOutputType | null
 }
 
-type GetGlobalUserGroupByPayload<T extends GlobalUserGroupByArgs> = Prisma.PrismaPromise<
+export type GetGlobalUserGroupByPayload<T extends GlobalUserGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<GlobalUserGroupByOutputType, T['by']> &
       {
@@ -1455,6 +1455,11 @@ export type GlobalUserFindManyArgs<ExtArgs extends runtime.Types.Extensions.Inte
    * Skip the first `n` GlobalUsers.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of GlobalUsers.
+   */
   distinct?: Prisma.GlobalUserScalarFieldEnum | Prisma.GlobalUserScalarFieldEnum[]
 }
 

@@ -9,6 +9,9 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+.pnpm-store/
+pnpm-lock.yaml
+pnpm-workspace.yaml
 
 # testing
 /coverage

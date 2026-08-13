@@ -218,7 +218,7 @@ export type ContestProblemGroupByOutputType = {
   _max: ContestProblemMaxAggregateOutputType | null
 }
 
-type GetContestProblemGroupByPayload<T extends ContestProblemGroupByArgs> = Prisma.PrismaPromise<
+export type GetContestProblemGroupByPayload<T extends ContestProblemGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<ContestProblemGroupByOutputType, T['by']> &
       {
@@ -1406,6 +1406,11 @@ export type ContestProblemFindManyArgs<ExtArgs extends runtime.Types.Extensions.
    * Skip the first `n` ContestProblems.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of ContestProblems.
+   */
   distinct?: Prisma.ContestProblemScalarFieldEnum | Prisma.ContestProblemScalarFieldEnum[]
 }
 

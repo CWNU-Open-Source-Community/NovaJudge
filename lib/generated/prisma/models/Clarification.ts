@@ -242,7 +242,7 @@ export type ClarificationGroupByOutputType = {
   _max: ClarificationMaxAggregateOutputType | null
 }
 
-type GetClarificationGroupByPayload<T extends ClarificationGroupByArgs> = Prisma.PrismaPromise<
+export type GetClarificationGroupByPayload<T extends ClarificationGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<ClarificationGroupByOutputType, T['by']> &
       {
@@ -1838,6 +1838,11 @@ export type ClarificationFindManyArgs<ExtArgs extends runtime.Types.Extensions.I
    * Skip the first `n` Clarifications.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Clarifications.
+   */
   distinct?: Prisma.ClarificationScalarFieldEnum | Prisma.ClarificationScalarFieldEnum[]
 }
 

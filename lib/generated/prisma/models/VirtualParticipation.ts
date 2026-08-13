@@ -231,7 +231,7 @@ export type VirtualParticipationGroupByOutputType = {
   _max: VirtualParticipationMaxAggregateOutputType | null
 }
 
-type GetVirtualParticipationGroupByPayload<T extends VirtualParticipationGroupByArgs> = Prisma.PrismaPromise<
+export type GetVirtualParticipationGroupByPayload<T extends VirtualParticipationGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<VirtualParticipationGroupByOutputType, T['by']> &
       {
@@ -1643,6 +1643,11 @@ export type VirtualParticipationFindManyArgs<ExtArgs extends runtime.Types.Exten
    * Skip the first `n` VirtualParticipations.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of VirtualParticipations.
+   */
   distinct?: Prisma.VirtualParticipationScalarFieldEnum | Prisma.VirtualParticipationScalarFieldEnum[]
 }
 
