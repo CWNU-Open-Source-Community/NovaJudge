@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { verifyAuth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { Verdict } from "@/lib/generated/prisma/enums";
-import { judgeQueue } from "@/lib/queue";
+import { enqueueJudge } from "@/lib/queue";
 import { debugProblemSamples } from "@/lib/judge";
 
 export async function adminSubmit(
@@ -39,9 +39,7 @@ export async function adminSubmit(
       },
     });
 
-    await judgeQueue.add('judge', { 
-      submissionId: submission.id 
-    });
+    await enqueueJudge(submission.id);
 
     revalidatePath(`/admin/submissions`);
     return { success: true, submissionId: submission.id };

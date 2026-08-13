@@ -12,7 +12,9 @@
     "lint": "eslint",
     "prisma": "npx prisma generate",
     "worker": "tsx -r dotenv/config worker.ts",
+    "worker:multi": "tsx -r dotenv/config scripts/start-workers.ts",
     "worker:dev": "tsx watch -r dotenv/config worker.ts",
+    "stress": "tsx -r dotenv/config stress-test.ts",
     "postinstall": "npx prisma db push && npx prisma generate && npx tsx scripts/copy-monaco.ts"
   },
   "dependencies": {

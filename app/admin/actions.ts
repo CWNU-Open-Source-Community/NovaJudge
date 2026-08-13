@@ -3,10 +3,20 @@
 import { prisma } from "@/lib/prisma";
 import os from "os";
 import { LANGUAGES } from "@/lib/judge";
+import { listJudgeWorkers, getJudgeQueueStats } from "@/lib/worker-registry";
 
 // 获取支持的语言列表
 export async function getSupportedLanguages() {
   return LANGUAGES;
+}
+
+// 获取当前所有在线的判题机（含 ID、心跳、已判数量等）与队列统计
+export async function getJudgeWorkersOverview() {
+  const [workers, queue] = await Promise.all([
+    listJudgeWorkers(),
+    getJudgeQueueStats(),
+  ]);
+  return { workers, queue };
 }
 
 // 获取判题机状态 (从 Go-Judge 获取)

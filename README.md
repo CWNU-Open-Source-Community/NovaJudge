@@ -1,5 +1,7 @@
 # NovaJudge
 
+[English](./README.md) · [简体中文](./README.zh-CN.md)
+
 NovaJudge is a lightweight Online Judge platform designed for XCPC-style
 training and onsite contests. It focuses on contest operations rather than only
 standalone submissions: problem management, team accounts, realtime judging,
@@ -15,6 +17,8 @@ CCS-compatible data feeds are built into one Next.js application.
   YAML judge configuration.
 - Realtime submissions powered by Redis, BullMQ, worker processes, and
   [go-judge](https://github.com/criyle/go-judge).
+- Multiple judge workers with unique IDs, live status on the admin dashboard,
+  and conflict-free task claiming from the shared queue.
 - ACM/ICPC-style scoreboard with freeze and unfreeze support.
 - Clarification and notice system for contestants and judges.
 - Balloon delivery and print queue workflows for onsite contests.
@@ -81,6 +85,77 @@ npm run worker
 
 The default development server runs at `http://localhost:3001`.
 
+## Running Multiple Judge Workers
+
+All judge workers share the same Redis-backed BullMQ queue (`judge-queue`).
+BullMQ claims each job atomically, so no matter how many workers are running,
+a submission is only ever picked up and judged by exactly one worker — they
+never conflict with each other.
+
+```bash
+# Start a single worker (ID is auto-assigned, e.g. MacBook-1)
+npm run worker
+
+# Start a worker with an explicit ID
+npm run worker -- --id 1
+npm run worker -- --id 2
+
+# Start several workers at once: 4 workers with IDs 1-4
+npm run worker:multi -- 4
+
+# Or control it through environment variables
+JUDGE_WORKER_COUNT=4 npm run worker:multi
+JUDGE_WORKER_IDS=1,2,3 npm run worker:multi
+```
+
+Related environment variables:
+
+```env
+JUDGE_CONCURRENCY=4   # How many submissions each worker judges in parallel
+                      # (total capacity = workers x this value)
+JUDGE_ID=1            # Worker ID (optional; auto-assigned when not set)
+JUDGE_WORKER_COUNT=4  # Worker count for "npm run worker:multi"
+JUDGE_WORKER_IDS=1,2  # Explicit ID list for "npm run worker:multi"
+```
+
+### How workers avoid conflicts
+
+- **Atomic claiming** — BullMQ locks each job in Redis when it is claimed, so
+  two workers can never pick up the same job at the same time.
+- **Idempotent enqueueing** — every code path enqueues submissions through
+  `enqueueJudge()` in `lib/queue.ts`, which uses a fixed job ID per submission.
+  Repeated clicks or concurrent rejudges produce only one queue job, and a
+  submission that is already being judged is never enqueued a second time.
+- **Single scheduler** — the contest status scheduler
+  (`PENDING → RUNNING → ENDED`) elects one leader among the workers through a
+  Redis lease, so it never runs twice.
+
+### Stress testing
+
+`stress-test.ts` pushes submissions into the judge queue in batches and
+measures judging throughput across all your workers:
+
+```bash
+npm run stress -- --total=100 --batch=20 --lang=cpp
+```
+
+Options: `--total` (submission count), `--batch` (batch size), `--lang`
+(`c` | `cpp` | `java` | `pypy3`), `--problem` (problem ID),
+`--no-wait` (enqueue only, don't wait for results), `--timeout` (seconds
+to wait for judging to finish), and `--mark` (a marker comment written into
+every submission for later identification). It reports enqueue throughput,
+verdict distribution, total judging time, and how many submissions each worker
+processed.
+
+### Monitoring workers on the admin dashboard
+
+Every worker registers itself in Redis with a heartbeat (ID, hostname, PID,
+concurrency, processed count, currently judging submissions). The admin
+dashboard (**Admin → Dashboard → Judge Workers**) lists all online workers
+with their IDs plus queue statistics (waiting / active / done / failed) and
+refreshes automatically every 5 seconds. A worker that stops is removed from
+the list within 15 seconds.
+
 ## Scripts
 
 ```bash
@@ -89,8 +164,10 @@ npm run build        # Build for production
 npm run start        # Start the production server
 npm run lint         # Run ESLint
 npm run prisma       # Generate Prisma Client
-npm run worker       # Start the judge worker
-npm run worker:dev   # Start the judge worker in watch mode
+npm run worker       # Start a judge worker (auto-assigned ID)
+npm run worker:multi # Start multiple judge workers, e.g. "npm run worker:multi -- 4"
+npm run worker:dev   # Start a judge worker in watch mode
+npm run stress       # Stress-test the judge queue with bulk submissions
 ```
 
 ## Project Layout
@@ -106,7 +183,7 @@ NovaJudge/
 ├─ public/           # Static assets
 ├─ scripts/          # CLI and maintenance scripts
 ├─ uploads/          # Problem data and assets
-├─ worker.ts         # Judge worker
+├─ worker.ts         # Judge worker (multi-instance with heartbeat)
 └─ docker-compose.yml
 ```
 

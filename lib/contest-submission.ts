@@ -1,6 +1,6 @@
 import { ContestRole, Verdict } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { judgeQueue } from "@/lib/queue";
+import { enqueueJudge } from "@/lib/queue";
 import { redis } from "@/lib/redis";
 import {
   getRunningVirtualParticipation,
@@ -168,9 +168,7 @@ export async function createContestSubmission({
 
   try {
     await withTimeout(
-      judgeQueue.add("judge", {
-        submissionId: submission.id,
-      }),
+      enqueueJudge(submission.id),
       QUEUE_TIMEOUT_MS,
       "Judge queue is unavailable. Please contact staff.",
     );

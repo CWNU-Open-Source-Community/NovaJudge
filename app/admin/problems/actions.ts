@@ -2,7 +2,7 @@
 
 import { Verdict } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { judgeQueue } from "@/lib/queue";
+import { enqueueJudge } from "@/lib/queue";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -130,11 +130,9 @@ export async function rejudgeProblem(problemId: number) {
       },
     });
 
-    // 3. 将所有 ID 推入判题队列
+    // 3. 将所有 ID 推入判题队列（幂等入队，避免重复任务）
     for (const id of submissionIds) {
-      await judgeQueue.add("judge", {
-        submissionId: id,
-      });
+      await enqueueJudge(id);
     }
 
     // 4. 刷新页面

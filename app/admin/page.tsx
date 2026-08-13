@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getContests } from "./contests/actions";
-import { getSystemStats, getSupportedLanguages } from "./actions";
+import { getSystemStats, getSupportedLanguages, getJudgeWorkersOverview } from "./actions";
+import JudgeWorkers from "./JudgeWorkers";
 import {
   PlusIcon,
   TrophyIcon,
@@ -37,6 +38,7 @@ export default async function AdminDashboard() {
   const { contests } = await getContests(1, 5);
   const stats = await getSystemStats();
   const languages = await getSupportedLanguages();
+  const judgeWorkers = await getJudgeWorkersOverview();
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -198,7 +200,10 @@ export default async function AdminDashboard() {
 
         {/* 右侧：系统状态 */}
         <div className="space-y-6">
-          {/* 判题机状态 */}
+          {/* 判题机列表（多开时每台判题机一个 ID） */}
+          <JudgeWorkers initial={judgeWorkers} />
+
+          {/* 判题沙箱状态 */}
           <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6">
             <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
               <ServerIcon className="w-5 h-5 text-gray-500" />

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { verifyAuth } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { Verdict } from "@/lib/generated/prisma/enums";
-import { judgeQueue } from "@/lib/queue";
+import { enqueueJudge } from "@/lib/queue";
 
 export async function getGlobalSubmissions(
   page = 1,
@@ -88,9 +88,7 @@ export async function rejudgeSubmission(submissionId: string) {
 
   // judgeSubmission(submissionId).catch(console.error);
 
-  await judgeQueue.add("judge", {
-    submissionId: submissionId,
-  });
+  await enqueueJudge(submissionId);
 
   // 4. 刷新页面
   revalidatePath("/admin/submissions");
