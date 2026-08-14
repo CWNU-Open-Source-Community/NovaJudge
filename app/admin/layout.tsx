@@ -9,10 +9,12 @@ import {
   GlobeAltIcon, // [新增] 用于表示前台/网站的图标
   ChartBarIcon,
   KeyIcon,
+  SignalIcon,
 } from "@heroicons/react/24/outline";
 
 const MENU_ITEMS = [
   { name: "Dashboard", href: "/admin", icon: HomeIcon },
+  { name: "Monitor", href: "/admin/monitor", icon: SignalIcon },
   { name: "Contest Management", href: "/admin/contests", icon: TrophyIcon },
   { name: "Problem Bank", href: "/admin/problems", icon: ArchiveBoxIcon },
   { name: "Submissions", href: "/admin/submissions", icon: ChartBarIcon },
@@ -89,7 +91,9 @@ export default function AdminLayout({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64 p-0 bg-gray-50">
+      {/* min-w-0：允许内容区收缩到可用宽度（侧边栏 fixed + ml-64），
+          避免宽内容（如表格）把页面整体撑出视口右侧 */}
+      <main className="flex-1 min-w-0 ml-64 p-0 bg-gray-50">
         <div className="p-8 h-full overflow-y-auto">{children}</div>
       </main>
     </div>

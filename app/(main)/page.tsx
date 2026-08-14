@@ -23,6 +23,28 @@ export type ContestConfig = {
   };
   frozenDuration: number;
   unfreezeDelay: number;
+  awards?: {
+    enabled: boolean;
+    base?: {
+      gold?: string;
+      silver?: string;
+      bronze?: string;
+    };
+    firstToSolve?: boolean;
+    excellenceAward?: boolean;
+    excellenceCitation?: string;
+    topThree?: boolean;
+    topThreeCitations?: {
+      champion?: string;
+      runnerUp?: string;
+      third?: string;
+    };
+    custom: {
+      id: string;
+      citation: string;
+      teamIds: string[];
+    }[];
+  };
 };
 
 export interface Contest {

@@ -6,6 +6,7 @@ import {
 } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
+import Link from "next/link";
 import RankSearch from "./RankSearch";
 import RankTable from "./RankTable";
 import { ContestConfig } from "@/app/(main)/page";
@@ -40,16 +41,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-// 辅助函数：计算时间差
+// 辅助函数：计算时间差（计算逻辑不变，仅展示换算后的总分钟数）
 function formatTime(startTime: number, submissionTime: number): string {
   const diffMs = submissionTime - startTime;
-  const hours = Math.floor(diffMs / 3600000);
-  const minutes = Math.floor((diffMs % 3600000) / 60000);
-  const seconds = Math.floor((diffMs % 60000) / 1000);
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
-    2,
-    "0",
-  )}:${String(seconds).padStart(2, "0")}`;
+  const minutes = Math.floor(diffMs / 60000);
+  return `${minutes}`;
 }
 
 function isStarTeam(category: string | null) {
@@ -1057,6 +1053,17 @@ export default async function Rank({ params, searchParams }: Props) {
             <span className="ml-2 flex items-center gap-2">
               <ExportRankResultsButton contestId={cid} />
               <ExportEventFeedButton contestId={cid} />
+            </span>
+          )}
+          {isGlobalAdmin && (
+            <span className="ml-2 flex items-center gap-2">
+              <Link
+                href={`/admin/contests/${cid}/awards`}
+                className="inline-flex items-center gap-1 px-3 py-1 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded hover:bg-amber-100 transition-colors shadow-sm"
+                title="快速设置奖项并导出含奖项的 Event Feed（用于 ICPC Tools resolver 滚榜）"
+              >
+                🏅 奖项设置
+              </Link>
             </span>
           )}
         </h2>

@@ -18,6 +18,7 @@ import {
 } from "@/lib/ccs/fetchers";
 import { toCCSVerdict, toISO8601, getRelativeTime } from "@/lib/ccs/utils";
 import { Verdict } from "@/lib/generated/prisma/enums";
+import { getFeedAwards } from "@/lib/awards";
 import { redis } from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
@@ -160,6 +161,22 @@ export async function GET(
       // 8. Teams
       teams.forEach((t) => {
         enqueue(createEvent("teams", t.id, t));
+      });
+
+      // 8.5 Awards（奖项事件：金银铜 + 自定义奖项，供 ICPC Tools resolver 滚榜使用）
+      // 奖项基于最终榜单计算，仅在管理员设置并启用后输出。
+      // 格式与 ICPC Tools award 工具一致：无 op 字段、带 parameters，
+      // 金银铜各含一条 display_mode="list" 的副本。
+      const awards = await getFeedAwards(id);
+      awards.forEach((a) => {
+        const data: Record<string, unknown> = {
+          id: a.id,
+          citation: a.citation,
+          team_ids: a.team_ids,
+          parameters: {},
+        };
+        if (a.display_mode) data.display_mode = a.display_mode;
+        enqueue(JSON.stringify({ type: "awards", id: a.id, data }) + "\n");
       });
 
       // 9. Submissions

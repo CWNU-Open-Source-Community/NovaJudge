@@ -13,6 +13,7 @@ import {
   PlayIcon,
   EyeIcon,
   EyeSlashIcon,
+  TrophyIcon,
 } from "@heroicons/react/24/outline";
 import { ContestStatus, ContestType } from "@/lib/generated/prisma/enums";
 import { toast } from "sonner";
@@ -146,9 +147,9 @@ export default function AdminContestsPage({
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Contest Management</h1>
-        <div className="flex gap-3 items-center">
+        <div className="flex flex-wrap gap-3 items-center">
           <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -199,15 +200,14 @@ export default function AdminContestsPage({
                     className="rounded text-blue-600 focus:ring-blue-500"
                   />
                 </th>
-                <th className="px-6 py-3">ID</th>
-                <th className="px-6 py-3">Title</th>
-                <th className="px-6 py-3">Status</th>
-                <th className="px-6 py-3">Type</th>
-                <th className="px-6 py-3">Visibility</th>
-                <th className="px-6 py-3">Start Time</th>
-                <th className="px-6 py-3">Duration</th>
-                <th className="px-6 py-3">Stats</th>
-                <th className="px-6 py-3">Actions</th>
+                <th className="px-3 py-3">ID</th>
+                <th className="px-3 py-3">Title</th>
+                <th className="px-3 py-3">Status</th>
+                <th className="px-3 py-3">Type</th>
+                <th className="px-3 py-3">Visibility</th>
+                <th className="px-3 py-3">Start Time</th>
+                <th className="px-3 py-3">Stats</th>
+                <th className="px-3 py-3">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -227,7 +227,7 @@ export default function AdminContestsPage({
 
                 return (
                   <tr key={contest.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-3">
                       <input
                         type="checkbox"
                         checked={selectedContestIds.has(contest.id)}
@@ -235,22 +235,22 @@ export default function AdminContestsPage({
                         className="rounded text-blue-600 focus:ring-blue-500"
                       />
                     </td>
-                    <td className="px-6 py-4 font-mono text-xs">
+                    <td className="px-3 py-3 font-mono text-xs">
                       {contest.id}
                     </td>
-                    <td className="px-6 py-4 font-medium text-gray-900">
+                    <td className="px-3 py-3 font-medium text-gray-900 max-w-[170px] truncate" title={contest.title}>
                       {contest.title}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3">
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColor}`}
+                        className={`whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColor}`}
                       >
                         {contest.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3">
                       <span
-                        className={`px-2 py-0.5 rounded text-xs border ${
+                        className={`whitespace-nowrap px-2 py-0.5 rounded text-xs border ${
                           contest.type === ContestType.PUBLIC
                             ? "border-blue-200 bg-blue-50 text-blue-700"
                             : "border-yellow-200 bg-yellow-50 text-yellow-700"
@@ -259,7 +259,7 @@ export default function AdminContestsPage({
                         {contest.type}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3">
                       <button
                         className="cursor-pointer"
                         onClick={() =>
@@ -278,11 +278,13 @@ export default function AdminContestsPage({
                         )}
                       </button>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       {new Date(contest.startTime).toLocaleString()}
+                      <span className="text-xs text-gray-400 ml-1">
+                        ({durationHours}h)
+                      </span>
                     </td>
-                    <td className="px-6 py-4">{durationHours} h</td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3">
                       <div className="flex gap-3 text-gray-400">
                         <span
                           className="flex items-center gap-1"
@@ -304,23 +306,33 @@ export default function AdminContestsPage({
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
+                    <td className="px-3 py-3">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <Link
                           href={`/admin/contests/${contest.id}/problems`}
-                          className="text-xs font-bold border border-gray-300 text-gray-700 px-3 py-1.5 rounded-md hover:bg-white hover:border-blue-500 hover:text-blue-600 transition-all shadow-sm bg-gray-50"
+                          className="whitespace-nowrap text-xs font-bold border border-gray-300 text-gray-700 px-2.5 py-1 rounded-md hover:bg-white hover:border-blue-500 hover:text-blue-600 transition-all shadow-sm bg-gray-50"
                         >
-                          Manage Problems
+                          Problems
                         </Link>
                         <Link
                           href={`/admin/contests/${contest.id}/users`}
-                          className="text-xs font-bold border border-gray-300 text-gray-700 px-3 py-1.5 rounded-md hover:bg-white hover:border-purple-500 hover:text-purple-600 transition-all shadow-sm bg-gray-50"
+                          className="whitespace-nowrap text-xs font-bold border border-gray-300 text-gray-700 px-2.5 py-1 rounded-md hover:bg-white hover:border-purple-500 hover:text-purple-600 transition-all shadow-sm bg-gray-50"
                         >
                           Users
                         </Link>
                         <Link
+                          href={`/admin/contests/${contest.id}/awards`}
+                          className="whitespace-nowrap text-xs font-bold border border-amber-300 text-amber-700 px-2.5 py-1 rounded-md hover:bg-white hover:border-amber-500 hover:text-amber-600 transition-all shadow-sm bg-amber-50"
+                          title="快速设置奖项并导出含奖项的 Event Feed"
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            <TrophyIcon className="w-3.5 h-3.5" />
+                            Awards
+                          </span>
+                        </Link>
+                        <Link
                           href={`/admin/contests/${contest.id}/edit`}
-                          className="text-xs font-bold text-gray-400 hover:text-gray-600 px-2 py-1.5"
+                          className="whitespace-nowrap text-xs font-bold text-gray-400 hover:text-gray-600 px-2 py-1"
                         >
                           Settings
                         </Link>
@@ -337,7 +349,7 @@ export default function AdminContestsPage({
               {contests.length === 0 && (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={9}
                     className="px-6 py-8 text-center text-gray-400 italic"
                   >
                     No contests found. Create one to get started.

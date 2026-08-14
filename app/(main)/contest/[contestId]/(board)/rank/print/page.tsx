@@ -51,13 +51,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 function formatTime(startTime: number, submissionTime: number) {
   const diffMs = submissionTime - startTime;
-  const hours = Math.floor(diffMs / 3600000);
-  const minutes = Math.floor((diffMs % 3600000) / 60000);
-  const seconds = Math.floor((diffMs % 60000) / 1000);
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
-    2,
-    "0",
-  )}:${String(seconds).padStart(2, "0")}`;
+  const minutes = Math.floor(diffMs / 60000);
+  return `${minutes}`;
 }
 
 function getMedalCounts(total: number, config: ContestConfig | null) {

@@ -81,7 +81,11 @@ export default function ExportEventFeedButton({ contestId }: Props) {
         onClick={() =>
           download(
             `/api/ccs/contests/${contestId}/event-feed?stream=false&runs=false`,
-            `event-feed.ndjson`,
+            `event-feed-contest-${contestId}-${new Date()
+              .toISOString()
+              .replace(/[-:]/g, "")
+              .replace(/\..+/, "")
+              .replace("T", "-")}.ndjson`,
             setLoadingFeed,
           )
         }

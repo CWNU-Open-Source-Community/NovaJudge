@@ -2,6 +2,7 @@ import { getGlobalSubmissions } from "./actions";
 import Pagination from "@/components/Pagination";
 import Link from "next/link";
 import RejudgeButton from "@/components/admin/RejudgeButton";
+import RejudgeBatchPanel from "@/components/admin/RejudgeBatchPanel";
 import VerdictCell from "@/components/VerdictCell";
 
 export default async function GlobalSubmissionsPage({
@@ -25,6 +26,8 @@ export default async function GlobalSubmissionsPage({
       <h1 className="text-2xl font-bold text-gray-800 mb-6">
         Global Submissions
       </h1>
+
+      <RejudgeBatchPanel />
 
       <form className="mb-4 flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm md:flex-row md:items-end">
         <div className="flex-1">
