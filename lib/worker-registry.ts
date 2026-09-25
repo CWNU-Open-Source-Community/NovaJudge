@@ -1,5 +1,8 @@
 import { redis } from "./redis";
 import { judgeQueue } from "./queue";
+import { parseJudgeWorkerInfo, type JudgeWorkerInfo } from "./worker-info";
+
+export type { JudgeWorkerInfo } from "./worker-info";
 
 // 判题机在 Redis 中的注册信息
 export const JUDGE_WORKER_KEY_PREFIX = "judge:worker:";
@@ -11,24 +14,6 @@ export const JUDGE_WORKER_HEARTBEAT_TTL = 15;
 // 比赛状态调度器（PENDING->RUNNING->ENDED）的租约 key，
 // 用于在多台判题机之间选出一个 leader 来执行，避免重复调度。
 export const SCHEDULER_LEASE_KEY = "judge:scheduler:leader";
-
-export interface JudgeWorkerInfo {
-  /** 判题机唯一编号，例如 "1"、"2"、"MacBook-3" */
-  id: string;
-  pid: number;
-  hostname: string;
-  platform: string;
-  /** 单机并发判题数（JUDGE_CONCURRENCY） */
-  concurrency: number;
-  startedAt: number;
-  lastHeartbeat: number;
-  /** 已处理完的任务数 */
-  processed: number;
-  /** 当前正在处理的任务 */
-  activeJobs: { jobId: string; submissionId: string }[];
-  /** 该判题机使用的 go-judge 地址 */
-  judgeApi: string;
-}
 
 function keyOf(id: string) {
   return `${JUDGE_WORKER_KEY_PREFIX}${id}`;
@@ -72,16 +57,11 @@ export async function listJudgeWorkers(): Promise<JudgeWorkerInfo[]> {
   const workers: JudgeWorkerInfo[] = [];
 
   for (let i = 0; i < keys.length; i++) {
-    const raw = values[i];
-    if (!raw) continue; // key 刚好过期了
-    try {
-      const info = JSON.parse(raw) as JudgeWorkerInfo;
-      // 双保险：心跳超过 TTL 的直接视为离线（正常情况下 key 已过期）
-      if (now - info.lastHeartbeat > JUDGE_WORKER_HEARTBEAT_TTL * 1000) continue;
-      workers.push(info);
-    } catch {
-      // 忽略损坏的数据
-    }
+    const info = parseJudgeWorkerInfo(values[i]);
+    if (!info) continue; // 忽略计数器、损坏的数据和刚好过期的 key
+    // 双保险：心跳超过 TTL 的直接视为离线（正常情况下 key 已过期）
+    if (now - info.lastHeartbeat > JUDGE_WORKER_HEARTBEAT_TTL * 1000) continue;
+    workers.push(info);
   }
 
   workers.sort((a, b) =>
