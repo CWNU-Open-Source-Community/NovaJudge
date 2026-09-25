@@ -1,0 +1,9 @@
+type: communication
+communicator: communicator.cpp
+communication:
+  output_limit: 1048576
+cases:
+  - input: 1.in
+    output: /dev/null
+  - input: 2.in
+    output: /dev/null

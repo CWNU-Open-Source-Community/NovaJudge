@@ -6,7 +6,13 @@ import rehypeMathjax from "rehype-mathjax/svg";
 import rehypeRaw from "rehype-raw";
 import Link from "next/link";
 import CodeBlock from "@/components/CodeBlock";
+import CommunicationSample from "@/components/CommunicationSample";
 import ProblemInfoCard from "@/components/ProblemInfoCard";
+import {
+  getCommunicationSampleDisplay,
+  getPublicProblemSamples,
+  type ProblemSample,
+} from "@/lib/problem-samples";
 import { prisma } from "@/lib/prisma";
 import {
   ContestRole,
@@ -34,10 +40,7 @@ type Problem = {
     content: string;
   }[];
 
-  samples: {
-    input: string;
-    output: string;
-  }[];
+  samples: ProblemSample[];
 
   hint: string;
 };
@@ -221,6 +224,7 @@ export default async function ProblemDetail({ params }: Props) {
     memoryLimit: problem?.defaultMemoryLimit || 0,
     submissions: totalStats,
     accepted: acStats,
+    problemType: problem.type,
   };
   // const problem = mockProblem;
 
@@ -236,7 +240,10 @@ export default async function ProblemDetail({ params }: Props) {
     name: `${problemId} - ${problem.title}`,
     timeLimit: problem.defaultTimeLimit,
     memoryLimit: problem.defaultMemoryLimit,
-    samples: (problem as unknown as Problem).samples,
+    samples: getPublicProblemSamples(
+      problem.type,
+      (problem as unknown as Problem).samples,
+    ),
   };
 
   const safeData =
@@ -265,6 +272,15 @@ export default async function ProblemDetail({ params }: Props) {
             {problem?.title}
           </h1>
 
+          {problem.type === "communication" && (
+            <div className="mb-8 rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              <p className="font-semibold mb-1">
+                {dict.problemDetail.communication}
+              </p>
+              <p>{dict.problemDetail.communicationNotice}</p>
+            </div>
+          )}
+
           <div className="space-y-8">
             {/* 1. 渲染常规文本段落 (Description, Input, Output) */}
             {(problem as unknown as Problem).sections?.map((section, index) => (
@@ -281,7 +297,33 @@ export default async function ProblemDetail({ params }: Props) {
               </div>
             ))}
             {/* 2. 渲染样例数组 */}
+            {problem.type === "communication" &&
+              (problem as unknown as Problem).samples.length > 0 && (
+                <p className="text-sm text-gray-600">
+                  {dict.problemDetail.communicationSamples}
+                </p>
+              )}
             {(problem as unknown as Problem).samples.map((sample, index) => {
+              if (problem.type === "communication") {
+                return (
+                  <CommunicationSample
+                    key={`sample-${index}`}
+                    {...getCommunicationSampleDisplay(sample)}
+                    index={
+                      (problem as unknown as Problem).samples.length > 1
+                        ? index + 1
+                        : undefined
+                    }
+                    labels={{
+                      firstRun: dict.problemDetail.firstRun,
+                      secondRun: dict.problemDetail.secondRun,
+                      input: dict.problemDetail.sampleInput,
+                      output: dict.problemDetail.sampleOutput,
+                    }}
+                  />
+                );
+              }
+
               // 如果只有一组样例，标题不显示序号；如果有多组，显示 1, 2, 3...
               const suffix =
                 (problem as unknown as Problem).samples.length > 1
@@ -291,11 +333,17 @@ export default async function ProblemDetail({ params }: Props) {
               return (
                 <div key={`sample-${index}`} className="grid grid-cols-1 gap-6">
                   <div>
-                    <SectionTitle>Sample Input{suffix}</SectionTitle>
+                    <SectionTitle>
+                      Sample Input
+                      {suffix}
+                    </SectionTitle>
                     <CodeBlock code={sample.input} />
                   </div>
                   <div>
-                    <SectionTitle>Sample Output{suffix}</SectionTitle>
+                    <SectionTitle>
+                      Sample Output
+                      {suffix}
+                    </SectionTitle>
                     <CodeBlock code={sample.output} />
                   </div>
                 </div>

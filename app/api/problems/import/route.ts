@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 import { promises as fs } from 'fs';
 import path from 'path';
 import JSZip from 'jszip';
+import { normalizeProblemSamples, type ProblemSample } from '@/lib/problem-samples';
 
 const UPLOAD_ROOT = path.join(process.cwd(), 'uploads', 'problems');
 
@@ -23,7 +24,7 @@ interface ProblemData {
   defaultTimeLimit: number;
   defaultMemoryLimit: number;
   sections: { title: string; content: string }[];
-  samples: { input: string; output: string }[];
+  samples: ProblemSample[];
   hint?: string;
   judgeConfig?: string;
 }
@@ -117,7 +118,7 @@ export async function POST(request: Request) {
             defaultTimeLimit: problemData.defaultTimeLimit,
             defaultMemoryLimit: problemData.defaultMemoryLimit,
             sections: sections, // 暂时使用原始数据
-            samples: problemData.samples,
+            samples: normalizeProblemSamples(problemData.samples),
             hint: hint,
             judgeConfig: problemData.judgeConfig,
           },

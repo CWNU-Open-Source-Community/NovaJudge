@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getProblemDetail } from "./actions";
 import TestInterface from "./client"; // 客户端交互组件
+import type { ProblemSample } from "@/lib/problem-samples";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -20,7 +21,7 @@ export default async function AdminProblemTestPage({ params }: PageProps) {
       title: string;
       content: string;
     }[],
-    samples: problem.samples as unknown as { input: string; output: string }[],
+    samples: problem.samples as unknown as ProblemSample[],
   };
 
   return <TestInterface problem={formattedProblem} />;

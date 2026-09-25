@@ -16,6 +16,8 @@ import {
 } from "@heroicons/react/24/solid";
 import CodeBlock from "@/components/CodeBlock";
 import CodeEditor from "@/components/CodeEditor";
+import CommunicationSample from "@/components/CommunicationSample";
+import { getCommunicationSampleDisplay, type ProblemSample } from "@/lib/problem-samples";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import "katex/dist/katex.min.css";
@@ -36,18 +38,14 @@ interface Section {
   content: string;
 }
 
-interface Sample {
-  input: string;
-  output: string;
-}
-
 interface ProblemDetail {
   id: number;
   title: string;
+  type: string;
   defaultTimeLimit: number;
   defaultMemoryLimit: number;
   sections: Section[];
-  samples: Sample[];
+  samples: ProblemSample[];
   hint: string;
 }
 
@@ -57,6 +55,7 @@ const VERDICT_STYLES: Record<
 > = {
   AC: { label: "AC", className: "text-green-700 bg-green-50 border-green-200" },
   WA: { label: "WA", className: "text-red-700 bg-red-50 border-red-200" },
+  PE: { label: "PE", className: "text-amber-700 bg-amber-50 border-amber-200" },
   TLE: {
     label: "TLE",
     className: "text-orange-700 bg-orange-50 border-orange-200",
@@ -76,7 +75,13 @@ const VERDICT_STYLES: Record<
   SE: { label: "SE", className: "text-gray-700 bg-gray-100 border-gray-200" },
 };
 
-function ResultCard({ result }: { result: SampleDebugResult }) {
+function ResultCard({
+  result,
+  isCommunication,
+}: {
+  result: SampleDebugResult;
+  isCommunication: boolean;
+}) {
   const verdictStyle = VERDICT_STYLES[result.verdict];
 
   return (
@@ -101,26 +106,52 @@ function ResultCard({ result }: { result: SampleDebugResult }) {
       <div className="p-4 space-y-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-            Input
+            {isCommunication ? "第一轮实际输入" : "Input"}
           </p>
           <CodeBlock code={result.input} />
         </div>
-        <div>
+        {(!isCommunication || result.expectedOutput) && <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-            Expected Output
+            {isCommunication ? "裁判参考答案（仅管理员可见）" : "Expected Output"}
           </p>
           <CodeBlock code={result.expectedOutput} />
-        </div>
+        </div>}
+        {isCommunication && result.communication && (
+          <details className="rounded border border-blue-200 bg-blue-50 p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-blue-900">
+              实际通信过程
+            </summary>
+            <div className="mt-3 space-y-4">
+              <p className="text-xs text-gray-600">
+                First run: {result.communication.firstTimeUsedMs} ms
+                {" · "}
+                Second run: {result.communication.secondTimeUsedMs} ms
+              </p>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  第一轮实际输出
+                </p>
+                <CodeBlock code={result.communication.firstOutput} />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  裁判生成的第二轮实际输入
+                </p>
+                <CodeBlock code={result.communication.secondInput} />
+              </div>
+            </div>
+          </details>
+        )}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-            Actual Output
+            {isCommunication ? "第二轮实际输出" : "Actual Output"}
           </p>
           <CodeBlock code={result.actualOutput} />
         </div>
         {result.message && (
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-              Message
+              {isCommunication ? "Communicator Verdict / Diagnostics" : "Message"}
             </p>
             <CodeBlock code={result.message} />
           </div>
@@ -131,6 +162,7 @@ function ResultCard({ result }: { result: SampleDebugResult }) {
 }
 
 export default function TestInterface({ problem }: { problem: ProblemDetail }) {
+  const isCommunication = problem.type === "communication";
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState("cpp");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -234,6 +266,22 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
             {problem.title}
           </h1>
 
+          {isCommunication && (
+            <div className="mb-6 space-y-2 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+              <p className="font-semibold">通信题 / Communication (Run twice)</p>
+              <p>
+                The same program runs twice with separate time and memory
+                limits and no shared memory or files. Follow the statement for
+                the permitted message and each run&apos;s input and output.
+              </p>
+              <p>
+                下方每个样例成对展示两次运行，输入中的 first / second 是题目约定的运行标识。
+                调试使用第一轮输入，由上传的通信裁判根据程序实际输出生成第二轮输入。
+                题面示例只展示一种合法通信方案，不作为固定输出进行比对。
+              </p>
+            </div>
+          )}
+
           <div className="space-y-8">
             {problem.sections.map((section: Section, index: number) => (
               <div key={`section-${index}`}>
@@ -248,17 +296,42 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
                 </article>
               </div>
             ))}
-            {problem.samples.map((sample: Sample, index: number) => {
+            {problem.samples.map((sample: ProblemSample, index: number) => {
               const suffix = problem.samples.length > 1 ? ` ${index + 1}` : "";
+
+              if (isCommunication) {
+                return (
+                  <div key={`sample-${index}`} className="space-y-4">
+                    <CommunicationSample
+                      {...getCommunicationSampleDisplay(sample)}
+                      index={problem.samples.length > 1 ? index + 1 : undefined}
+                    />
+                    {sample.output && (
+                      <details className="rounded border border-gray-200 bg-gray-50 p-3">
+                        <summary className="cursor-pointer text-sm font-medium text-gray-600">
+                          裁判参考答案（仅管理员可见）
+                        </summary>
+                        <div className="mt-3"><CodeBlock code={sample.output} /></div>
+                      </details>
+                    )}
+                  </div>
+                );
+              }
 
               return (
                 <div key={`sample-${index}`} className="grid grid-cols-1 gap-6">
                   <div>
-                    <SectionTitle>Sample Input{suffix}</SectionTitle>
+                    <SectionTitle>
+                      Sample Input
+                      {suffix}
+                    </SectionTitle>
                     <CodeBlock code={sample.input} />
                   </div>
                   <div>
-                    <SectionTitle>Sample Output{suffix}</SectionTitle>
+                    <SectionTitle>
+                      Sample Output
+                      {suffix}
+                    </SectionTitle>
                     <CodeBlock code={sample.output} />
                   </div>
                 </div>
@@ -406,7 +479,11 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
 
                 {debugResult?.compile.ok &&
                   debugResult.results.map((result) => (
-                    <ResultCard key={result.sampleIndex} result={result} />
+                    <ResultCard
+                      key={result.sampleIndex}
+                      result={result}
+                      isCommunication={isCommunication}
+                    />
                   ))}
               </div>
             </div>

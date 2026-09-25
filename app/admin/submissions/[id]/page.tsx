@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import SubmissionDetailClient from "./client";
+import type { ProblemSample } from "@/lib/problem-samples";
 
 export default async function SubmissionDetailPage({
   params,
@@ -31,10 +32,7 @@ export default async function SubmissionDetailPage({
       title: string;
       content: string;
     }[],
-    samples: submission.problem.samples as unknown as {
-      input: string;
-      output: string;
-    }[],
+    samples: submission.problem.samples as unknown as ProblemSample[],
   };
 
   return (

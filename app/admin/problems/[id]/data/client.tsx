@@ -42,16 +42,19 @@ interface FileStat {
 
 interface PageProps {
   problemId: number;
+  problemType: string;
   initialFiles: FileStat[];
   initialYaml: string;
 }
 
 export default function DataManagementClient({
   problemId,
+  problemType,
   initialFiles,
   initialYaml,
 }: PageProps) {
   const router = useRouter(); // 2. 初始化 router
+  const isCommunication = problemType === "communication";
 
   // 本地状态
   const [files, setFiles] = useState<FileStat[]>(initialFiles);
@@ -111,7 +114,7 @@ export default function DataManagementClient({
       formRef.current?.reset();
     } catch (error) {
       console.error("Upload failed", error);
-      toast.error("Upload failed");
+      toast.error(error instanceof Error ? error.message : "Upload failed");
     } finally {
       setIsUploading(false);
     }
@@ -147,9 +150,16 @@ export default function DataManagementClient({
 
   // 处理保存 YAML
   const handleSaveYaml = async (content: string) => {
-    await saveYamlConfig(problemId, content);
-    toast.success("Configuration saved!");
-    router.refresh();
+    try {
+      const savedYaml = await saveYamlConfig(problemId, content);
+      setYamlContent(savedYaml);
+      toast.success("Configuration saved!");
+      router.refresh();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save configuration",
+      );
+    }
   };
 
   return (
@@ -189,6 +199,47 @@ export default function DataManagementClient({
         </div>
       </div>
 
+      {isCommunication && (
+        <details open className="mb-4 shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <summary className="cursor-pointer font-semibold">
+            Communication (Run twice) — Configuration
+          </summary>
+          <div className="mt-3 grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <p>
+                Upload <code>communicator.cpp</code> (C++ / testlib) and test
+                inputs (<code>*.in</code>). The communicator prepares the
+                second-run input, checks the allowed message, and judges the
+                result. The server provides <code>testlib.h</code>.
+              </p>
+              <p>
+                Reference answers (<code>*.out</code> or <code>*.ans</code>) are
+                optional; use <code>/dev/null</code> when none is needed.
+                Include the complete first-run input in each test case.
+              </p>
+              <p>
+                Each run has its own time and memory limits and shares no
+                memory or files with the other run. <code>output_limit</code>
+                sets the output size limit in bytes; the communicator enforces
+                the problem-specific message restrictions.
+              </p>
+            </div>
+            <div>
+              <p className="mb-2 font-semibold">Example problem.yml</p>
+              <pre className="overflow-x-auto rounded border border-blue-100 bg-white p-3 font-mono text-xs">
+                {`type: communication
+communicator: communicator.cpp
+communication:
+  output_limit: 1048576
+cases:
+  - input: 1.in
+    output: /dev/null`}
+              </pre>
+            </div>
+          </div>
+        </details>
+      )}
+
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
         {/* 左侧：YAML 编辑器 */}
         <div className="flex flex-col min-h-0">
@@ -205,6 +256,12 @@ export default function DataManagementClient({
             <h3 className="font-bold text-gray-700 text-sm mb-3">
               Test Data Files
             </h3>
+            {isCommunication && (
+              <p className="mb-3 text-xs text-gray-500">
+                Upload communicator.cpp and all test data together, or as a ZIP.
+                Each upload replaces the existing data files.
+              </p>
+            )}
 
             <form ref={formRef} action={handleUpload} className="flex gap-2">
               <input

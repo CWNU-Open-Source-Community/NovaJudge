@@ -45,6 +45,16 @@ export const en = {
     status: "Status",
     timeLimit: "Time Limit",
     memoryLimit: "Memory Limit",
+    judgeType: "Problem Type",
+    communication: "Communication (Run twice)",
+    communicationNotice:
+      "The same program runs twice using standard input and output. Each run starts fresh, with separate time and memory limits and no shared memory or files. Pass information only through the limited message described in the statement.",
+    communicationSamples:
+      "Each sample shows two runs of the same test case. The first-run message is used by the communicator to construct the second-run input. The outputs illustrate one possible valid solution and are not necessarily unique. Follow the statement for run markers such as first and second.",
+    firstRun: "First run",
+    secondRun: "Second run",
+    sampleInput: "Sample Input",
+    sampleOutput: "Sample Output",
   },
   submit: {
     title: "Submit Solution",
@@ -155,6 +165,16 @@ export const zh = {
     status: "状态",
     timeLimit: "时间限制",
     memoryLimit: "内存限制",
+    judgeType: "题目类型",
+    communication: "通信题（运行两次）",
+    communicationNotice:
+      "同一程序使用标准输入输出独立运行两次，每轮分别计算时间和内存限制，两轮之间不共享内存或文件。两轮只能通过题面规定的受限消息传递信息，请按照题面要求识别轮次并处理输入输出。",
+    communicationSamples:
+      "每组样例展示同一个测试点的两次运行。通信裁判根据第一轮输出的消息生成第二轮输入；样例仅展示一种合法方案，输出不一定唯一。first、second 等轮次标识以题面约定为准。",
+    firstRun: "第一次运行",
+    secondRun: "第二次运行",
+    sampleInput: "样例输入",
+    sampleOutput: "样例输出",
   },
   submit: {
     title: "提交代码",

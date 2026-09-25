@@ -170,10 +170,14 @@ export default function ProblemsPage() {
                     className={`px-2 py-1 rounded text-xs ${
                       problem.type === "spj"
                         ? "bg-purple-100 text-purple-700"
-                        : "bg-gray-100 text-gray-600"
+                        : problem.type === "communication"
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-gray-100 text-gray-600"
                     }`}
                   >
-                    {problem.type}
+                    {problem.type === "communication"
+                      ? "Communication (Run twice)"
+                      : problem.type}
                   </span>
                 </td>
                 <td className="px-6 py-4">

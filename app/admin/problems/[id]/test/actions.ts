@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { Verdict } from "@/lib/generated/prisma/enums";
 import { enqueueJudge } from "@/lib/queue";
 import { debugProblemSamples } from "@/lib/judge";
+import type { ProblemSample } from "@/lib/problem-samples";
 
 export async function adminSubmit(
   problemId: number,
@@ -82,7 +83,7 @@ export async function debugAllSamples(
     const result = await debugProblemSamples(
       {
         ...problem,
-        samples: problem.samples as { input: string; output: string }[],
+        samples: problem.samples as ProblemSample[],
       },
       code,
       language,

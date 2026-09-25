@@ -1,5 +1,9 @@
 # NovaJudge
 
+Communication problems (run twice) are supported as a separate problem type.
+See the [configuration guide](./docs/COMMUNICATION_PROBLEMS.md) and
+[encoding/decoding example](./examples/communication/encode-decode/README.md).
+
 [English](./README.md) · [简体中文](./README.zh-CN.md)
 
 NovaJudge is a lightweight Online Judge platform designed for XCPC-style

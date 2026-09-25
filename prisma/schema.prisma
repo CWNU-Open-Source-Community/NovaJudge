@@ -218,7 +218,7 @@ model Problem {
   id Int @id @default(autoincrement())
 
   title String
-  type  String @default("default") // default, spj, interactive
+  type  String @default("default") // default, spj, interactive, communication
 
   // 默认限制
   defaultTimeLimit   Int // ms

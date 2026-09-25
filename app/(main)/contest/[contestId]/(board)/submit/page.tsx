@@ -138,6 +138,7 @@ export default async function SubmitPage({ params, searchParams }: Props) {
     memoryLimit: problem.defaultMemoryLimit,
     submissions: totalStats,
     accepted: acStats,
+    problemType: problem.type,
   };
 
   const isAdmin =

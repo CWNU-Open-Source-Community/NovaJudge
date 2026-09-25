@@ -3,6 +3,9 @@ import { redis } from "@/lib/redis";
 import path from "path";
 import { promises as fs } from "fs";
 import { Verdict } from "@/lib/generated/prisma/enums";
+import { resolveJudgeDataPath } from "@/lib/problem-judge-config";
+import { runCommunicationCase, type CommunicationTrace } from "./judge/communication";
+import type { ProblemSample } from "./problem-samples";
 
 const GO_JUDGE_URL = process.env.GO_JUDGE_API || "http://localhost:5050";
 const STACK_SIZE_KB = Number(process.env.JUDGE_STACK_KB || 2097152);
@@ -23,13 +26,15 @@ interface LanguageJudgeConfig {
 
 interface TestCaseConfig {
   input: string;
-  output: string;
+  output?: string;
 }
 
 interface JudgeConfig {
   cases?: TestCaseConfig[];
   checker?: string;
   interactor?: string;
+  communicator?: string;
+  communication?: { output_limit?: number };
   time_limit_rate?: LanguageJudgeConfig;
   memory_limit_rate?: LanguageJudgeConfig;
 }
@@ -41,10 +46,7 @@ interface JudgeProgress {
   finished: boolean;
 }
 
-interface SampleData {
-  input: string;
-  output: string;
-}
+type SampleData = ProblemSample;
 
 interface ProblemForDebug {
   id: number;
@@ -58,6 +60,7 @@ interface ProblemForDebug {
 export type SampleDebugVerdict =
   | "AC"
   | "WA"
+  | "PE"
   | "TLE"
   | "MLE"
   | "RE"
@@ -73,6 +76,7 @@ export interface SampleDebugResult {
   timeUsedMs?: number;
   memoryUsedKb?: number;
   message?: string;
+  communication?: CommunicationTrace;
 }
 
 export interface DebugAllSamplesResult {
@@ -145,11 +149,12 @@ export const LANGUAGES: Record<string, LanguageConfig> = {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function callGoJudge(payload: any) {
+async function callGoJudge(payload: any, timeoutMs?: number) {
   const res = await fetch(`${GO_JUDGE_URL}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
   });
   if (!res.ok) throw new Error(`Judge Server Error: ${res.statusText}`);
   return res.json();
@@ -159,6 +164,7 @@ async function deleteTmpFile(id: string) {
   try {
     const res = await fetch(`${GO_JUDGE_URL}/file/${id}`, {
       method: "DELETE",
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) console.warn(`Failed to delete file ${id}: ${res.statusText}`);
     return res;
@@ -217,14 +223,14 @@ function getLanguageLimits(
   };
 }
 
-async function compileChecker(dataDir: string, checkerName: string) {
-  const checkerPath = path.join(dataDir, checkerName);
+async function compileChecker(dataDir: string, checkerName: string, binaryName = "checker") {
+  const checkerPath = resolveJudgeDataPath(dataDir, checkerName);
   let checkerCode = "";
   try {
     checkerCode = await fs.readFile(checkerPath, "utf-8");
   } catch (e) {
     console.log(e);
-    throw new Error(`Checker file not found: ${checkerName}`);
+    throw new Error(`${binaryName} file not found: ${checkerName}`);
   }
 
   const testlibPath = path.join(process.cwd(), "lib", "judge", "testlib.h");
@@ -241,9 +247,9 @@ async function compileChecker(dataDir: string, checkerName: string) {
       {
         args: [
           "/usr/bin/g++",
-          "checker.cpp",
+          `${binaryName}.cpp`,
           "-o",
-          "checker",
+          binaryName,
           "-O2",
           "-std=c++23",
         ],
@@ -254,14 +260,15 @@ async function compileChecker(dataDir: string, checkerName: string) {
           { name: "stderr", max: 1000000 },
         ],
         cpuLimit: 10000000000,
+        clockLimit: 30000000000,
         memoryLimit: 1024 * 1024 * 1024,
         procLimit: 50,
         copyIn: {
-          "checker.cpp": { content: checkerCode },
+          [`${binaryName}.cpp`]: { content: checkerCode },
           "testlib.h": { content: testlibCode },
         },
         copyOut: ["stdout", "stderr"],
-        copyOutCached: ["checker"],
+        copyOutCached: [binaryName],
       },
     ],
   });
@@ -275,11 +282,13 @@ async function compileChecker(dataDir: string, checkerName: string) {
       : "";
     const stderr = compileRes[0].files?.stderr || "";
     const stdout = compileRes[0].files?.stdout || "";
-    const msg = stderr || fe || stdout || "Checker compile failed";
+    const msg = stderr || fe || stdout || `${binaryName} compile failed`;
     throw new Error(msg);
   }
 
-  return compileRes[0].fileIds["checker"];
+  const fileId = compileRes[0].fileIds?.[binaryName];
+  if (!fileId) throw new Error(`${binaryName} compilation produced no executable.`);
+  return fileId as string;
 }
 
 async function compileInteractor(dataDir: string, interactorName: string) {
@@ -431,6 +440,7 @@ function mapRunStatusToDebugVerdict(status: string): SampleDebugVerdict {
 
 async function loadJudgeTestCases(problem: {
   id: number;
+  type: string;
   judgeConfig: unknown;
 }) {
   const judgeConfig = problem.judgeConfig as JudgeConfig;
@@ -447,14 +457,15 @@ async function loadJudgeTestCases(problem: {
       if (caseItem.input === "/dev/null") {
         inputContent = "";
       } else {
-        inputContent = await fs.readFile(path.join(dataDir, caseItem.input), "utf-8");
+        inputContent = await fs.readFile(resolveJudgeDataPath(dataDir, caseItem.input), "utf-8");
       }
 
       let outputContent = "";
-      if (caseItem.output === "/dev/null") {
+      if (caseItem.output === "/dev/null" || (problem.type === "communication" && !caseItem.output)) {
         outputContent = "";
       } else {
-        outputContent = await fs.readFile(path.join(dataDir, caseItem.output), "utf-8");
+        if (!caseItem.output) throw new Error("Test case output is required.");
+        outputContent = await fs.readFile(resolveJudgeDataPath(dataDir, caseItem.output), "utf-8");
       }
 
       testCases.push({
@@ -601,6 +612,43 @@ async function runNonInteractiveSample(params: {
   } satisfies SampleDebugResult;
 }
 
+async function runProblemCommunicationCase(params: {
+  problem: ProblemForDebug;
+  language: string;
+  code: string;
+  sample: SampleData;
+  langConfig: LanguageConfig;
+  executableFileId: string;
+  communicatorFileId: string;
+  captureTrace?: boolean;
+}) {
+  const { problem, language, code, sample, langConfig, executableFileId, communicatorFileId } = params;
+  const { timeLimit, memoryLimit } = getLanguageLimits(problem, language);
+  const judgeConfig = problem.judgeConfig as JudgeConfig | null;
+  return runCommunicationCase({
+    execute: (request) => callGoJudge(
+      request,
+      Math.ceil(Math.max(...request.cmd.map((cmd) => cmd.clockLimit)) / 1000000) + 60000,
+    ),
+    args: langConfig.runCmd,
+    env: [
+      "PATH=/usr/bin:/bin:/usr/lib/jvm/java-21-openjdk-amd64/bin",
+      "LANG=en_US.UTF-8",
+      "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64",
+    ],
+    program: buildProgramCopyIn({ executableFileId, langConfig, code }),
+    communicatorFileId,
+    input: sample.input,
+    // 题面的 communication 示例仅用于展示；裁判只读取独立的参考答案。
+    answer: sample.output,
+    timeLimit,
+    memoryLimit,
+    stackLimit: STACK_SIZE_KB * 1024,
+    config: judgeConfig?.communication,
+    captureTrace: params.captureTrace,
+  });
+}
+
 export async function debugProblemSamples(
   problem: ProblemForDebug,
   code: string,
@@ -635,6 +683,7 @@ export async function debugProblemSamples(
 
   let executableFileId = "";
   let checkerFileId = "";
+  let communicatorFileId = "";
 
   try {
     const compileResult = await compileUserCode(language, code);
@@ -653,6 +702,12 @@ export async function debugProblemSamples(
     }
 
     executableFileId = compileResult.executableFileId;
+
+    if (problem.type === "communication") {
+      const judgeConfig = problem.judgeConfig as JudgeConfig | null;
+      if (!judgeConfig?.communicator) throw new Error("Communication judge is not configured for this problem.");
+      communicatorFileId = await compileChecker(getProblemDataDir(problem.id), judgeConfig.communicator, "communicator");
+    }
 
     if (problem.type === "spj") {
       const judgeConfig = problem.judgeConfig as JudgeConfig | null;
@@ -678,6 +733,30 @@ export async function debugProblemSamples(
 
     const results: SampleDebugResult[] = [];
     for (let i = 0; i < samples.length; i++) {
+      if (problem.type === "communication") {
+        const result = await runProblemCommunicationCase({
+          problem, language, code, sample: samples[i],
+          langConfig: compileResult.langConfig,
+          executableFileId, communicatorFileId, captureTrace: true,
+        });
+        const verdicts = {
+          ACCEPTED: "AC", WRONG_ANSWER: "WA", PRESENTATION_ERROR: "PE",
+          TIME_LIMIT_EXCEEDED: "TLE", MEMORY_LIMIT_EXCEEDED: "MLE",
+          RUNTIME_ERROR: "RE", SYSTEM_ERROR: "SE",
+        } as const;
+        results.push({
+          sampleIndex: i + 1,
+          input: samples[i].input,
+          expectedOutput: samples[i].output,
+          actualOutput: result.actualOutput,
+          verdict: verdicts[result.verdict],
+          timeUsedMs: result.timeUsedMs,
+          memoryUsedKb: result.memoryUsedKb,
+          message: result.message,
+          communication: result.communication,
+        });
+        continue;
+      }
       results.push(
         await runNonInteractiveSample({
           problem,
@@ -714,12 +793,7 @@ export async function debugProblemSamples(
       },
     };
   } finally {
-    if (executableFileId) {
-      deleteTmpFile(executableFileId);
-    }
-    if (checkerFileId) {
-      deleteTmpFile(checkerFileId);
-    }
+    await Promise.all([executableFileId, checkerFileId, communicatorFileId].filter(Boolean).map(deleteTmpFile));
   }
 }
 
@@ -736,6 +810,10 @@ export async function judgeSubmission(submissionId: string) {
     data: { verdict: Verdict.JUDGING },
   });
 
+  let executableFileId = "";
+  let checkerFileId = "";
+  let interactorFileId = "";
+  let communicatorFileId = "";
   try {
     const { language, code, problem } = submission;
     const langConfig = LANGUAGES[language];
@@ -752,7 +830,6 @@ export async function judgeSubmission(submissionId: string) {
       finished: false,
     });
 
-    let executableFileId = "";
     const compileResult = await compileUserCode(language, code);
     if (!compileResult.ok) {
       await prisma.submission.update({
@@ -772,10 +849,14 @@ export async function judgeSubmission(submissionId: string) {
     }
     executableFileId = compileResult.executableFileId;
 
-    let checkerFileId = "";
-    let interactorFileId = "";
     const isSpj = problem.type === "spj";
     const isInteractive = problem.type === "interactive";
+    const isCommunication = problem.type === "communication";
+
+    if (isCommunication) {
+      if (!judgeConfig.communicator) throw new Error("Communication judge is not configured for this problem.");
+      communicatorFileId = await compileChecker(dataDir, judgeConfig.communicator, "communicator");
+    }
 
     if (isSpj && judgeConfig.checker) {
       try {
@@ -819,7 +900,16 @@ export async function judgeSubmission(submissionId: string) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let res: any;
 
-      if (isInteractive) {
+      if (isCommunication) {
+        const result = await runProblemCommunicationCase({
+          problem: { ...problem, samples: [] }, language, code,
+          sample: { input: testCase.in, output: testCase.out },
+          langConfig, executableFileId, communicatorFileId,
+        });
+        finalVerdict = result.verdict;
+        error = result.message;
+        res = { time: result.timeUsedMs * 1000000, memory: result.memoryUsedKb * 1024 };
+      } else if (isInteractive) {
         const runResults = await callGoJudge({
           cmd: [
             {
@@ -1001,9 +1091,6 @@ export async function judgeSubmission(submissionId: string) {
       },
     });
 
-    if (executableFileId) deleteTmpFile(executableFileId);
-    if (checkerFileId) deleteTmpFile(checkerFileId);
-    if (interactorFileId) deleteTmpFile(interactorFileId);
   } catch (error) {
     console.error("Judge Error:", error);
     const err = error as Error;
@@ -1011,9 +1098,13 @@ export async function judgeSubmission(submissionId: string) {
       where: { id: submissionId },
       data: {
         verdict: Verdict.SYSTEM_ERROR,
-        errorMessage: err.message || "Unknown System Error",
+        errorMessage: submission.problem.type === "communication"
+          ? "Communication judge failed. Please contact the problem setter."
+          : err.message || "Unknown System Error",
       },
     });
     await redis.del(`submission:${submissionId}:progress`);
+  } finally {
+    await Promise.all([executableFileId, checkerFileId, interactorFileId, communicatorFileId].filter(Boolean).map(deleteTmpFile));
   }
 }

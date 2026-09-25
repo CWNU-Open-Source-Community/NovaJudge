@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { promises as fs } from "fs";
 import path from "path";
 import JSZip from "jszip";
+import { normalizeProblemSamples, type ProblemSample } from "@/lib/problem-samples";
 import {
   ClariCategory,
   ContestRole,
@@ -128,7 +129,7 @@ interface ProblemData {
   defaultTimeLimit: number;
   defaultMemoryLimit: number;
   sections: { title: string; content: string }[];
-  samples: { input: string; output: string }[];
+  samples: ProblemSample[];
   hint?: string;
   judgeConfig?: string;
 }
@@ -278,7 +279,7 @@ export async function POST(request: Request) {
                 defaultTimeLimit: problemData.defaultTimeLimit,
                 defaultMemoryLimit: problemData.defaultMemoryLimit,
                 sections: problemData.sections,
-                samples: problemData.samples,
+                samples: normalizeProblemSamples(problemData.samples),
                 hint: problemData.hint,
                 judgeConfig: problemData.judgeConfig,
               },

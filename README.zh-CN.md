@@ -14,6 +14,8 @@ NovaJudge 是一个轻量级在线评测（Online Judge）平台，面向 XCPC �
 - 题库支持 Markdown/LaTeX 题面、样例、资源文件、测试数据与 YAML 判题配置。
 - 基于 Redis、BullMQ、Worker 进程和 [go-judge](https://github.com/criyle/go-judge)
   的实时提交评测。
+- 支持两轮普通输入输出的通信题：独立运行同一程序两次，通过通信裁判校验和转换消息。
+  参见[通信题配置与示例](./docs/COMMUNICATION_PROBLEMS.md)。
 - 支持多开判题机：每台判题机拥有唯一 ID，后台首页实时展示状态，
   多台判题机从共享队列领取任务互不冲突。
 - ACM/ICPC 风格排行榜，支持封榜（freeze）与解封（unfreeze）。

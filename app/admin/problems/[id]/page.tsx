@@ -4,6 +4,7 @@ import { getProblem } from "../actions";
 import { getAssets } from "./assets/actions";
 import { notFound } from "next/navigation";
 import AssetManager from "@/components/admin/AssetManager";
+import type { ProblemSample } from "@/lib/problem-samples";
 
 export default async function EditProblemPage({
   params,
@@ -30,7 +31,7 @@ export default async function EditProblemPage({
       title: string;
       content: string;
     }[],
-    samples: problem.samples as unknown as { input: string; output: string }[],
+    samples: problem.samples as unknown as ProblemSample[],
 
     // 2. 处理 hint 的 null vs undefined 问题
     // 数据库出来的可能是 null，组件要的是 undefined

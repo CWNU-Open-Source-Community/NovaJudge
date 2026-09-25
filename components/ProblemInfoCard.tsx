@@ -9,6 +9,7 @@ interface ProblemInfoProps {
     memoryLimit: number;
     submissions: number;
     accepted: number;
+    problemType?: string;
   };
   type?: "problem" | "submit";
   isAdmin?: boolean;
@@ -33,6 +34,21 @@ export default async function ProblemInfoCard({
           <span className="text-gray-500">Problem Id</span>
           <span className="font-mono font-bold text-gray-800">{problemId}</span>
         </li>
+        {info.problemType === "communication" && (
+          <li className="px-4 py-3">
+            <div className="text-gray-500 mb-1">
+              {dict.problemDetail.judgeType}
+            </div>
+            <span className="font-bold text-blue-700">
+              {dict.problemDetail.communication}
+            </span>
+            {type === "submit" && (
+              <p className="mt-2 text-xs leading-relaxed text-gray-600">
+                {dict.problemDetail.communicationNotice}
+              </p>
+            )}
+          </li>
+        )}
         <li className="px-4 py-3">
           <div className="text-gray-500 mb-1">
             {dict.problemDetail.timeLimit} (Java / Others)

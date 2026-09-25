@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { enqueueJudge } from "@/lib/queue";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isProblemType } from "@/lib/problem-judge-config";
+import { normalizeProblemSamples, type ProblemSample } from "@/lib/problem-samples";
 
 // 定义题目数据的类型接口
 export interface ProblemFormData {
@@ -13,7 +15,7 @@ export interface ProblemFormData {
   defaultTimeLimit: number;
   defaultMemoryLimit: number;
   sections: { title: string; content: string }[];
-  samples: { input: string; output: string }[];
+  samples: ProblemSample[];
   hint?: string;
 }
 
@@ -59,9 +61,12 @@ export async function saveProblem(formData: FormData) {
       defaultTimeLimit: Number(formData.get("defaultTimeLimit")),
       defaultMemoryLimit: Number(formData.get("defaultMemoryLimit")),
       sections: JSON.parse(formData.get("sections") as string),
-      samples: JSON.parse(formData.get("samples") as string),
+      samples: normalizeProblemSamples(JSON.parse(formData.get("samples") as string)),
       hint: formData.get("hint") as string,
     };
+    if (!isProblemType(data.type)) {
+      throw new Error("Problem type must be default, spj, interactive, or communication.");
+    }
 
     if (id) {
       // 更新

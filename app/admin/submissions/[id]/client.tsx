@@ -16,6 +16,11 @@ import {
   CpuChipIcon,
 } from "@heroicons/react/24/outline";
 import CodeBlock from "@/components/CodeBlock";
+import CommunicationSample from "@/components/CommunicationSample";
+import {
+  getCommunicationSampleDisplay,
+  type ProblemSample,
+} from "@/lib/problem-samples";
 import { Prisma } from "@/lib/generated/prisma/client";
 import LiveVerdict from "@/components/LiveVerdict";
 
@@ -24,18 +29,14 @@ interface Section {
   content: string;
 }
 
-interface Sample {
-  input: string;
-  output: string;
-}
-
 interface ProblemDetail {
   id: number;
   title: string;
+  type: string;
   defaultTimeLimit: number;
   defaultMemoryLimit: number;
   sections: Section[];
-  samples: Sample[];
+  samples: ProblemSample[];
   hint: string;
 }
 
@@ -138,7 +139,17 @@ export default function SubmissionDetailClient({ submission, problem }: Props) {
               </div>
             ))}
             {/* 2. 渲染样例数组 */}
-            {problem.samples.map((sample: Sample, index: number) => {
+            {problem.samples.map((sample, index) => {
+              if (problem.type === "communication") {
+                return (
+                  <CommunicationSample
+                    key={`sample-${index}`}
+                    {...getCommunicationSampleDisplay(sample)}
+                    index={problem.samples.length > 1 ? index + 1 : undefined}
+                  />
+                );
+              }
+
               // 如果只有一组样例，标题不显示序号；如果有多组，显示 1, 2, 3...
               const suffix = problem.samples.length > 1 ? ` ${index + 1}` : "";
 
