@@ -43,7 +43,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# /lib/generated/prisma
+/lib/generated/prisma
 /prisma/migrations/*
 !/prisma/migrations/20260603000000_remove_external_login_and_monitoring/
 !/prisma/migrations/20260603000000_remove_external_login_and_monitoring/migration.sql
