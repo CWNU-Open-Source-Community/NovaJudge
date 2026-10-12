@@ -18,8 +18,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Browser extensions can add attributes to <html> before hydration (e.g. vq-enabled).
+  // Limit suppression to the root element; descendants still report mismatches.
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
       <body className="font-sans antialiased overflow-x-hidden">
         <LanguageProvider>
           <AuthProvider>
