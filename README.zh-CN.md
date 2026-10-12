@@ -14,6 +14,8 @@ NovaJudge 是一个轻量级在线评测（Online Judge）平台，面向 XCPC �
 - 题库支持 Markdown/LaTeX 题面、样例、资源文件、测试数据与 YAML 判题配置。
 - 基于 Redis、BullMQ、Worker 进程和 [go-judge](https://github.com/criyle/go-judge)
   的实时提交评测。
+- checker、interactor 和 communicator 首次使用时编译，后续提交和样例调试复用编译结果；
+  更换源码、修改 `testlib.h` 或编译参数后自动重新编译。
 - 支持两轮普通输入输出的通信题：独立运行同一程序两次，通过通信裁判校验和转换消息。
   参见[通信题配置与示例](./docs/COMMUNICATION_PROBLEMS.md)。
 - 支持多开判题机：每台判题机拥有唯一 ID，后台首页实时展示状态，
@@ -124,6 +126,21 @@ JUDGE_WORKER_IDS=1,2  # npm run worker:multi 指定 ID 列表
   正在被评测的提交也不会重复入队。
 - **单一调度器** —— 比赛状态调度（`PENDING → RUNNING → ENDED`）通过 Redis
   租约在多台判题机中选出唯一的 leader 执行，不会重复运行。
+
+### 裁判程序编译缓存
+
+checker、interactor 和 communicator 的编译结果保存在
+`uploads/problems/<题目 ID>/.judge-cache/`，共享该目录且使用相同 go-judge 地址的进程复用缓存。
+首次判题或样例调试时编译，之后按源码路径、源码内容、`testlib.h` 和编译参数校验，
+仅在这些输入变化或缓存损坏、丢失时重新编译。在线编辑、上传覆盖或更换 YAML 中的文件引用均会自动生效。
+多个进程同时遇到缓存缺失时通过 Redis 租约协调编译。
+
+每份提交从缓存恢复独立的 go-judge 临时文件，判题结束后照常清理；更新文件不会影响已开始判题的提交，
+Web、Worker 和 go-judge 重启后仍可使用磁盘上的编译结果。缓存目录位于测试数据目录之外，
+不会被测试数据上传替换，也不会包含在题目数据导出中。升级编译器或判题容器环境后，可删除对应缓存目录以强制重新编译。
+
+运行 `npm run test:judge-cache` 验证缓存行为；已有 Redis 和 go-judge 服务时，
+运行 `npm run test:judge-cache:integration` 验证真实编译和多进程复用（不访问数据库）。
 
 ### 压力测试
 

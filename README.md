@@ -21,6 +21,8 @@ CCS-compatible data feeds are built into one Next.js application.
   YAML judge configuration.
 - Realtime submissions powered by Redis, BullMQ, worker processes, and
   [go-judge](https://github.com/criyle/go-judge).
+- Cached checker, interactor and communicator compilation, automatically rebuilt
+  when the source, `testlib.h` or compilation options change.
 - Multiple judge workers with unique IDs, live status on the admin dashboard,
   and conflict-free task claiming from the shared queue.
 - ACM/ICPC-style scoreboard with freeze and unfreeze support.
@@ -133,6 +135,26 @@ JUDGE_WORKER_IDS=1,2  # Explicit ID list for "npm run worker:multi"
 - **Single scheduler** — the contest status scheduler
   (`PENDING → RUNNING → ENDED`) elects one leader among the workers through a
   Redis lease, so it never runs twice.
+
+### Judge program compilation cache
+
+Compiled checkers, interactors and communicators are saved in
+`uploads/problems/<problem ID>/.judge-cache/`. Processes sharing this directory
+and the same go-judge URL reuse the compiled bytes. Source paths, source contents,
+`testlib.h` and compilation options are checked on each request; changes or a
+missing/corrupt cache trigger compilation. Redis leases coordinate concurrent
+cache misses across worker processes.
+
+Each submission uploads its own temporary executable from the cached bytes and
+cleans it up after judging. Updating a source does not affect submissions already
+using an older executable, and cached bytes survive Web, Worker and go-judge
+restarts. The cache lives outside the test data directory, so data uploads do not
+replace it and problem exports do not include it. Remove the corresponding cache
+directory after upgrading the compiler or sandbox environment to force a rebuild.
+
+Run `npm run test:judge-cache` for cache tests. With Redis and go-judge available,
+run `npm run test:judge-cache:integration` for real compilation and multi-process
+checks without database access.
 
 ### Stress testing
 

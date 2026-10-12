@@ -5,9 +5,11 @@ import { promises as fs } from "fs";
 import { Verdict } from "@/lib/generated/prisma/enums";
 import { resolveJudgeDataPath } from "@/lib/problem-judge-config";
 import { runCommunicationCase, type CommunicationTrace } from "./judge/communication";
+import { createJudgeProgramCompiler } from "./judge/program-cache";
 import type { ProblemSample } from "./problem-samples";
 
 const GO_JUDGE_URL = process.env.GO_JUDGE_API || "http://localhost:5050";
+const compileJudgeProgram = createJudgeProgramCompiler({ judgeUrl: GO_JUDGE_URL, redis });
 const STACK_SIZE_KB = Number(process.env.JUDGE_STACK_KB || 2097152);
 
 interface LanguageConfig {
@@ -221,140 +223,6 @@ function getLanguageLimits(
     timeLimit: problem.defaultTimeLimit * 1000000 * timeLimitRate,
     memoryLimit: problem.defaultMemoryLimit * 1024 * 1024 * memoryLimitRate,
   };
-}
-
-async function compileChecker(dataDir: string, checkerName: string, binaryName = "checker") {
-  const checkerPath = resolveJudgeDataPath(dataDir, checkerName);
-  let checkerCode = "";
-  try {
-    checkerCode = await fs.readFile(checkerPath, "utf-8");
-  } catch (e) {
-    console.log(e);
-    throw new Error(`${binaryName} file not found: ${checkerName}`);
-  }
-
-  const testlibPath = path.join(process.cwd(), "lib", "judge", "testlib.h");
-  let testlibCode = "";
-  try {
-    testlibCode = await fs.readFile(testlibPath, "utf-8");
-  } catch (e) {
-    console.error("Missing testlib.h", e);
-    throw new Error("System Error: testlib.h not found on server.");
-  }
-
-  const compileRes = await callGoJudge({
-    cmd: [
-      {
-        args: [
-          "/usr/bin/g++",
-          `${binaryName}.cpp`,
-          "-o",
-          binaryName,
-          "-O2",
-          "-std=c++23",
-        ],
-        env: ["PATH=/usr/bin:/bin"],
-        files: [
-          { content: "" },
-          { name: "stdout", max: 1000000 },
-          { name: "stderr", max: 1000000 },
-        ],
-        cpuLimit: 10000000000,
-        clockLimit: 30000000000,
-        memoryLimit: 1024 * 1024 * 1024,
-        procLimit: 50,
-        copyIn: {
-          [`${binaryName}.cpp`]: { content: checkerCode },
-          "testlib.h": { content: testlibCode },
-        },
-        copyOut: ["stdout", "stderr"],
-        copyOutCached: [binaryName],
-      },
-    ],
-  });
-
-  if (compileRes[0].status !== "Accepted") {
-    const fe = Array.isArray(compileRes[0].fileError)
-      ? compileRes[0].fileError
-          .map((x: { message?: string }) => x.message)
-          .filter(Boolean)
-          .join("; ")
-      : "";
-    const stderr = compileRes[0].files?.stderr || "";
-    const stdout = compileRes[0].files?.stdout || "";
-    const msg = stderr || fe || stdout || `${binaryName} compile failed`;
-    throw new Error(msg);
-  }
-
-  const fileId = compileRes[0].fileIds?.[binaryName];
-  if (!fileId) throw new Error(`${binaryName} compilation produced no executable.`);
-  return fileId as string;
-}
-
-async function compileInteractor(dataDir: string, interactorName: string) {
-  const interactorPath = path.join(dataDir, interactorName);
-
-  let interactorCode = "";
-  try {
-    interactorCode = await fs.readFile(interactorPath, "utf-8");
-  } catch (e) {
-    console.log(e);
-    throw new Error(`Interactor file not found: ${interactorName}`);
-  }
-
-  const testlibPath = path.join(process.cwd(), "lib", "judge", "testlib.h");
-  let testlibCode = "";
-  try {
-    testlibCode = await fs.readFile(testlibPath, "utf-8");
-  } catch (e) {
-    console.log(e);
-    throw new Error("System Error: testlib.h not found on server.");
-  }
-
-  const compileRes = await callGoJudge({
-    cmd: [
-      {
-        args: [
-          "/usr/bin/g++",
-          "interactor.cpp",
-          "-o",
-          "interactor",
-          "-O2",
-          "-std=c++23",
-        ],
-        env: ["PATH=/usr/bin:/bin"],
-        files: [
-          { content: "" },
-          { name: "stdout", max: 1000000 },
-          { name: "stderr", max: 1000000 },
-        ],
-        cpuLimit: 10000000000,
-        memoryLimit: 1024 * 1024 * 1024,
-        procLimit: 50,
-        copyIn: {
-          "interactor.cpp": { content: interactorCode },
-          "testlib.h": { content: testlibCode },
-        },
-        copyOut: ["stdout", "stderr"],
-        copyOutCached: ["interactor"],
-      },
-    ],
-  });
-
-  if (compileRes[0].status !== "Accepted") {
-    const fe = Array.isArray(compileRes[0].fileError)
-      ? compileRes[0].fileError
-          .map((x: { message?: string }) => x.message)
-          .filter(Boolean)
-          .join("; ")
-      : "";
-    const stderr = compileRes[0].files?.stderr || "";
-    const stdout = compileRes[0].files?.stdout || "";
-    const msg = stderr || fe || stdout || "Interactor compile failed";
-    throw new Error(msg);
-  }
-
-  return compileRes[0].fileIds["interactor"];
 }
 
 async function compileUserCode(language: string, code: string) {
@@ -706,7 +574,7 @@ export async function debugProblemSamples(
     if (problem.type === "communication") {
       const judgeConfig = problem.judgeConfig as JudgeConfig | null;
       if (!judgeConfig?.communicator) throw new Error("Communication judge is not configured for this problem.");
-      communicatorFileId = await compileChecker(getProblemDataDir(problem.id), judgeConfig.communicator, "communicator");
+      communicatorFileId = await compileJudgeProgram(getProblemDataDir(problem.id), judgeConfig.communicator, "communicator");
     }
 
     if (problem.type === "spj") {
@@ -725,7 +593,7 @@ export async function debugProblemSamples(
         };
       }
 
-      checkerFileId = await compileChecker(
+      checkerFileId = await compileJudgeProgram(
         getProblemDataDir(problem.id),
         judgeConfig.checker,
       );
@@ -855,12 +723,12 @@ export async function judgeSubmission(submissionId: string) {
 
     if (isCommunication) {
       if (!judgeConfig.communicator) throw new Error("Communication judge is not configured for this problem.");
-      communicatorFileId = await compileChecker(dataDir, judgeConfig.communicator, "communicator");
+      communicatorFileId = await compileJudgeProgram(dataDir, judgeConfig.communicator, "communicator");
     }
 
     if (isSpj && judgeConfig.checker) {
       try {
-        checkerFileId = await compileChecker(dataDir, judgeConfig.checker);
+        checkerFileId = await compileJudgeProgram(dataDir, judgeConfig.checker);
       } catch (e) {
         const err = e as Error;
         await prisma.submission.update({
@@ -872,10 +740,7 @@ export async function judgeSubmission(submissionId: string) {
       }
     } else if (isInteractive && judgeConfig.interactor) {
       try {
-        interactorFileId = await compileInteractor(
-          dataDir,
-          judgeConfig.interactor,
-        );
+        interactorFileId = await compileJudgeProgram(dataDir, judgeConfig.interactor, "interactor");
       } catch (e) {
         const err = e as Error;
         await prisma.submission.update({
