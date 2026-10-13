@@ -1,0 +1,47 @@
+name: novajudge-local
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: novajudge
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:?Create the local .env first}
+      POSTGRES_DB: novajudge_local
+      TZ: Asia/Shanghai
+    ports: ["127.0.0.1:5433:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U novajudge -d novajudge_local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["127.0.0.1:6380:6379"]
+    volumes: ["redis_data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  judge:
+    image: novajudge-local-judge:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    privileged: true
+    shm_size: 512m
+    environment:
+      TZ: Asia/Shanghai
+    ports: ["127.0.0.1:5050:5050"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5050/config"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  postgres_data:
+  redis_data:

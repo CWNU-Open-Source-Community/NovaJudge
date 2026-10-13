@@ -65,6 +65,8 @@ function getContestLoginErrorMessage(error?: string) {
       return "请输入用户名和密码。";
     case "invalid_credentials":
       return "用户名或密码错误，请重新输入。";
+    case "proctoring_required":
+      return "该账号已绑定监考，请通过监考客户端登录并访问本场比赛。";
     default:
       return null;
   }
@@ -111,7 +113,7 @@ export default async function ContestLogin({
     }
   }
 
-  if (!user && !super_admin && autoLogin !== "miss") {
+  if (!user && !super_admin && !error && autoLogin !== "miss") {
     redirect(`/api/contests/${id}/auto-login`);
   }
 

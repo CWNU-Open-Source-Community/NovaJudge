@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { signAuth } from "@/lib/auth";
+import { signAuth, validateApiKey } from "@/lib/auth";
+import { randomBytes } from "node:crypto";
+import { proctoringKeyHash, PROCTORING_REQUIRED } from "@/lib/proctoring-access";
 import { ContestStatus } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPrimaryClientIp } from "@/lib/request-ip";
@@ -11,6 +13,10 @@ export async function POST(req: Request) {
     const username = String(body?.username || "").trim();
     const password = String(body?.password || "");
     const rawContestId = body?.contestId;
+    const proctored = body?.loginSource === "PROCTORING";
+    if (body?.loginSource !== undefined && !proctored) {
+      return NextResponse.json({ error: "invalid loginSource" }, { status: 400 });
+    }
 
     if (!username || !password) {
       return NextResponse.json(
@@ -74,11 +80,24 @@ export async function POST(req: Request) {
     }
 
     const ip = getPrimaryClientIp(req.headers) || "unknown";
+    let proctoringKey: string | undefined;
+    let keyHash: string | undefined;
+    if (proctored) {
+      const administrator = await validateApiKey(req.headers.get("x-api-key") || "");
+      if (user.role !== "TEAM" || administrator?.role !== "SUPER_ADMIN") {
+        return NextResponse.json({ error: "Proctoring login requires an enabled administrator API key and a team account" }, { status: 403 });
+      }
+      proctoringKey = randomBytes(32).toString("base64url");
+      keyHash = proctoringKeyHash(proctoringKey);
+    } else if (user.proctoringKeyHash) {
+      return NextResponse.json({ error: PROCTORING_REQUIRED, code: "PROCTORING_CLIENT_REQUIRED" }, { status: 403 });
+    }
     await prisma.user.update({
       where: { id: user.id },
       data: {
         lastLoginIp: ip,
         lastLoginAt: new Date(),
+        ...(keyHash ? { proctoringKeyHash: keyHash, proctoringLoginAt: new Date() } : {}),
       },
     });
 
@@ -88,10 +107,12 @@ export async function POST(req: Request) {
       role: user.role,
       contestId: user.contestId,
       isGlobalAdmin: false,
+      ...(keyHash ? { loginSource: "PROCTORING" as const, proctoringKeyHash: keyHash } : {}),
     });
 
     return NextResponse.json({
       token,
+      ...(proctoringKey ? { loginSource: "PROCTORING", proctoringKey } : {}),
       user: {
         username: user.username,
         role: user.role,
@@ -99,7 +120,7 @@ export async function POST(req: Request) {
         displayName: user.displayName,
       },
       contest: user.contest,
-    });
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("CLI login error:", error);
     return NextResponse.json(

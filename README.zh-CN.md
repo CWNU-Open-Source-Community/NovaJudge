@@ -1,5 +1,7 @@
 # NovaJudge
 
+与监考系统集成时可启用[监考专用登录](docs/PROCTORING_LOGIN.md)：监考登录后，该比赛账号只能通过携带专用凭据的监考客户端访问。
+
 [简体中文](./README.zh-CN.md) · [English](./README.md)
 
 NovaJudge 是一个轻量级在线评测（Online Judge）平台，面向 XCPC 风格训练与现场赛。

@@ -41,6 +41,7 @@ export async function loginContestUser(contestId: number, formData: FormData) {
   if (!user || !(await bcrypt.compare(password, user.password))) {
     redirectToContestLogin(contestId, "invalid_credentials");
   }
+  if (user.proctoringKeyHash) redirectToContestLogin(contestId, "proctoring_required");
 
   // 记录登录 IP 和时间
   const headersList = await headers();

@@ -114,6 +114,8 @@ model User {
 
   lastLoginIp String? // 最近登录 IP
   lastLoginAt DateTime? // 最近登录时间
+  proctoringKeyHash String? @db.VarChar(64) // 非空时，该比赛账号只能通过监考客户端访问
+  proctoringLoginAt DateTime?
 
   submissions    Submission[]
   clarifications Clarification[]

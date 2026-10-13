@@ -1,5 +1,6 @@
 # 阶段 1：定义 go-judge 来源
-FROM criyle/go-judge:latest AS source
+ARG GO_JUDGE_IMAGE=criyle/go-judge:v1.11.2
+FROM ${GO_JUDGE_IMAGE} AS source
 
 # 阶段 2：构建实际运行环境
 FROM ubuntu:24.04
@@ -10,17 +11,20 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # 修改源 (可选)
 RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list.d/ubuntu.sources && \
-    sed -i 's@//.*security.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list.d/ubuntu.sources
+    sed -i 's@//.*security.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list.d/ubuntu.sources && \
+    sed -i 's@http://ports.ubuntu.com/ubuntu-ports@http://mirrors.huaweicloud.com/ubuntu-ports@g' /etc/apt/sources.list.d/ubuntu.sources
 
 # =========================================================
 # 【修改点 1】安装 gcc-14 和 g++-14
 # Ubuntu 24.04 源里自带 gcc-14，直接安装即可
 # =========================================================
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && sed -i 's@http://mirrors@https://mirrors@g' /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     locales \
     gcc-14 g++-14 \
-    python3 pypy3 openjdk-21-jdk \
+    python3 pypy3 openjdk-21-jdk-headless \
     vim curl \
     && rm -rf /var/lib/apt/lists/*
 

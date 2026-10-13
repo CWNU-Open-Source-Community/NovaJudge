@@ -9,6 +9,8 @@ export interface UserJwtPayload {
   role: string;
   contestId?: number | null;
   isGlobalAdmin: boolean;
+  loginSource?: "PROCTORING";
+  proctoringKeyHash?: string;
   iat?: number;
   exp?: number;
 }

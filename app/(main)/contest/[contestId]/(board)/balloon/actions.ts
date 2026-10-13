@@ -146,6 +146,10 @@ export async function completeBalloon(contestId: number, balloonId: number) {
       (user?.role === ContestRole.ADMIN || user?.role === ContestRole.JUDGE)) ||
     (superAdmin as UserJwtPayload)?.isGlobalAdmin;
 
+  if (!isMaster && (!user?.userId || user.contestId !== contestId || user.role !== ContestRole.BALLOON)) {
+    throw new Error("Only assigned balloon volunteers or contest staff can complete delivery.");
+  }
+
   await prisma.balloon.updateMany({
     where: {
       id: balloonId,

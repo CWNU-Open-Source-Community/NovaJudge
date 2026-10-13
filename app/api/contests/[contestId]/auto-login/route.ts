@@ -66,12 +66,14 @@ export async function GET(req: NextRequest, { params }: Props) {
       role: true,
       contestId: true,
       autoLoginIp: true,
+      proctoringKeyHash: true,
     },
   });
 
   if (!user) {
     return contestRedirect(cid, "?autoLogin=miss&reason=no_match");
   }
+  if (user.proctoringKeyHash) return contestRedirect(cid, "?autoLogin=miss&error=proctoring_required");
 
   await prisma.user.update({
     where: { id: user.id },

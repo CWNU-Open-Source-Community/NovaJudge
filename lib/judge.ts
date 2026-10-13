@@ -329,7 +329,7 @@ async function loadJudgeTestCases(problem: {
       }
 
       let outputContent = "";
-      if (caseItem.output === "/dev/null" || (problem.type === "communication" && !caseItem.output)) {
+      if (caseItem.output === "/dev/null" || (["communication", "interactive"].includes(problem.type) && !caseItem.output)) {
         outputContent = "";
       } else {
         if (!caseItem.output) throw new Error("Test case output is required.");

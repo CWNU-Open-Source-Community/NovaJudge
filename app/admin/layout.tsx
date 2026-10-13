@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import {
   HomeIcon,
   TrophyIcon,
@@ -29,6 +30,20 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
+  async function signOut() {
+    setSigningOut(true);
+    setSignOutError("");
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Sign out failed. Please retry.");
+      window.location.assign("/");
+    } catch {
+      setSignOutError("Sign out failed. Please retry.");
+      setSigningOut(false);
+    }
+  }
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Sidebar */}
@@ -83,10 +98,11 @@ export default function AdminLayout({
 
         {/* 3. 底部操作区域 */}
         <div className="p-4 border-t border-slate-700 bg-slate-900">
-          <button className="flex items-center w-full px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-md transition-colors">
+          <button onClick={signOut} disabled={signingOut} className="flex items-center w-full px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-md transition-colors disabled:opacity-50">
             <ArrowRightOnRectangleIcon className="mr-3 h-5 w-5" />
-            Sign Out
+            {signingOut ? "Signing Out..." : "Sign Out"}
           </button>
+          {signOutError && <p role="alert" className="text-sm text-red-300 mt-2">{signOutError}</p>}
         </div>
       </aside>
 

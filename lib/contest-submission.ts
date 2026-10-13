@@ -114,8 +114,18 @@ export async function createContestSubmission({
   }
 
   if (actor.type === "contest") {
-    if (actor.role !== ContestRole.TEAM) {
+    const user = await prisma.user.findUnique({
+      where: { id: actor.userId },
+      select: { contestId: true, role: true },
+    });
+    if (!user || user.contestId !== contestId) {
+      throw new Error("The account does not belong to this contest.");
+    }
+    if (user.role !== ContestRole.TEAM) {
       throw new Error("Only contest teams can submit code.");
+    }
+    if (now < contest.startTime) {
+      throw new Error("The contest has not started.");
     }
 
     if (isEnded && isFrozen) {

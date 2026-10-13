@@ -49,5 +49,8 @@ next-env.d.ts
 !/prisma/migrations/20260603000000_remove_external_login_and_monitoring/migration.sql
 !/prisma/migrations/20260613000000_add_user_auto_login_ip/
 !/prisma/migrations/20260613000000_add_user_auto_login_ip/migration.sql
+!/prisma/migrations/20261013000000_proctored_logins/
+!/prisma/migrations/20261013000000_proctored_logins/migration.sql
 /uploads
 /public/monaco
+/.local/
