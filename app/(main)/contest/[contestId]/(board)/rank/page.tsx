@@ -1,4 +1,5 @@
-import { verifyAuth } from "@/lib/auth";
+import { requireContestAccess } from "@/lib/contest-access";
+import { getCurrentSuper, verifyAuth } from "@/lib/auth";
 import {
   ContestRole,
   ContestStatus,
@@ -24,6 +25,7 @@ import IncludeVpToggle from "./IncludeVpToggle";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
+  await requireContestAccess(contestId);
 
   const contest = await prisma.contest.findFirst({
     where: {
@@ -102,6 +104,7 @@ export default async function Rank({ params, searchParams }: Props) {
   const { teamName, school, category, includeVp } = await searchParams;
 
   const cid = parseInt(contestId);
+  await requireContestAccess(cid);
   const shouldIncludeVpInRank = includeVp !== "0";
 
   // 1. 获取比赛信息
@@ -118,16 +121,15 @@ export default async function Rank({ params, searchParams }: Props) {
   // 2. 权限校验
   const cookieStore = await cookies();
   const token = cookieStore.get("user_token")?.value;
-  const adminToken = cookieStore.get("auth_token")?.value;
-  const payload = token ? await verifyAuth(token) : null;
-  const glabelPayload = adminToken ? await verifyAuth(adminToken) : null;
+  const payload = token ? await verifyAuth(token).catch(() => null) : null;
+  const glabelPayload = await getCurrentSuper();
 
   let currentUser = null;
   let isTeamMember = false;
   let isGlobalAdmin = false;
   let isContestAdmin = false;
 
-  if (adminToken && glabelPayload?.isGlobalAdmin) {
+  if (glabelPayload?.isGlobalAdmin) {
     isGlobalAdmin = true;
   }
 
@@ -1048,7 +1050,7 @@ export default async function Rank({ params, searchParams }: Props) {
       <div className="flex flex-col gap-3 border-b mb-4 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-serif font-bold text-gray-800 sm:pl-2 flex flex-wrap items-center gap-y-2">
           Rank
-          {showUnfreezeButton && <UnfreezeButton contest={contestInfo} />}
+          {showUnfreezeButton && <UnfreezeButton contest={{ id: contestInfo.id, config: contestInfo.config }} />}
           {canSeeLiveBoard && (
             <span className="ml-2 flex items-center gap-2">
               <ExportRankResultsButton contestId={cid} />

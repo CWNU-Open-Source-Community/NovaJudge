@@ -37,7 +37,8 @@ Desktop credential file:
     "url": "http://localhost:3001",
     "contestId": 1001,
     "username": "team001",
-    "password": "team-password"
+    "password": "team-password",
+    "contestPassword": "private-contest-password"
   }
 
 Environment:
@@ -61,6 +62,7 @@ function readDesktopCredentials() {
   const raw = JSON.parse(fs.readFileSync(DESKTOP_CREDENTIAL_PATH, "utf8"));
   const username = String(raw.username || raw.user || "").trim();
   const password = String(raw.password || "").trim();
+  const contestPassword = String(raw.contestPassword || "");
   const baseUrl = String(raw.url || raw.baseUrl || DEFAULT_BASE_URL).replace(
     /\/$/,
     "",
@@ -80,7 +82,7 @@ function readDesktopCredentials() {
     throw new Error("contestId in desktop credential file must be an integer");
   }
 
-  return { baseUrl, contestId, username, password };
+  return { baseUrl, contestId, username, password, contestPassword };
 }
 
 function parseFlags(args) {
@@ -123,21 +125,24 @@ async function readJsonResponse(res) {
   }
 }
 
-async function requestLogin({ baseUrl, contestId, username, password }) {
+async function requestLogin({ baseUrl, contestId, username, password, contestPassword }) {
   const res = await fetch(`${baseUrl}/api/cli/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password, contestId }),
+    body: JSON.stringify({ username, password, contestId, contestPassword }),
   });
   const data = await readJsonResponse(res);
 
   if (!res.ok) {
-    throw new Error(data.error || res.statusText);
+    const error = new Error(data.error || res.statusText);
+    error.code = data.code;
+    throw error;
   }
 
   writeConfig({
     baseUrl,
     token: data.token,
+    contestAccessToken: data.contestAccessToken,
     username: data.user.username,
     teamName: data.user.displayName || data.user.username,
     contestId: data.user.contestId,
@@ -168,16 +173,26 @@ async function login(args) {
     ? String(flags.user)
     : await rl.question("Username: ");
   const password = await rl.question("Password: ");
-  rl.close();
+  let contestPassword = flags["contest-password"]
+    ? String(flags["contest-password"])
+    : undefined;
 
   let data;
   try {
-    data = await requestLogin({ baseUrl, contestId, username, password });
+    try {
+      data = await requestLogin({ baseUrl, contestId, username, password, contestPassword });
+    } catch (error) {
+      if (error.code !== "CONTEST_PASSWORD_REQUIRED") throw error;
+      contestPassword = await rl.question("Contest password: ");
+      data = await requestLogin({ baseUrl, contestId, username, password, contestPassword });
+    }
   } catch (error) {
     console.error(
       `Login failed: ${error instanceof Error ? error.message : error}`,
     );
     process.exit(1);
+  } finally {
+    rl.close();
   }
 
   console.log(
@@ -191,6 +206,7 @@ async function postSubmission(config, { problem, language, code }) {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${config.token}`,
+      "x-contest-access-token": config.contestAccessToken || "",
     },
     body: JSON.stringify({
       contestId: config.contestId,
@@ -250,7 +266,7 @@ async function submit(args) {
   const code = fs.readFileSync(filePath, "utf8");
   let { res, data } = await postSubmission(config, { problem, language, code });
 
-  if (res.status === 401) {
+  if (res.status === 401 || data.code === "CONTEST_PASSWORD_REQUIRED") {
     const refreshedConfig = await loginFromDesktopCredentials();
     if (refreshedConfig) {
       config = refreshedConfig;

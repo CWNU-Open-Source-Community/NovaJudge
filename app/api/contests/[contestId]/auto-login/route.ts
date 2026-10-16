@@ -3,6 +3,7 @@ import { ContestRole } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getClientIpCandidates } from "@/lib/request-ip";
 import { NextRequest, NextResponse } from "next/server";
+import { contestAccessResponse } from "@/lib/contest-access";
 
 interface Props {
   params: Promise<{ contestId: string }>;
@@ -13,6 +14,7 @@ function contestRedirect(contestId: number, query = "") {
     status: 302,
     headers: {
       Location: `/contest/${contestId}${query}`,
+      "Cache-Control": "private, no-store",
     },
   });
 }
@@ -27,6 +29,12 @@ export async function GET(req: NextRequest, { params }: Props) {
         Location: "/",
       },
     });
+  }
+
+  const denied = await contestAccessResponse(cid);
+  if (denied) {
+    if (denied.status === 403) return contestRedirect(cid, "/access");
+    return denied;
   }
 
   const existingUserToken = req.cookies.get("user_token")?.value;

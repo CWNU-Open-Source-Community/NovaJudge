@@ -1,10 +1,12 @@
 "use server";
 
+import { requireSuperAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
 // 获取当前比赛的题目列表
 export async function getContestProblems(contestId: number) {
+  await requireSuperAdmin();
   const problems = await prisma.contestProblem.findMany({
     where: { contestId },
     include: {
@@ -19,6 +21,7 @@ export async function getContestProblems(contestId: number) {
 
 // 将题库中的题目加入比赛
 export async function addContestProblem(formData: FormData) {
+  await requireSuperAdmin();
   const contestId = Number(formData.get("contestId"));
   const problemId = Number(formData.get("problemId")); // 题库中的原始 ID
   const displayId = formData.get("displayId") as string; // A, B, C...
@@ -55,6 +58,7 @@ export async function addContestProblem(formData: FormData) {
 
 // 从比赛中移除题目 (解除关联，不删除原题)
 export async function removeContestProblem(id: string, contestId: number) {
+  await requireSuperAdmin();
   await prisma.contestProblem.delete({
     where: { id },
   });
@@ -66,6 +70,7 @@ export async function updateProblemDisplayId(
   newDisplayId: string,
   contestId: number,
 ) {
+  await requireSuperAdmin();
   try {
     if (!newDisplayId.trim()) {
       return { error: "Display ID 不能为空" };
@@ -111,6 +116,7 @@ export async function updateProblemColor(
   newColor: string,
   contestId: number,
 ) {
+  await requireSuperAdmin();
   try {
     const color = newColor.trim();
 
@@ -138,6 +144,7 @@ export async function swapProblemDisplayIds(
   problemId1: number,
   problemId2: number
 ) {
+  await requireSuperAdmin();
   try {
     // 1. 查出需要交换的两道题目
     const problem1 = await prisma.contestProblem.findFirst({

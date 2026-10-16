@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import Link from "next/link";
 import Pagination from "@/components/Pagination";
 import { getClarificationData } from "./actions";
@@ -18,6 +19,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
+  await requireContestAccess(contestId);
 
   const contest = await prisma.contest.findFirst({
     where: {
@@ -50,6 +52,7 @@ export default async function ClarificationsPage({
   const { contestId } = await params;
   const { page } = await searchParams;
   const cid = Number(contestId);
+  await requireContestAccess(cid);
 
   const { notifications, clarifications, total, problems, isAdmin } =
     await getClarificationData(cid, Number(page) || 1);

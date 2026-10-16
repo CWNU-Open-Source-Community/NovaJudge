@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -19,6 +20,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
+  await requireContestAccess(contestId);
 
   const contest = await prisma.contest.findFirst({
     where: {
@@ -46,6 +48,7 @@ interface Props {
 export default async function ClarificationDetail({ params }: Props) {
   const { contestId, clariId } = await params;
   const cid = Number(contestId);
+  await requireContestAccess(cid);
   const id = Number(clariId);
 
   const data = await getClarificationDetail(cid, id);

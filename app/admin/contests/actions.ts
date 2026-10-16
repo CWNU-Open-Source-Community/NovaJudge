@@ -5,9 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { ContestType, ContestStatus } from "@/lib/generated/prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requireSuperAdmin } from "@/lib/admin-auth";
 
 // 创建比赛
 export async function createContest(formData: FormData) {
+  await requireSuperAdmin();
   const title = formData.get("title") as string;
   const description = formData.get("description") as string;
   const startTimeStr = formData.get("startTime") as string;
@@ -39,6 +41,9 @@ export async function createContest(formData: FormData) {
   };
 
   // 简单的校验
+  if (type === ContestType.PRIVATE && !password?.trim()) {
+    return { error: "私有赛必须设置比赛密码。" };
+  }
   if (!title || !startTimeStr || !endTimeStr) {
     return { error: "Missing required fields" };
   }
@@ -75,6 +80,7 @@ export async function createContest(formData: FormData) {
 
 // 获取比赛列表
 export async function getContests(page = 1, pageSize = 20) {
+  await requireSuperAdmin();
   const skip = (page - 1) * pageSize;
   const [contests, total] = await Promise.all([
     prisma.contest.findMany({
@@ -97,6 +103,7 @@ export async function getContests(page = 1, pageSize = 20) {
 }
 
 export async function toggleContestVisibility(id: number, visible: boolean) {
+  await requireSuperAdmin();
   await prisma.contest.update({
     where: { id },
     data: { visible },
@@ -106,6 +113,7 @@ export async function toggleContestVisibility(id: number, visible: boolean) {
 }
 
 export async function deleteContest(id: number) {
+  await requireSuperAdmin();
   try {
     const contest = await prisma.contest.findUnique({
       where: { id },

@@ -1,8 +1,7 @@
 "use server";
 
+import { requireSuperAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
-import { cookies } from "next/headers";
-import { verifyAuth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { Verdict } from "@/lib/generated/prisma/enums";
 import { enqueueJudge } from "@/lib/queue";
@@ -16,12 +15,7 @@ export async function adminSubmit(
 ) {
   try {
     // 1. 身份验证 (确保是 Admin)
-    const token = (await cookies()).get("auth_token")?.value;
-    if (!token) return { error: "Unauthorized" };
-
-    const payload = await verifyAuth(token);
-    if (!payload.isGlobalAdmin)
-      return { error: "Only admin can perform this action" };
+    const payload = await requireSuperAdmin();
 
     // 2. 查找 Admin 的数据库 ID
     // 注意：Token 里存的是 userId，对于 Admin 来说就是 global_users 表的 ID
@@ -56,13 +50,7 @@ export async function debugAllSamples(
   language: string,
 ) {
   try {
-    const token = (await cookies()).get("auth_token")?.value;
-    if (!token) return { error: "Unauthorized" };
-
-    const payload = await verifyAuth(token);
-    if (!payload.isGlobalAdmin) {
-      return { error: "Only admin can perform this action" };
-    }
+    await requireSuperAdmin();
 
     const problem = await prisma.problem.findUnique({
       where: { id: problemId },
@@ -97,5 +85,6 @@ export async function debugAllSamples(
 }
 
 export async function getProblemDetail(id: number) {
+  await requireSuperAdmin();
   return await prisma.problem.findUnique({ where: { id } });
 }

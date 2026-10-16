@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Verdict } from "@/lib/generated/prisma/client";
 import { validateApiKey } from "@/lib/auth";
+import { contestAccessResponse } from "@/lib/contest-access";
 
 const verdictToHydroStatus: Record<Verdict, string> = {
   [Verdict.PENDING]: "Waiting",
@@ -33,21 +34,26 @@ export async function GET(
 ) {
   try {
     const apiKey = request.headers.get("x-api-key");
+    let isGlobalAdmin = false;
     if (apiKey) {
       const user = await validateApiKey(apiKey);
       if (!user) {
         return NextResponse.json({ error: "Invalid API Key" }, { status: 403 });
       }
+      isGlobalAdmin = user.role === "SUPER_ADMIN";
     } else {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     const { contestId } = await params;
-    const contestIdNumber = parseInt(contestId, 10);
+    const contestIdNumber = Number(contestId);
 
     if (isNaN(contestIdNumber)) {
       return NextResponse.json({ error: "Invalid contestId" }, { status: 400 });
     }
+
+    const denied = await contestAccessResponse(contestIdNumber);
+    if (denied && (denied.status !== 403 || !isGlobalAdmin)) return denied;
 
     const submissions = await prisma.submission.findMany({
       where: {
@@ -87,7 +93,7 @@ export async function GET(
       };
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("Get submissions error:", error);
     return NextResponse.json(

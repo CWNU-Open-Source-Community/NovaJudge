@@ -41,5 +41,5 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return NextResponse.json(result);
+  return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
 }

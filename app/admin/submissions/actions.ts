@@ -1,9 +1,8 @@
 "use server";
 
+import { requireSuperAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { verifyAuth } from "@/lib/auth";
-import { cookies } from "next/headers";
 import { Verdict } from "@/lib/generated/prisma/enums";
 import { enqueueJudge } from "@/lib/queue";
 
@@ -12,6 +11,7 @@ export async function getGlobalSubmissions(
   pageSize = 20,
   problemQuery = "",
 ) {
+  await requireSuperAdmin();
   const skip = (page - 1) * pageSize;
   const query = problemQuery.trim();
   const problemId = Number(query);
@@ -54,11 +54,7 @@ export async function getGlobalSubmissions(
 
 export async function rejudgeSubmission(submissionId: string) {
   // 1. 权限验证
-  const token = (await cookies()).get("auth_token")?.value;
-  if (!token) throw new Error("Unauthorized");
-
-  const payload = await verifyAuth(token);
-  if (!payload.isGlobalAdmin) throw new Error("Permission denied");
+  await requireSuperAdmin();
 
   const submission = await prisma.submission.findUnique({
     where: { id: submissionId },
@@ -150,21 +146,12 @@ function buildRejudgeWhere(filters: RejudgeFilters) {
   return where;
 }
 
-// 校验管理员权限
-async function requireGlobalAdmin() {
-  const token = (await cookies()).get("auth_token")?.value;
-  if (!token) throw new Error("Unauthorized");
-
-  const payload = await verifyAuth(token);
-  if (!payload.isGlobalAdmin) throw new Error("Permission denied");
-}
-
 // 预览符合条件的提交数量（重测前确认用）
 export async function countRejudgeCandidates(
   filters: RejudgeFilters,
 ): Promise<{ count?: number; error?: string }> {
   try {
-    await requireGlobalAdmin();
+    await requireSuperAdmin();
     const count = await prisma.submission.count({
       where: buildRejudgeWhere(filters),
     });
@@ -180,7 +167,7 @@ export async function rejudgeByFilters(
   filters: RejudgeFilters,
 ): Promise<{ success?: boolean; queued?: number; error?: string }> {
   try {
-    await requireGlobalAdmin();
+    await requireSuperAdmin();
 
     const where = buildRejudgeWhere(filters);
 

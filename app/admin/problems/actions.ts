@@ -1,5 +1,6 @@
 "use server";
 
+import { requireSuperAdmin } from "@/lib/admin-auth";
 import { Verdict } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { enqueueJudge } from "@/lib/queue";
@@ -21,6 +22,7 @@ export interface ProblemFormData {
 
 // 获取题目列表
 export async function getProblems(page = 1, pageSize = 20, query = "") {
+  await requireSuperAdmin();
   const skip = (page - 1) * pageSize;
   const where = query
     ? {
@@ -46,11 +48,13 @@ export async function getProblems(page = 1, pageSize = 20, query = "") {
 
 // 获取单道题目
 export async function getProblem(id: number) {
+  await requireSuperAdmin();
   return await prisma.problem.findUnique({ where: { id } });
 }
 
 // 创建或更新题目
 export async function saveProblem(formData: FormData) {
+  await requireSuperAdmin();
   try {
     const id = formData.get("id") ? Number(formData.get("id")) : null;
 
@@ -91,6 +95,7 @@ export async function saveProblem(formData: FormData) {
 
 // 删除题目
 export async function deleteProblem(id: number) {
+  await requireSuperAdmin();
   try {
     await prisma.problem.delete({ where: { id } });
     revalidatePath("/admin/problems");
@@ -102,6 +107,7 @@ export async function deleteProblem(id: number) {
 
 // 重测整题
 export async function rejudgeProblem(problemId: number) {
+  await requireSuperAdmin();
   try {
     // 1. 获取该题目下所有非 PENDING/JUDGING 的提交
     const submissions = await prisma.submission.findMany({

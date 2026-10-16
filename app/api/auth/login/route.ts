@@ -4,6 +4,7 @@ import { getPrimaryClientIp } from "@/lib/request-ip";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { serialize } from "cookie";
+import { contestAccessResponse } from "@/lib/contest-access";
 
 export async function POST(req: Request) {
   try {
@@ -29,6 +30,8 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
+      const denied = await contestAccessResponse(Number(contestId));
+      if (denied) return denied;
       // 使用联合索引查询
       user = await prisma.user.findUnique({
         where: {

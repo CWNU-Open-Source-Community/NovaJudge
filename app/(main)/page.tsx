@@ -13,6 +13,7 @@ import {
   HashtagIcon,
 } from "@heroicons/react/24/outline";
 import { getDictionary } from "@/lib/get-dictionary";
+import { hasContestAccess } from "@/lib/contest-access";
 
 export type ContestConfig = {
   medal: {
@@ -120,6 +121,9 @@ export default async function ContestList() {
     where: { visible: true },
     orderBy: { id: "desc" },
   });
+  const access = new Map(await Promise.all(contests.map(async (contest) =>
+    [contest.id, contest.type === ContestType.PUBLIC || await hasContestAccess(contest.id)] as const,
+  )));
 
   const dict = await getDictionary();
 
@@ -153,6 +157,17 @@ export default async function ContestList() {
           {/* --- Mobile View (Cards) --- */}
           <div className="grid gap-4 md:hidden">
             {contests.map((contest) => {
+              if (!access.get(contest.id)) {
+                return (
+                  <Link key={contest.id} href={`/contest/${contest.id}/access`} className="block rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <div className="flex items-center gap-2 font-bold text-gray-900">
+                      <LockClosedIcon className="h-5 w-5 text-orange-500" />
+                      {dict.contestList.private} #{contest.id}
+                    </div>
+                    <p className="mt-2 text-sm text-gray-500">输入比赛密码后查看</p>
+                  </Link>
+                );
+              }
               const config = contest.config as ContestConfig;
               const frozenText = config?.frozenDuration
                 ? `Last ${config.frozenDuration}m frozen`
@@ -234,6 +249,19 @@ export default async function ContestList() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {contests.map((contest) => {
+                    if (!access.get(contest.id)) {
+                      return (
+                        <tr key={contest.id} className="hover:bg-slate-50">
+                          <td className="px-6 py-5 text-center font-mono text-sm text-gray-400">#{contest.id}</td>
+                          <td colSpan={5} className="px-6 py-5">
+                            <Link href={`/contest/${contest.id}/access`} className="flex items-center gap-2 font-bold text-gray-800 hover:text-blue-600">
+                              <LockClosedIcon className="h-5 w-5 text-orange-500" />
+                              {dict.contestList.private} · 输入比赛密码后查看
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    }
                     const config = contest.config as ContestConfig;
                     const frozenText = config?.frozenDuration
                       ? `Last ${config.frozenDuration}m frozen`

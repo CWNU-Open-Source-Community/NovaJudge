@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import { publishAnnouncement } from "../actions";
 import Link from "next/link";
 import { MegaphoneIcon } from "@heroicons/react/24/outline";
@@ -8,6 +9,7 @@ export default async function CreateAnnouncementPage({
   params: Promise<{ contestId: string }>;
 }) {
   const { contestId } = await params;
+  await requireContestAccess(Number(contestId));
 
   return (
     <div className="mx-auto pt-4 pb-12">

@@ -1,9 +1,10 @@
-import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
-import { ContestStatus, ContestType } from "@/lib/generated/prisma/client";
+import { requireContestAccess } from "@/lib/contest-access";
+import { getCurrentSuper, UserJwtPayload } from "@/lib/auth";
+import { ContestStatus } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import fs from "node:fs/promises";
 import { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import path from "node:path";
 import { getRunningVirtualParticipation } from "@/lib/virtual-participation";
 
@@ -41,6 +42,7 @@ async function hasEditorialPdf(contestId: number) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = Number((await params).contestId);
+  await requireContestAccess(contestId);
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
     select: { title: true },
@@ -53,6 +55,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function EditorialPage({ params }: Props) {
   const contestId = Number((await params).contestId);
+  await requireContestAccess(contestId);
 
   if (!Number.isInteger(contestId)) notFound();
 
@@ -68,20 +71,14 @@ export default async function EditorialPage({ params }: Props) {
 
   if (!contest) notFound();
 
-  const user = (await getCurrentUser()) as UserJwtPayload | null;
   const superUser = (await getCurrentSuper()) as UserJwtPayload | null;
   const isGlobalAdmin = !!superUser?.isGlobalAdmin;
-  const isContestUser = user?.contestId === contestId;
   const runningVp =
     superUser?.userId && !isGlobalAdmin
       ? await getRunningVirtualParticipation(contestId, String(superUser.userId))
       : null;
 
   if (runningVp) notFound();
-
-  if (contest.type === ContestType.PRIVATE && !isGlobalAdmin && !isContestUser) {
-    redirect(`/contest/${contestId}`);
-  }
 
   const config = (contest.config as ContestConfig | null) || {};
   const available =

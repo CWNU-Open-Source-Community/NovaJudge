@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { verifyAuth } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { contestAccessResponse } from "@/lib/contest-access";
 
 interface Props {
   params: Promise<{ contestId: string }>;
@@ -14,6 +15,9 @@ export async function GET(_request: Request, { params }: Props) {
   if (!Number.isInteger(cid)) {
     return NextResponse.json({ error: "Invalid contest id." }, { status: 400 });
   }
+
+  const denied = await contestAccessResponse(cid);
+  if (denied) return denied;
 
   const token = (await cookies()).get("user_token")?.value;
   if (!token) {
@@ -45,7 +49,7 @@ export async function GET(_request: Request, { params }: Props) {
       take: 8,
     });
 
-    return NextResponse.json({ jobs });
+    return NextResponse.json({ jobs }, { headers: { "Cache-Control": "private, no-store" } });
   } catch {
     return NextResponse.json({ jobs: [] }, { status: 401 });
   }

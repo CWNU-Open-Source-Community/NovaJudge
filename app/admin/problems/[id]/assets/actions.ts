@@ -1,5 +1,6 @@
 "use server";
 
+import { requireSuperAdmin } from "@/lib/admin-auth";
 import fs from "fs/promises";
 import path from "path";
 import { revalidatePath } from "next/cache";
@@ -11,6 +12,7 @@ function getAssetsDir(problemId: number) {
 }
 
 export async function getAssets(problemId: number) {
+  await requireSuperAdmin();
   const dir = getAssetsDir(problemId);
   try {
     await fs.access(dir);
@@ -29,6 +31,7 @@ export async function getAssets(problemId: number) {
 }
 
 export async function uploadAsset(problemId: number, formData: FormData) {
+  await requireSuperAdmin();
   const dir = getAssetsDir(problemId);
   try {
     await fs.access(dir);
@@ -50,6 +53,7 @@ export async function uploadAsset(problemId: number, formData: FormData) {
 }
 
 export async function deleteAsset(problemId: number, fileName: string) {
+  await requireSuperAdmin();
   const dir = getAssetsDir(problemId);
   await fs.unlink(path.join(dir, fileName));
   revalidatePath(`/admin/problems/${problemId}`);

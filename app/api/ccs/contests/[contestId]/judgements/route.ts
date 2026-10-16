@@ -21,7 +21,7 @@ export async function GET(
   const judgements = await getJudgements(id);
   return NextResponse.json(judgements, {
     headers: {
-      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      "Cache-Control": "private, no-store",
       Pragma: "no-cache",
       Expires: "0",
     },

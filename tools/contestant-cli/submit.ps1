@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $ConfigPath = Join-Path $env:USERPROFILE ".novajudge-submit.json"
 $DesktopCredentialPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "novajudge-submit.json"
 $RequestTimeoutSec = 15
-$ClientVersion = "2026.05.20.8"
+$ClientVersion = "2026.10.16.1"
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -114,6 +114,7 @@ function Get-DesktopCredentials {
     contestId = $ContestId
     username = $Username
     password = $Password
+    contestPassword = [string]$Credentials.contestPassword
   }
 }
 
@@ -230,12 +231,14 @@ function Login-FromDesktop {
     -Body @{
       username = $Credentials.username
       password = $Credentials.password
+      contestPassword = $Credentials.contestPassword
       contestId = $Credentials.contestId
     }
 
   $Config = [ordered]@{
     baseUrl = $BaseUrl
     token = $Data.token
+    contestAccessToken = $Data.contestAccessToken
     username = $Data.user.username
     teamName = $(if ($Data.user.displayName) { $Data.user.displayName } else { $Data.user.username })
     contestId = $Data.user.contestId
@@ -285,7 +288,7 @@ function Infer-Problem($FilePath) {
 function Post-Submission($Config, $Problem, $Language, $Code) {
   return Invoke-JsonPost `
     -Url "$($Config.baseUrl)/api/cli/submit" `
-    -Headers @{ Authorization = "Bearer $($Config.token)" } `
+    -Headers @{ Authorization = "Bearer $($Config.token)"; "x-contest-access-token" = [string]$Config.contestAccessToken } `
     -Body @{
       contestId = [int]$Config.contestId
       problem = $Problem
@@ -297,7 +300,7 @@ function Post-Submission($Config, $Problem, $Language, $Code) {
 function Get-SubmissionContext($Config, $Problem) {
   return Invoke-JsonPost `
     -Url "$($Config.baseUrl)/api/cli/context" `
-    -Headers @{ Authorization = "Bearer $($Config.token)" } `
+    -Headers @{ Authorization = "Bearer $($Config.token)"; "x-contest-access-token" = [string]$Config.contestAccessToken } `
     -Body @{
       contestId = [int]$Config.contestId
       problem = $Problem

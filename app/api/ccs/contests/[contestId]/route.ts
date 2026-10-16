@@ -23,5 +23,5 @@ export async function GET(
     return NextResponse.json({ error: "Contest not found" }, { status: 404 });
   }
 
-  return NextResponse.json(contest);
+  return NextResponse.json(contest, { headers: { "Cache-Control": "private, no-store" } });
 }

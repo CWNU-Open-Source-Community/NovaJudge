@@ -1,5 +1,7 @@
 "use server";
 
+import { requireContestAccess } from "@/lib/contest-access";
+
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { ContestRole, Verdict } from "@/lib/generated/prisma/enums";
@@ -7,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
 async function checkPermission(contestId: number) {
+  await requireContestAccess(contestId);
   const user = await getCurrentUser();
   const superAdmin = await getCurrentSuper();
   if (!user && !superAdmin) return null;
@@ -61,6 +64,7 @@ export async function generateBalloons(contestId: number) {
 }
 
 export async function getBalloonData(contestId: number) {
+  await requireContestAccess(contestId);
   const user = await getCurrentUser();
   const superAdmin = await getCurrentSuper();
   if (!user && !superAdmin) return { balloons: [], runners: [], role: null };
@@ -72,6 +76,10 @@ export async function getBalloonData(contestId: number) {
     role === ContestRole.JUDGE ||
     (superAdmin as UserJwtPayload)?.isGlobalAdmin;
 
+  if (!isMaster && (role !== ContestRole.BALLOON || !contestUser?.userId)) {
+    return { balloons: [], runners: [], role: null };
+  }
+
   const whereCondition: Prisma.BalloonWhereInput = { contestId };
 
   if (!isMaster) {
@@ -82,8 +90,15 @@ export async function getBalloonData(contestId: number) {
     where: whereCondition,
     include: {
       submission: {
-        include: {
-          user: true,
+        select: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              seat: true,
+            },
+          },
           problem: { select: { id: true } },
         },
       },
@@ -139,12 +154,17 @@ export async function assignBalloon(
 }
 
 export async function completeBalloon(contestId: number, balloonId: number) {
+  await requireContestAccess(contestId);
   const user = (await getCurrentUser()) as UserJwtPayload | null;
   const superAdmin = await getCurrentSuper();
   const isMaster =
     (user?.contestId === contestId &&
       (user?.role === ContestRole.ADMIN || user?.role === ContestRole.JUDGE)) ||
     (superAdmin as UserJwtPayload)?.isGlobalAdmin;
+
+  if (!isMaster && (!user?.userId || user.contestId !== contestId || user.role !== ContestRole.BALLOON)) {
+    return;
+  }
 
   await prisma.balloon.updateMany({
     where: {

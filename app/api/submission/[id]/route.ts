@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { redis } from "@/lib/redis";
 import { NextResponse } from "next/server";
+import { contestAccessResponse } from "@/lib/contest-access";
 import {
   canViewSubmissionTestDetails,
   hideSubmissionProgress,
@@ -11,6 +12,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> } // Next.js 15 写法
 ) {
   const { id } = await params;
+  const target = await prisma.submission.findUnique({
+    where: { id }, select: { contestId: true },
+  });
+  if (!target) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (target.contestId !== null) {
+    const denied = await contestAccessResponse(target.contestId);
+    if (denied) return denied;
+  }
   const canViewTestDetails = await canViewSubmissionTestDetails(id);
 
   const cached = await redis.get(`submission:${id}:progress`);
@@ -30,6 +39,7 @@ export async function GET(
 
       return NextResponse.json(
         canViewTestDetails ? response : hideSubmissionProgress(response),
+        { headers: { "Cache-Control": "private, no-store" } },
       );
     }
   }
@@ -51,5 +61,6 @@ export async function GET(
 
   return NextResponse.json(
     canViewTestDetails ? submission : hideSubmissionProgress(submission),
+    { headers: { "Cache-Control": "private, no-store" } },
   );
 }

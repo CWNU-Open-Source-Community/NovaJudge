@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import path from "node:path";
+import { requireSuperAdmin } from "@/lib/admin-auth";
 
 type ContestConfig = {
   frozenDuration?: number;
@@ -33,6 +34,7 @@ function getEditorialPdfPath(contestId: number) {
 }
 
 export async function updateContest(contestId: number, formData: FormData) {
+  await requireSuperAdmin();
   const title = formData.get("title") as string;
   const description = formData.get("description") as string;
   const startTimeStr = formData.get("startTime") as string;
@@ -75,6 +77,9 @@ export async function updateContest(contestId: number, formData: FormData) {
   };
 
   // --- 校验 ---
+  if (type === ContestType.PRIVATE && !password?.trim()) {
+    return { error: "私有赛必须设置比赛密码。" };
+  }
   if (!title || !startTimeStr || !endTimeStr) {
     return { error: "Missing required fields" };
   }
@@ -151,6 +156,9 @@ export async function updateContest(contestId: number, formData: FormData) {
   }
 
   revalidatePath("/admin/contests");
+  revalidatePath("/");
+  revalidatePath("/train");
+  revalidatePath(`/contest/${contestId}`, "layout");
   revalidatePath(`/admin/contests/${contestId}`);
   revalidatePath(`/admin/contests/${contestId}/edit`);
   revalidatePath(`/contest/${contestId}/editorial`);

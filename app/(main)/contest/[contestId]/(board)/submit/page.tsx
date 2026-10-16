@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import { notFound } from "next/navigation";
 import ProblemInfoCard from "@/components/ProblemInfoCard";
 import { prisma } from "@/lib/prisma";
@@ -12,6 +13,7 @@ import {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
+  await requireContestAccess(contestId);
 
   const contest = await prisma.contest.findFirst({
     where: {
@@ -39,6 +41,7 @@ export default async function SubmitPage({ params, searchParams }: Props) {
   if (!displayId) return notFound();
 
   const cid = Number(contestId);
+  await requireContestAccess(cid);
   const contestProblem = await prisma.contestProblem.findFirst({
     where: { contestId: cid, displayId },
     include: {

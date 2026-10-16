@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import Link from "next/link";
 import Pagination from "@/components/Pagination";
 import {
@@ -19,6 +20,7 @@ import { getLatestVirtualParticipation } from "@/lib/virtual-participation";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
+  await requireContestAccess(contestId);
 
   const contest = await prisma.contest.findFirst({
     where: {
@@ -65,6 +67,7 @@ export default async function Status({ params, searchParams }: Props) {
   const currentPage = parseInt(page as string) || 1;
   const pageSize = 15;
   const cid = parseInt(contestId);
+  await requireContestAccess(cid);
 
   // 1. 获取比赛信息
   const contestInfo = await prisma.contest.findUnique({
@@ -85,7 +88,7 @@ export default async function Status({ params, searchParams }: Props) {
   // 2. 获取当前用户信息
   const cookieStore = await cookies();
   const token = cookieStore.get("user_token")?.value;
-  const payload = token ? await verifyAuth(token) : null;
+  const payload = token ? await verifyAuth(token).catch(() => null) : null;
 
   // 3. 获取当前用户在比赛中的角色
   let currentUser = null;
@@ -101,22 +104,9 @@ export default async function Status({ params, searchParams }: Props) {
   }
 
   const globalUser = await getCurrentSuper();
-  const superAdminToken = cookieStore.get("auth_token")?.value;
-  let superAdmin = null;
-  if (superAdminToken) {
-    const superAdminPayload = (await verifyAuth(superAdminToken)) || null;
-    if (superAdminPayload?.userId && superAdminPayload.isGlobalAdmin) {
-      superAdmin = await prisma.globalUser.findUnique({
-        where: { id: superAdminPayload.userId },
-        select: {
-          id: true,
-        },
-      });
-    }
-  }
   // 4. 权限校验逻辑
   const isAdmin =
-    superAdmin !== null ||
+    !!globalUser?.isGlobalAdmin ||
     (currentUser &&
       currentUser.contestId === cid &&
       (currentUser.role === ContestRole.ADMIN ||
@@ -516,14 +506,17 @@ export default async function Status({ params, searchParams }: Props) {
                         className="mx-auto max-w-full overflow-hidden text-ellipsis whitespace-nowrap [&>button]:max-w-full [&>button]:overflow-hidden [&>span]:max-w-full [&>span]:overflow-hidden [&>span>span]:truncate"
                         title={verdictTitle}
                       >
-                        {isGuest && !isContestEnded ? (
-                          <VerdictCell submission={submission} isGuest={true} />
-                        ) : (
-                          <VerdictCell
-                            submission={submission}
-                            showTestDetails={showTestDetails}
-                          />
-                        )}
+                        <VerdictCell
+                          submission={{
+                            id: submission.id,
+                            verdict: submission.verdict,
+                            passedTests: submission.passedTests,
+                            totalTests: submission.totalTests,
+                            errorMessage: submission.errorMessage,
+                          }}
+                          isGuest={isGuest && !isContestEnded}
+                          showTestDetails={showTestDetails}
+                        />
                       </div>
                     </td>
                   </tr>

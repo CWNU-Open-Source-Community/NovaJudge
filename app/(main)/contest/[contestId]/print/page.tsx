@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { ContestRole, PrintJobStatus } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -10,6 +11,7 @@ interface Props {
 export default async function PrintQueuePage({ params }: Props) {
   const { contestId } = await params;
   const cid = Number(contestId);
+  await requireContestAccess(cid);
 
   const [user, superAdmin] = await Promise.all([
     getCurrentUser(),

@@ -1,5 +1,6 @@
 "use server";
 
+import { requireSuperAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import os from "os";
 import { LANGUAGES } from "@/lib/judge";
@@ -12,6 +13,7 @@ export async function getSupportedLanguages() {
 
 // 获取当前所有在线的判题机（含 ID、心跳、已判数量等）与队列统计
 export async function getJudgeWorkersOverview() {
+  await requireSuperAdmin();
   const [workers, queue] = await Promise.all([
     listJudgeWorkers(),
     getJudgeQueueStats(),
@@ -48,6 +50,7 @@ async function getJudgeStatus() {
 
 // 获取系统统计信息
 export async function getSystemStats() {
+  await requireSuperAdmin();
   const [contestCount, problemCount, submissionCount, userCount, judgeStatus] =
     await Promise.all([
       prisma.contest.count(),

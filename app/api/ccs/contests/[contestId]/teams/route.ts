@@ -19,5 +19,5 @@ export async function GET(
   }
 
   const teams = await getTeams(id);
-  return NextResponse.json(teams);
+  return NextResponse.json(teams, { headers: { "Cache-Control": "private, no-store" } });
 }

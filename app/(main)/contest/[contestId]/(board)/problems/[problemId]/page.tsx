@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -22,7 +23,6 @@ import {
 import { notFound } from "next/navigation";
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { getDictionary } from "@/lib/get-dictionary";
-import { redirect } from "next/navigation";
 import { Metadata } from "next";
 import {
   getLatestVirtualParticipation,
@@ -60,6 +60,7 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
+  await requireContestAccess(contestId);
   const displayId = (await params).problemId; // 比如 "A"
 
   // 1. 去数据库查这道题叫什么名字
@@ -87,6 +88,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ProblemDetail({ params }: Props) {
   const { contestId, problemId } = await params;
   const cid = Number(contestId);
+  await requireContestAccess(cid);
 
   if (isNaN(cid)) return notFound();
 
@@ -116,20 +118,6 @@ export default async function ProblemDetail({ params }: Props) {
     !userPayload?.userId && globalUserId
       ? await getLatestVirtualParticipation(cid, String(globalUserId))
       : null;
-
-  // 如果是私有比赛，且未登录比赛账号且不是超管，则重定向
-  if (
-    contestProblem.contest.type === "PRIVATE" &&
-    !(globalUser as unknown as UserJwtPayload)?.isGlobalAdmin &&
-    !(
-      globalUser &&
-      (contestProblem.contest.status === ContestStatus.ENDED ||
-        new Date() >= contestProblem.contest.endTime)
-    ) &&
-    (!userPayload || userPayload.contestId !== cid)
-  ) {
-    redirect(`/contest/${contestId}`);
-  }
 
   const problem = contestProblem.problem;
 

@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import { notFound } from "next/navigation";
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
@@ -18,6 +19,7 @@ export default async function PrintTemplatePage({ params, searchParams }: Props)
   const { contestId, jobId } = await params;
   const query = await searchParams;
   const cid = Number(contestId);
+  await requireContestAccess(cid);
   const jid = Number(jobId);
   if (!Number.isInteger(cid) || !Number.isInteger(jid)) return notFound();
 
