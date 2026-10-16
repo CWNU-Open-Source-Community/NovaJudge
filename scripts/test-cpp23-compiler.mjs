@@ -23,6 +23,15 @@ const CASES = [
       { input: "1\n7\n", output: "0 0\n" },
     ],
   },
+  {
+    id: "original", file: "original-tree-dp.cpp", language: "cpp", provenance: "user-provided-whitespace-normalized",
+    samples: [
+      { input: "5\n1 2 3 4 5\n1 2\n1 3\n3 4\n3 5\n", output: "18 3\n" },
+      { input: "1\n7\n", output: "0 1\n" },
+      { input: "2\n1 1\n1 2\n", output: "1 1\n" },
+      { input: "4\n1 2 3 4\n1 2\n2 3\n3 4\n", output: "10 3\n" },
+    ],
+  },
   { id: "stl", file: "stl.cpp", language: "cpp", samples: [{ input: "", output: "13 5 5\n" }] },
   { id: "features", file: "features.cpp", language: "cpp", cpp23Only: true, samples: [{ input: "", output: "42 7 23 9\n" }] },
   { id: "c", file: "smoke.c", language: "c", samples: [{ input: "19 23\n", output: "42\n" }] },
@@ -35,7 +44,7 @@ function usage() {
 
 Use an isolated test container. No URL or environment-variable fallback is provided.
 Options:
-  --cases bits,globals,tree,stl,features,c,java,pypy3  (default: all)
+  --cases bits,globals,tree,original,stl,features,c,java,pypy3 (default: all)
   --standards c++17,c++23                           (default: c++17,c++23)
   --cpp /usr/bin/g++   --cc /usr/bin/gcc            compiler paths in sandbox
   --extra-flag=FLAG                                repeatable C++ compiler argument
@@ -51,7 +60,8 @@ Compile defaults exactly match lib/judge.ts: -O2 -Wall -lm -static, 10 CPU secon
 1 GiB, 50 processes. Only the C++ standard/compiler and explicit options vary.
 Stdout is one JSON report; progress goes to stderr. Compilation and sample execution
 must both return Accepted, with exact normalized stdout. Cached files are deleted.
-The tree case is a complete constructed reproducer, not the original submission.
+The tree case is constructed; original is the user's full submission with only
+pasted indentation whitespace normalized.
 Exit: 0 all selected cases passed; 1 a case/cleanup failed; 2 invalid invocation.
 Diagnostic limits are always labelled and do not constitute acceptance.\n`;
 }
@@ -160,7 +170,7 @@ async function main(options) {
     endpoint: options.url, diagnosticOnly: options.diagnostic,
     compileLimits: options.limits, originalCompileLimits: ORIGINAL_LIMITS,
     options: { cpp: options.cpp, cc: options.cc, standards: options.standards, extraFlags: options.extraFlags, static: options.static, repeat: options.repeat },
-    fixtureProvenance: "tree-dp.cpp is a constructed complete program; the original user submission was not provided",
+    fixtureProvenance: "tree-dp.cpp is constructed; original-tree-dp.cpp is the user's full submission with only pasted indentation whitespace normalized",
     toolchains: {}, results: [], cleanupErrors: [],
   };
   async function runCommand(command) {

@@ -1,0 +1,713 @@
+{
+  "environment": {
+    "date": "2026-10-16",
+    "platform": "linux/amd64",
+    "dockerEngine": "29.1.3",
+    "cgroupVersion": 1,
+    "goJudge": "v1.11.2",
+    "baselineImage": "sha256:4193de332098e2ed1a457d615609576cd4dbd4534411ab5fa22d0ce18e9fa413",
+    "candidateImage": "sha256:233ae20e4ab04043665a58c63c3f441da5876937a7594a67903011bb41df6805"
+  },
+  "source": "User-provided full original tree DP; only indentation/non-breaking spaces/trailing whitespace normalized",
+  "reports": [
+    {
+      "schemaVersion": 1,
+      "startedAt": "2026-10-16T10:39:58.641Z",
+      "label": "original-gcc14-baseline",
+      "diagnosticOnly": false,
+      "compileLimits": {
+        "cpuLimit": 10000000000,
+        "memoryLimit": 1073741824
+      },
+      "originalCompileLimits": {
+        "cpuLimit": 10000000000,
+        "memoryLimit": 1073741824
+      },
+      "options": {
+        "cpp": "/usr/bin/g++",
+        "cc": "/usr/bin/gcc",
+        "standards": [
+          "c++17",
+          "c++23"
+        ],
+        "extraFlags": [],
+        "static": true,
+        "repeat": 1
+      },
+      "fixtureProvenance": "tree-dp.cpp is constructed; original-tree-dp.cpp is the user's full submission with only pasted indentation whitespace normalized",
+      "toolchains": {
+        "cpp": {
+          "status": "Accepted",
+          "exitStatus": 0,
+          "cpuNs": 3189200,
+          "cpuSeconds": 0.0031892,
+          "memoryBytes": 4378624,
+          "memoryMiB": 4.17578125,
+          "stdout": "g++ (Ubuntu 14.2.0-4ubuntu2~24.04.1) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+          "stderr": "",
+          "error": null
+        }
+      },
+      "results": [
+        {
+          "case": "original",
+          "fixture": "original-tree-dp.cpp",
+          "sourceSha256": "0781118b4edb289351ecb871a7615ee56cf22d232f3362623ab5198d581bcd0a",
+          "standard": "c++17",
+          "iteration": 1,
+          "compileCommand": [
+            "/usr/bin/g++",
+            "main.cpp",
+            "-o",
+            "main",
+            "-O2",
+            "-Wall",
+            "-lm",
+            "-static",
+            "-std=c++17"
+          ],
+          "runCommand": [
+            "./main"
+          ],
+          "compile": {
+            "status": "Accepted",
+            "exitStatus": 0,
+            "cpuNs": 898114200,
+            "cpuSeconds": 0.8981142,
+            "memoryBytes": 233545728,
+            "memoryMiB": 222.7265625,
+            "stdout": "",
+            "stderr": "",
+            "error": null
+          },
+          "executions": [
+            {
+              "sample": 1,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 3680900,
+              "cpuSeconds": 0.0036809,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "18 3\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "18 3\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 2,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 3344800,
+              "cpuSeconds": 0.0033448,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "0 1\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "0 1\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 3,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 3704200,
+              "cpuSeconds": 0.0037042,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "1 1\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "1 1\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 4,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 3496800,
+              "cpuSeconds": 0.0034968,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "10 3\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "10 3\n",
+              "outputMatched": true,
+              "passed": true
+            }
+          ],
+          "passed": true,
+          "withinOriginalCompileLimits": true
+        },
+        {
+          "case": "original",
+          "fixture": "original-tree-dp.cpp",
+          "sourceSha256": "0781118b4edb289351ecb871a7615ee56cf22d232f3362623ab5198d581bcd0a",
+          "standard": "c++23",
+          "iteration": 1,
+          "compileCommand": [
+            "/usr/bin/g++",
+            "main.cpp",
+            "-o",
+            "main",
+            "-O2",
+            "-Wall",
+            "-lm",
+            "-static",
+            "-std=c++23"
+          ],
+          "runCommand": [
+            "./main"
+          ],
+          "compile": {
+            "status": "Memory Limit Exceeded",
+            "exitStatus": 9,
+            "cpuNs": 9369283600,
+            "cpuSeconds": 9.3692836,
+            "memoryBytes": 1073758208,
+            "memoryMiB": 1024.015625,
+            "stdout": "",
+            "stderr": "",
+            "error": null
+          },
+          "executions": [],
+          "passed": false,
+          "withinOriginalCompileLimits": false
+        }
+      ],
+      "cleanupErrors": [],
+      "finishedAt": "2026-10-16T10:40:09.813Z",
+      "cachedFilesRemaining": 0,
+      "passed": false,
+      "acceptancePassed": false
+    },
+    {
+      "schemaVersion": 1,
+      "startedAt": "2026-10-16T10:40:32.028Z",
+      "label": "original-gcc14-diagnostic",
+      "diagnosticOnly": true,
+      "compileLimits": {
+        "cpuLimit": 30000000000,
+        "memoryLimit": 2147483648
+      },
+      "originalCompileLimits": {
+        "cpuLimit": 10000000000,
+        "memoryLimit": 1073741824
+      },
+      "options": {
+        "cpp": "/usr/bin/g++",
+        "cc": "/usr/bin/gcc",
+        "standards": [
+          "c++23"
+        ],
+        "extraFlags": [
+          "-ftime-report"
+        ],
+        "static": true,
+        "repeat": 1
+      },
+      "fixtureProvenance": "tree-dp.cpp is constructed; original-tree-dp.cpp is the user's full submission with only pasted indentation whitespace normalized",
+      "toolchains": {
+        "cpp": {
+          "status": "Accepted",
+          "exitStatus": 0,
+          "cpuNs": 677500,
+          "cpuSeconds": 0.0006775,
+          "memoryBytes": 290816,
+          "memoryMiB": 0.27734375,
+          "stdout": "g++ (Ubuntu 14.2.0-4ubuntu2~24.04.1) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+          "stderr": "",
+          "error": null
+        }
+      },
+      "results": [
+        {
+          "case": "original",
+          "fixture": "original-tree-dp.cpp",
+          "sourceSha256": "0781118b4edb289351ecb871a7615ee56cf22d232f3362623ab5198d581bcd0a",
+          "standard": "c++23",
+          "iteration": 1,
+          "compileCommand": [
+            "/usr/bin/g++",
+            "main.cpp",
+            "-o",
+            "main",
+            "-O2",
+            "-Wall",
+            "-lm",
+            "-static",
+            "-std=c++23",
+            "-ftime-report"
+          ],
+          "runCommand": [
+            "./main"
+          ],
+          "compile": {
+            "status": "Accepted",
+            "exitStatus": 0,
+            "cpuNs": 10183804500,
+            "cpuSeconds": 10.1838045,
+            "memoryBytes": 1767813120,
+            "memoryMiB": 1685.91796875,
+            "stdout": "",
+            "stderr": "\nTime variable                                   usr           sys          wall           GGC\n phase setup                        :   0.00 (  0%)   0.00 (  0%)   0.00 (  0%)  1775k (  0%)\n phase parsing                      :   8.26 ( 95%)   1.28 ( 93%)   9.57 ( 95%)  2333M ( 98%)\n phase lang. deferred               :   0.34 (  4%)   0.08 (  6%)   0.41 (  4%)    48M (  2%)\n phase opt and generate             :   0.10 (  1%)   0.01 (  1%)   0.12 (  1%)  6844k (  0%)\n |name lookup                       :   0.43 (  5%)   0.16 ( 12%)   0.42 (  4%)  9370k (  0%)\n |overload resolution               :   0.27 (  3%)   0.06 (  4%)   0.50 (  5%)    44M (  2%)\n garbage collection                 :   0.10 (  1%)   0.00 (  0%)   0.10 (  1%)     0  (  0%)\n dump files                         :   0.00 (  0%)   0.01 (  1%)   0.00 (  0%)     0  (  0%)\n callgraph construction             :   0.03 (  0%)   0.00 (  0%)   0.03 (  0%)  2151k (  0%)\n callgraph functions expansion      :   0.05 (  1%)   0.00 (  0%)   0.06 (  1%)  1936k (  0%)\n callgraph ipa passes               :   0.02 (  0%)   0.01 (  1%)   0.03 (  0%)  2021k (  0%)\n ipa cp                             :   0.01 (  0%)   0.00 (  0%)   0.00 (  0%)    23k (  0%)\n df reg dead/unused notes           :   0.00 (  0%)   0.00 (  0%)   0.01 (  0%)    24k (  0%)\n preprocessing                      :   0.17 (  2%)   0.17 ( 12%)   0.41 (  4%)    40M (  2%)\n parser (global)                    :   0.18 (  2%)   0.16 ( 12%)   0.31 (  3%)    61M (  3%)\n parser struct body                 :   0.07 (  1%)   0.11 (  8%)   0.21 (  2%)    41M (  2%)\n parser function body               :   0.06 (  1%)   0.03 (  2%)   0.10 (  1%)  8111k (  0%)\n parser inl. func. body             :   0.08 (  1%)   0.06 (  4%)   0.12 (  1%)    13M (  1%)\n parser inl. meth. body             :   0.26 (  3%)   0.14 ( 10%)   0.31 (  3%)    63M (  3%)\n template instantiation             :   0.55 (  6%)   0.15 ( 11%)   0.69 (  7%)    97M (  4%)\n constant expression evaluation     :   7.09 ( 81%)   0.52 ( 38%)   7.62 ( 75%)  2050M ( 86%)\n constraint normalization           :   0.00 (  0%)   0.00 (  0%)   0.02 (  0%)  1177k (  0%)\n constraint satisfaction            :   0.03 (  0%)   0.02 (  1%)   0.09 (  1%)  6451k (  0%)\n tree CFG cleanup                   :   0.01 (  0%)   0.00 (  0%)   0.00 (  0%)  1248  (  0%)\n tree PTA                           :   0.00 (  0%)   0.00 (  0%)   0.01 (  0%)    55k (  0%)\n backwards jump threading           :   0.00 (  0%)   0.00 (  0%)   0.01 (  0%)  8080  (  0%)\n tree CCP                           :   0.01 (  0%)   0.00 (  0%)   0.00 (  0%)    17k (  0%)\n dominance computation              :   0.00 (  0%)   0.00 (  0%)   0.01 (  0%)     0  (  0%)\n varconst                           :   0.01 (  0%)   0.00 (  0%)   0.00 (  0%)  5664  (  0%)\n dead store elim1                   :   0.00 (  0%)   0.00 (  0%)   0.01 (  0%)    12k (  0%)\n loop init                          :   0.00 (  0%)   0.00 (  0%)   0.01 (  0%)   213k (  0%)\n loop unrolling                     :   0.00 (  0%)   0.00 (  0%)   0.01 (  0%)    11k (  0%)\n combiner                           :   0.00 (  0%)   0.00 (  0%)   0.01 (  0%)    56k (  0%)\n integrated RA                      :   0.02 (  0%)   0.00 (  0%)   0.01 (  0%)   306k (  0%)\n LRA non-specific                   :   0.01 (  0%)   0.00 (  0%)   0.00 (  0%)    16k (  0%)\n tree loop if-conversion            :   0.01 (  0%)   0.00 (  0%)   0.00 (  0%)  7928  (  0%)\n TOTAL                              :   8.70          1.37         10.10         2391M\n",
+            "error": null
+          },
+          "executions": [
+            {
+              "sample": 1,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 4020100,
+              "cpuSeconds": 0.0040201,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "18 3\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "18 3\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 2,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 3925000,
+              "cpuSeconds": 0.003925,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "0 1\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "0 1\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 3,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 3602600,
+              "cpuSeconds": 0.0036026,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "1 1\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "1 1\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 4,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 4042200,
+              "cpuSeconds": 0.0040422,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "10 3\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "10 3\n",
+              "outputMatched": true,
+              "passed": true
+            }
+          ],
+          "passed": true,
+          "withinOriginalCompileLimits": false
+        }
+      ],
+      "cleanupErrors": [],
+      "finishedAt": "2026-10-16T10:40:42.331Z",
+      "cachedFilesRemaining": 0,
+      "passed": true,
+      "acceptancePassed": false
+    },
+    {
+      "schemaVersion": 1,
+      "startedAt": "2026-10-16T10:40:42.463Z",
+      "label": "original-gcc15-public",
+      "diagnosticOnly": false,
+      "compileLimits": {
+        "cpuLimit": 10000000000,
+        "memoryLimit": 1073741824
+      },
+      "originalCompileLimits": {
+        "cpuLimit": 10000000000,
+        "memoryLimit": 1073741824
+      },
+      "options": {
+        "cpp": "/usr/bin/g++",
+        "cc": "/usr/bin/gcc",
+        "standards": [
+          "c++17",
+          "c++23"
+        ],
+        "extraFlags": [],
+        "static": true,
+        "repeat": 1
+      },
+      "fixtureProvenance": "tree-dp.cpp is constructed; original-tree-dp.cpp is the user's full submission with only pasted indentation whitespace normalized",
+      "toolchains": {
+        "cpp": {
+          "status": "Accepted",
+          "exitStatus": 0,
+          "cpuNs": 2589100,
+          "cpuSeconds": 0.0025891,
+          "memoryBytes": 2932736,
+          "memoryMiB": 2.796875,
+          "stdout": "g++ (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+          "stderr": "",
+          "error": null
+        }
+      },
+      "results": [
+        {
+          "case": "original",
+          "fixture": "original-tree-dp.cpp",
+          "sourceSha256": "0781118b4edb289351ecb871a7615ee56cf22d232f3362623ab5198d581bcd0a",
+          "standard": "c++17",
+          "iteration": 1,
+          "compileCommand": [
+            "/usr/bin/g++",
+            "main.cpp",
+            "-o",
+            "main",
+            "-O2",
+            "-Wall",
+            "-lm",
+            "-static",
+            "-std=c++17"
+          ],
+          "runCommand": [
+            "./main"
+          ],
+          "compile": {
+            "status": "Accepted",
+            "exitStatus": 0,
+            "cpuNs": 777989900,
+            "cpuSeconds": 0.7779899,
+            "memoryBytes": 235032576,
+            "memoryMiB": 224.14453125,
+            "stdout": "",
+            "stderr": "",
+            "error": null
+          },
+          "executions": [
+            {
+              "sample": 1,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 3730000,
+              "cpuSeconds": 0.00373,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "18 3\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "18 3\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 2,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 3678300,
+              "cpuSeconds": 0.0036783,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "0 1\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "0 1\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 3,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 3829700,
+              "cpuSeconds": 0.0038297,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "1 1\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "1 1\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 4,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 4026500,
+              "cpuSeconds": 0.0040265,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "10 3\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "10 3\n",
+              "outputMatched": true,
+              "passed": true
+            }
+          ],
+          "passed": true,
+          "withinOriginalCompileLimits": true
+        },
+        {
+          "case": "original",
+          "fixture": "original-tree-dp.cpp",
+          "sourceSha256": "0781118b4edb289351ecb871a7615ee56cf22d232f3362623ab5198d581bcd0a",
+          "standard": "c++23",
+          "iteration": 1,
+          "compileCommand": [
+            "/usr/bin/g++",
+            "main.cpp",
+            "-o",
+            "main",
+            "-O2",
+            "-Wall",
+            "-lm",
+            "-static",
+            "-std=c++23"
+          ],
+          "runCommand": [
+            "./main"
+          ],
+          "compile": {
+            "status": "Accepted",
+            "exitStatus": 0,
+            "cpuNs": 1315824700,
+            "cpuSeconds": 1.3158247,
+            "memoryBytes": 316182528,
+            "memoryMiB": 301.53515625,
+            "stdout": "",
+            "stderr": "",
+            "error": null
+          },
+          "executions": [
+            {
+              "sample": 1,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 4515400,
+              "cpuSeconds": 0.0045154,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "18 3\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "18 3\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 2,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 4146400,
+              "cpuSeconds": 0.0041464,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "0 1\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "0 1\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 3,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 4331200,
+              "cpuSeconds": 0.0043312,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "1 1\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "1 1\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 4,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 4209000,
+              "cpuSeconds": 0.004209,
+              "memoryBytes": 15495168,
+              "memoryMiB": 14.77734375,
+              "stdout": "10 3\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "10 3\n",
+              "outputMatched": true,
+              "passed": true
+            }
+          ],
+          "passed": true,
+          "withinOriginalCompileLimits": true
+        }
+      ],
+      "cleanupErrors": [],
+      "finishedAt": "2026-10-16T10:40:44.888Z",
+      "cachedFilesRemaining": 0,
+      "passed": true,
+      "acceptancePassed": true
+    },
+    {
+      "schemaVersion": 1,
+      "startedAt": "2026-10-16T10:40:44.968Z",
+      "label": "original-gcc15-public-dynamic",
+      "diagnosticOnly": false,
+      "compileLimits": {
+        "cpuLimit": 10000000000,
+        "memoryLimit": 1073741824
+      },
+      "originalCompileLimits": {
+        "cpuLimit": 10000000000,
+        "memoryLimit": 1073741824
+      },
+      "options": {
+        "cpp": "/usr/bin/g++",
+        "cc": "/usr/bin/gcc",
+        "standards": [
+          "c++23"
+        ],
+        "extraFlags": [],
+        "static": false,
+        "repeat": 1
+      },
+      "fixtureProvenance": "tree-dp.cpp is constructed; original-tree-dp.cpp is the user's full submission with only pasted indentation whitespace normalized",
+      "toolchains": {
+        "cpp": {
+          "status": "Accepted",
+          "exitStatus": 0,
+          "cpuNs": 835800,
+          "cpuSeconds": 0.0008358,
+          "memoryBytes": 421888,
+          "memoryMiB": 0.40234375,
+          "stdout": "g++ (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+          "stderr": "",
+          "error": null
+        }
+      },
+      "results": [
+        {
+          "case": "original",
+          "fixture": "original-tree-dp.cpp",
+          "sourceSha256": "0781118b4edb289351ecb871a7615ee56cf22d232f3362623ab5198d581bcd0a",
+          "standard": "c++23",
+          "iteration": 1,
+          "compileCommand": [
+            "/usr/bin/g++",
+            "main.cpp",
+            "-o",
+            "main",
+            "-O2",
+            "-Wall",
+            "-lm",
+            "-std=c++23"
+          ],
+          "runCommand": [
+            "./main"
+          ],
+          "compile": {
+            "status": "Accepted",
+            "exitStatus": 0,
+            "cpuNs": 1307815300,
+            "cpuSeconds": 1.3078153,
+            "memoryBytes": 315768832,
+            "memoryMiB": 301.140625,
+            "stdout": "",
+            "stderr": "",
+            "error": null
+          },
+          "executions": [
+            {
+              "sample": 1,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 5172800,
+              "cpuSeconds": 0.0051728,
+              "memoryBytes": 16801792,
+              "memoryMiB": 16.0234375,
+              "stdout": "18 3\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "18 3\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 2,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 4865400,
+              "cpuSeconds": 0.0048654,
+              "memoryBytes": 15626240,
+              "memoryMiB": 14.90234375,
+              "stdout": "0 1\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "0 1\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 3,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 4486600,
+              "cpuSeconds": 0.0044866,
+              "memoryBytes": 15626240,
+              "memoryMiB": 14.90234375,
+              "stdout": "1 1\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "1 1\n",
+              "outputMatched": true,
+              "passed": true
+            },
+            {
+              "sample": 4,
+              "status": "Accepted",
+              "exitStatus": 0,
+              "cpuNs": 4440300,
+              "cpuSeconds": 0.0044403,
+              "memoryBytes": 15626240,
+              "memoryMiB": 14.90234375,
+              "stdout": "10 3\n",
+              "stderr": "",
+              "error": null,
+              "expectedStdout": "10 3\n",
+              "outputMatched": true,
+              "passed": true
+            }
+          ],
+          "passed": true,
+          "withinOriginalCompileLimits": true
+        }
+      ],
+      "cleanupErrors": [],
+      "finishedAt": "2026-10-16T10:40:46.366Z",
+      "cachedFilesRemaining": 0,
+      "passed": true,
+      "acceptancePassed": true
+    }
+  ]
+}
