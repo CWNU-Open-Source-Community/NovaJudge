@@ -19,18 +19,25 @@ seconds, peak bytes and MiB, sandbox status, and sample-output comparisons.
 | `bits` | Isolate the cost of including `bits/stdc++.h`. |
 | `globals` | The supplied `N = 200010` global vectors, with observable size/zero checks. |
 | `tree` | Complete constructed tree DP using all eight supplied global vectors. |
+| `original` | The user's complete recursive tree DP, minimizing weighted squared distance and returning the first minimizing vertex. |
 | `stl` | `bits/stdc++.h`, vectors, sorting, map, heap, and structured bindings. |
 | `features` | C++23 `std::expected`, `if consteval`, multidimensional subscripting, and a constexpr-vector `static_assert`. |
 | `c` / `java` / `pypy3` | Compile where applicable and execute a minimal sum program. |
 
 `tree-dp.cpp` is **constructed for this regression**, not the user's original
-submission, which was unavailable. It computes, for each vertex `u`,
+submission. It computes, for each vertex `u`,
 `sum(weight[v] * distance(u,v))` and `sum(weight[v] * distance(u,v)^2)`.
 The subtree arrays `f/g/h` hold weight, first moment, and second moment; `F/G/H`
 hold the corresponding values after rerooting. A five-vertex weighted tree and
 a one-vertex boundary case have independently calculable expected outputs.
-Passing these fixtures does not establish that an unavailable original program
-has been tested or that all C++23 library features are implemented.
+`original-tree-dp.cpp` preserves the complete source subsequently supplied by
+the user. Only pasted indentation (including non-breaking spaces) and trailing
+whitespace were normalized; declarations, recursion, DP formulas and output are
+unchanged. Four independently checked samples cover a weighted branched tree,
+a single vertex, a tie resolved by vertex order, and a weighted chain.
+Run only this follow-up with `--cases original`; its default standards are
+C++17 and C++23. These checks do not claim support for every C++23 feature or
+exhaustive correctness of the submitted algorithm.
 
 For isolated compiler comparisons, use `--cpp /usr/bin/g++-15`,
 `--cases globals,tree`, `--standards c++23`, or a repeatable

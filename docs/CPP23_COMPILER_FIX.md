@@ -10,11 +10,13 @@ the allocated storage cannot escape as the result of that constant evaluation.
 The fixed compiler skips that attempt for the affected constructor. The fix
 preserves required constant evaluation and runtime initialization semantics.
 
-This repository's complete reproducer is `tests/fixtures/cpp23/tree-dp.cpp`, a
-constructed weighted-tree rerooting DP that uses every supplied global vector.
-**The original user submission was not supplied and has not been tested.**
-It is not represented by the constructed fixture. Other cases isolate the
-header, global initialization, STL, C++23 features, C, Java and PyPy3.
+The repository includes the user's complete original submission in
+`tests/fixtures/cpp23/original-tree-dp.cpp` and a separate constructed reproducer
+in `tree-dp.cpp`. The original was supplied after the initial toolchain fix and
+is now tested directly. Only pasted indentation (including non-breaking spaces)
+and trailing whitespace were normalized; all program logic is unchanged. Other
+cases isolate the header, global initialization, STL, C++23 features, C, Java
+and PyPy3.
 
 ## Toolchain and changes
 
@@ -80,9 +82,41 @@ matching upstream fix support PR113835 as the cause for this reproducer.
 The candidate satisfies the unchanged 10-second / 1-GiB limits for all tested
 cases, with no downgrade of the language standard or optimization level.
 This is not a claim that every C++23 feature or every competition program is
-supported. The original submitted tree DP remains an explicit untested item.
+supported. The subsequently supplied original program is covered below.
 Only amd64/cgroup v1 was measured locally; other architectures and cgroup v2
 deployment hosts require the same smoke checks before rollout.
+
+## Original submission follow-up
+
+The actual user program was tested with the same existing images, compiler
+flags, and original 10-second CPU / 1-GiB sandbox limits. No toolchain or
+application code changed in this follow-up. Four independently checked inputs
+cover a weighted branched tree, one vertex, a two-vertex tie, and a weighted
+chain. Outputs are respectively `18 3`, `0 1`, `1 1`, and `10 3`.
+
+| Original program configuration | CPU seconds | Peak MiB | Compile / execution |
+| --- | ---: | ---: | --- |
+| GCC 14.2, C++17 | 0.898 | 222.73 | Accepted / all 4 correct |
+| GCC 14.2, C++23, original limits | 9.369 | 1024.02 | MLE / not executed |
+| GCC 14.2, C++23, diagnostic 30 s / 2 GiB | 10.184 | 1685.92 | Accepted / all 4 correct; not acceptance |
+| GCC 15.2, C++17 | 0.778 | 224.14 | Accepted / all 4 correct |
+| GCC 15.2, C++23, original limits | 1.316 | 301.54 | Accepted / all 4 correct |
+| GCC 15.2, C++23, dynamic linking | 1.308 | 301.14 | Accepted / all 4 correct |
+
+The GCC 14 diagnostic report attributes 7.62 seconds wall time and 2050 MiB
+cumulative GGC allocations to constant expression evaluation. The original
+submission therefore reproduces the same failure and meets the unchanged
+resource limits with GCC 15.2. Detailed commands, source hash and execution
+outputs are in [CPP23_ORIGINAL_RESULTS.json](CPP23_ORIGINAL_RESULTS.json).
+The earlier measurement JSON remains an unchanged historical record of the
+constructed fixtures, which were run before the original was supplied.
+
+Run only the original-program check (also included in the default suite):
+
+```sh
+node scripts/test-cpp23-compiler.mjs --url http://127.0.0.1:15050 \
+  --cases original --label original-submission --output cpp23-original.json
+```
 
 ## Reproducing the focused checks
 

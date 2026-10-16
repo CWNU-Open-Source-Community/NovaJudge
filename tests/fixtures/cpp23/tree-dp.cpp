@@ -1,4 +1,4 @@
-// Constructed regression program, NOT the user's unavailable original submission.
+// Constructed regression program; the user submission is original-tree-dp.cpp.
 // For each vertex, compute sum(weight * distance) and sum(weight * distance^2).
 // Iterative subtree DP and rerooting exercise every supplied global vector.
 #include <bits/stdc++.h>
