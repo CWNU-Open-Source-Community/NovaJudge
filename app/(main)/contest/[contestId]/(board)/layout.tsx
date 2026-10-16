@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import { Contest, ContestConfig } from "@/app/(main)/page";
 import ContestNoticeSniffer from "@/components/ContestNoticeSniffer";
 import ContestTimer from "@/components/ContestTimer";
@@ -14,6 +15,7 @@ interface Props {
 
 export default async function ContestLayout({ children, params }: Props) {
   const { contestId } = await params;
+  await requireContestAccess(Number(contestId));
 
   const contest: Contest | null = await prisma.contest.findUnique({
     where: { id: Number(contestId) },

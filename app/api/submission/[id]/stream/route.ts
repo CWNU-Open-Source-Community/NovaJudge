@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { redis } from "@/lib/redis"; // 【新增】引入 redis
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { contestAccessResponse } from "@/lib/contest-access";
+import { getCurrentSuper, getJwtSecretKey } from "@/lib/auth";
+import { contestAccessCookieName, verifyContestAccessToken } from "@/lib/contest-access-token";
 import { Verdict } from "@/lib/generated/prisma/enums";
 import {
   canViewSubmissionTestDetails,
@@ -14,7 +17,18 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const submissionId = (await params).id;
+  const target = await prisma.submission.findUnique({
+    where: { id: submissionId }, select: { contestId: true },
+  });
+  if (!target) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (target.contestId !== null) {
+    const denied = await contestAccessResponse(target.contestId);
+    if (denied) return denied;
+  }
   const encoder = new TextEncoder();
+  const isGlobalAdmin = !!(await getCurrentSuper())?.isGlobalAdmin;
+  const accessToken = target.contestId === null ? "" :
+    request.cookies.get(contestAccessCookieName(target.contestId))?.value || "";
   const canViewTestDetails = await canViewSubmissionTestDetails(submissionId);
 
   const redisKey = `submission:${submissionId}:progress`;
@@ -45,10 +59,15 @@ export async function GET(
               verdict: true,
               passedTests: true,
               totalTests: true,
+              contest: { select: { id: true, type: true, password: true } },
             },
           });
 
           if (!freshSub) return true;
+          if (freshSub.contest?.type === "PRIVATE" && !isGlobalAdmin &&
+              !(await verifyContestAccessToken(accessToken, freshSub.contest, getJwtSecretKey()))) {
+            return true;
+          }
 
           if (freshSub.verdict === Verdict.JUDGING) {
             const redisDataStr = await redis.get(redisKey);
@@ -75,7 +94,11 @@ export async function GET(
             freshSub.verdict !== lastKnownVerdict ||
             freshSub.passedTests !== lastKnownPassed
           ) {
-            sendEvent(freshSub);
+            sendEvent({
+              verdict: freshSub.verdict,
+              passedTests: freshSub.passedTests,
+              totalTests: freshSub.totalTests,
+            });
             lastKnownVerdict = freshSub.verdict;
             lastKnownPassed = freshSub.passedTests;
           }
@@ -119,7 +142,7 @@ export async function GET(
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      "Cache-Control": "private, no-store",
       Connection: "keep-alive",
     },
   });

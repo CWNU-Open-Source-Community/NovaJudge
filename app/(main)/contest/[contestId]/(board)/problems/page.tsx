@@ -1,9 +1,9 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import Link from "next/link";
 import { ContestStatus, Verdict } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { getDictionary } from "@/lib/get-dictionary";
-import { redirect } from "next/navigation";
 import { Metadata } from "next";
 import {
   getLatestVirtualParticipation,
@@ -18,6 +18,7 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
+  await requireContestAccess(contestId);
 
   const contest = await prisma.contest.findFirst({
     where: {
@@ -38,6 +39,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function Problems({ params }: Props) {
   const contestId = Number((await params).contestId);
+  await requireContestAccess(contestId);
 
   // const contestInfo = await getContestData(contestId);
   const contestInfo = await prisma.contest.findUnique({
@@ -54,20 +56,6 @@ export default async function Problems({ params }: Props) {
   const user = await getCurrentUser();
   const globalUser = await getCurrentSuper();
   const userPayload = user as UserJwtPayload | null;
-
-  // 如果是私有比赛，且未登录比赛账号且不是超管，则重定向
-  if (
-    contestInfo.type === "PRIVATE" &&
-    !(globalUser as unknown as UserJwtPayload)?.isGlobalAdmin &&
-    !(
-      globalUser &&
-      (contestInfo.status === ContestStatus.ENDED ||
-        new Date() >= contestInfo.endTime)
-    ) &&
-    (!userPayload || userPayload.contestId !== contestId)
-  ) {
-    redirect(`/contest/${contestId}`);
-  }
 
   const contestProblem = await prisma.contestProblem.findMany({
     where: {

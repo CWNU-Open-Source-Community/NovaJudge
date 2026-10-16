@@ -319,6 +319,7 @@ export default function EditForm({ contest }: Props) {
                   type="text"
                   name="password"
                   defaultValue={contest.password || ""}
+                  required
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 font-mono text-center tracking-widest"
                 />
               </div>

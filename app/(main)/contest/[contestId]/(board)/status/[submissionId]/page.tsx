@@ -1,9 +1,8 @@
-import { notFound, redirect } from "next/navigation";
+import { requireContestAccess } from "@/lib/contest-access";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import {
   getCurrentSuper,
-  getCurrentUser,
-  UserJwtPayload,
   verifyAuth,
 } from "@/lib/auth";
 import { cookies } from "next/headers";
@@ -25,6 +24,7 @@ interface Props {
 export default async function SubmissionDetail({ params }: Props) {
   const { contestId, submissionId } = await params;
   const cid = parseInt(contestId);
+  await requireContestAccess(cid);
 
   // 1. 获取比赛和提交信息
   const [contestInfo, submission] = await Promise.all([
@@ -64,23 +64,12 @@ export default async function SubmissionDetail({ params }: Props) {
 
   if (!contestInfo || !submission) return notFound();
 
-  const user = await getCurrentUser();
   const globalUser = await getCurrentSuper();
-  const userPayload = user as UserJwtPayload | null;
-
-  // 如果是私有比赛，且未登录比赛账号且不是超管，则重定向
-  if (
-    contestInfo.type === "PRIVATE" &&
-    !globalUser?.isGlobalAdmin &&
-    (!userPayload || userPayload.contestId !== cid)
-  ) {
-    redirect(`/contest/${contestId}`);
-  }
 
   // 2. 获取当前用户信息
   const cookieStore = await cookies();
   const token = cookieStore.get("user_token")?.value;
-  const payload = token ? await verifyAuth(token) : null;
+  const payload = token ? await verifyAuth(token).catch(() => null) : null;
 
   // 3. 权限校验逻辑
   const isContestEnded = contestInfo.status === ContestStatus.ENDED;
@@ -122,8 +111,8 @@ export default async function SubmissionDetail({ params }: Props) {
     // 3. 普通用户只能在比赛结束后看其他人的
 
     const isOwner =
-      submission?.user?.id === currentUser?.id ||
-      (submission?.globalUser?.id === globalUser?.userId &&
+      (!!currentUser?.id && submission.user?.id === currentUser.id) ||
+      (!!globalUser?.userId && submission.globalUser?.id === globalUser.userId &&
         (!runningVp || submission.virtualParticipationId === runningVp.id));
 
     const isAdmin =

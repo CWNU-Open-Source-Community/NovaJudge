@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { cliContestAccessResponse } from "../contest-access";
 
 export async function POST(req: Request) {
   try {
@@ -44,6 +45,9 @@ export async function POST(req: Request) {
       );
     }
 
+    const denied = await cliContestAccessResponse(req, contestId);
+    if (denied) return denied;
+
     const [user, contestProblem] = await Promise.all([
       prisma.user.findUnique({
         where: { id: payload.userId },
@@ -81,7 +85,7 @@ export async function POST(req: Request) {
       contestName: contestProblem.contest.title,
       teamName: user.displayName || user.username,
       problemName: `${contestProblem.displayId} - ${contestProblem.problem.title}`,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Internal server error";

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkCCSAuth, unauthorizedResponse } from "@/lib/ccs/auth";
+import { createCCSAuthValidator, unauthorizedResponse } from "@/lib/ccs/auth";
 import {
   getContest,
   getContestState,
@@ -44,8 +44,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ contestId: string }> },
 ) {
-  const isAuthorized = await checkCCSAuth(req);
-  if (!isAuthorized) {
+  const validateAccess = await createCCSAuthValidator(req);
+  if (!validateAccess || !(await validateAccess())) {
     return unauthorizedResponse();
   }
 
@@ -93,6 +93,10 @@ export async function GET(
 
   const stream = new ReadableStream({
     async start(controller) {
+      if (!(await validateAccess())) {
+        controller.close();
+        return;
+      }
       const enqueue = (str: string) => {
         controller.enqueue(new TextEncoder().encode(str));
       };
@@ -214,6 +218,7 @@ export async function GET(
 
       try {
         while (true) {
+          if (!(await validateAccess())) break;
           if (req.signal.aborted) {
             console.log(`[EventFeed] Client disconnected for contest ${id}`);
             break;
@@ -474,7 +479,7 @@ export async function GET(
   return new NextResponse(stream, {
     headers: {
       "Content-Type": "application/x-ndjson",
-      "Cache-Control": "no-cache",
+      "Cache-Control": "private, no-store",
       Connection: "keep-alive",
       "Content-Encoding": "none",
       "X-Accel-Buffering": "no",

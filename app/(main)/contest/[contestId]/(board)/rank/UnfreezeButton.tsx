@@ -8,7 +8,7 @@ import { ContestConfig } from "@/app/(main)/page";
 import { toast } from "sonner";
 import ConfirmModal from "@/components/admin/ConfirmModal";
 
-export default function UnfreezeButton({ contest }: { contest: Contest }) {
+export default function UnfreezeButton({ contest }: { contest: Pick<Contest, "id" | "config"> }) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);

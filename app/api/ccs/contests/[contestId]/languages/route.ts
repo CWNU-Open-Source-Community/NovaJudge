@@ -19,5 +19,5 @@ export async function GET(
   }
 
   const languages = await getLanguages(id);
-  return NextResponse.json(languages);
+  return NextResponse.json(languages, { headers: { "Cache-Control": "private, no-store" } });
 }

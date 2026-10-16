@@ -18,7 +18,7 @@ const contest = await prisma.contest.create({ data: { title: "监考登录隔离
 const username = "proctoring-qa-" + Date.now();
 const user = await prisma.user.create({ data: { contestId: contest.id, username, password: await bcrypt.hash(password, 10), autoLoginIp: "127.0.0.1" } });
 const login = (extra = {}, headers = {}) => fetch(base + "/api/cli/login", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ username, password, contestId: contest.id, ...extra }) });
-const page = (token: string, key?: string) => fetch(base + "/contest/" + contest.id, { headers: { Cookie: "user_token=" + token, ...(key ? { "x-novajudge-proctor-key": key } : {}) }, redirect: "manual" });
+const page = (token: string, key?: string, grant?: string) => fetch(base + "/contest/" + contest.id, { headers: { Cookie: "user_token=" + token + (grant ? `; contest_access_${contest.id}=${grant}` : ""), ...(key ? { "x-novajudge-proctor-key": key } : {}) }, redirect: "manual" });
 try {
   const normal = await login(); assert.equal(normal.status, 200); const old = await normal.json();
   assert.equal((await page(old.token)).status, 200);
@@ -26,7 +26,7 @@ try {
   assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).proctoringKeyHash, null);
   const monitored = await login({ loginSource: "PROCTORING" }, { "x-api-key": access.apiKey });
   assert.equal(monitored.status, 200, await monitored.clone().text());
-  assert.equal(monitored.headers.get("cache-control"), "no-store");
+  assert.equal(monitored.headers.get("cache-control"), "private, no-store");
   const proof = await monitored.json(); assert.equal(proof.loginSource, "PROCTORING"); assert.equal(proof.proctoringKey.length, 43);
   assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).proctoringKeyHash, proctoringKeyHash(proof.proctoringKey));
   assert.equal((await login()).status, 403, "ordinary CLI/browser credentials cannot replace the monitor binding");
@@ -41,7 +41,33 @@ try {
   const relogin = await login({ loginSource: "PROCTORING" }, { "x-api-key": access.apiKey }); assert.equal(relogin.status, 200); const replacement = await relogin.json();
   assert.equal((await page(proof.token, proof.proctoringKey)).status, 403, "monitor relogin invalidates the previous binding");
   assert.equal((await page(replacement.token, replacement.proctoringKey)).status, 200);
-  console.log("Proctoring HTTP integration passed: authorized marker, browser login block, old/copy cookie rejection, IP login block, valid client access, API guard and relogin revocation.");
+  const contestPassword = randomBytes(18).toString("base64url");
+  await prisma.contest.update({ where: { id: contest.id }, data: { type: "PRIVATE", password: contestPassword } });
+  const missingContestPassword = await login({ loginSource: "PROCTORING" }, { "x-api-key": access.apiKey });
+  assert.equal(missingContestPassword.status, 403);
+  assert.equal((await missingContestPassword.json()).code, "CONTEST_PASSWORD_REQUIRED");
+  assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).proctoringKeyHash, proctoringKeyHash(replacement.proctoringKey), "failed private login must not replace the proctor binding");
+  const privateLogin = await login({ loginSource: "PROCTORING", contestPassword }, { "x-api-key": access.apiKey });
+  assert.equal(privateLogin.status, 200);
+  const privateProof = await privateLogin.json();
+  assert.equal(typeof privateProof.contestAccessToken, "string");
+  const withoutGrant = await page(privateProof.token, privateProof.proctoringKey);
+  assert([302, 307].includes(withoutGrant.status));
+  assert(withoutGrant.headers.get("location")?.endsWith(`/contest/${contest.id}/access`));
+  assert.equal((await page(privateProof.token, privateProof.proctoringKey, privateProof.contestAccessToken)).status, 200);
+  assert.equal((await page(privateProof.token, undefined, privateProof.contestAccessToken)).status, 403, "private grant cannot replace proctoring proof");
+  const context = (grant?: string) => fetch(base + "/api/cli/context", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${privateProof.token}`, "x-novajudge-proctor-key": privateProof.proctoringKey, ...(grant ? { "x-contest-access-token": grant } : {}) },
+    body: JSON.stringify({ contestId: contest.id, problem: "A" }),
+  });
+  const missingGrant = await context();
+  assert.equal(missingGrant.status, 403);
+  assert.equal((await missingGrant.json()).code, "CONTEST_PASSWORD_REQUIRED");
+  assert.equal((await context(privateProof.contestAccessToken)).status, 404, "valid credentials reach the intentionally empty problem set");
+  await prisma.contest.update({ where: { id: contest.id }, data: { password: randomBytes(18).toString("base64url") } });
+  assert.equal((await context(privateProof.contestAccessToken)).status, 403, "password rotation revokes the private grant");
+  console.log("Proctoring HTTP integration passed: binding and relogin, copied-cookie/IP login rejection, private contest password and grant checks, credential separation and password rotation.");
 } finally {
   await prisma.user.delete({ where: { id: user.id } }); await prisma.contest.delete({ where: { id: contest.id } }); await prisma.$disconnect();
 }

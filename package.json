@@ -22,6 +22,7 @@
     "test:judge-cache": "tsx --test lib/judge/program-cache.test.ts",
     "test:judge-cache:integration": "tsx -r dotenv/config scripts/test-judge-program-cache.ts",
     "test:communication": "tsx --test lib/judge/communication.test.ts lib/problem-judge-config.test.ts lib/problem-samples.test.ts",
+    "test:contest-access": "tsx --test lib/contest-access-token.test.ts lib/contest-access.test.ts lib/contest-api-access.test.ts lib/admin-auth.test.ts",
     "test:communication:integration": "tsx -r dotenv/config scripts/test-communication.ts",
     "postinstall": "npx prisma db push && npx prisma generate && npx tsx scripts/copy-monaco.ts"
   },

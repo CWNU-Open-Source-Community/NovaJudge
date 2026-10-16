@@ -112,7 +112,7 @@ export default function Navbar() {
   const closeMoreMenu = () => setShowMoreMenu(false);
 
   const match = pathname.match(/^\/contest\/(\d+)/);
-  const contestId = match ? match[1] : null;
+  const contestId = match && !pathname.endsWith("/access") ? match[1] : null;
   const numericContestId = contestId ? Number(contestId) : null;
 
   const getContestLink = useCallback(

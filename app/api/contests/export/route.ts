@@ -291,6 +291,7 @@ export async function POST(request: Request) {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="contests_${Date.now()}.zip"`,
         "Content-Length": zipBuffer.length.toString(),
+        "Cache-Control": "private, no-store",
       },
     });
   } catch (error) {

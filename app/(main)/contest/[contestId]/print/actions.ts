@@ -1,5 +1,7 @@
 "use server";
 
+import { requireContestAccess } from "@/lib/contest-access";
+
 import { getCurrentSuper, getCurrentUser, UserJwtPayload, verifyAuth } from "@/lib/auth";
 import { ContestRole, PrintJobStatus } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -10,6 +12,7 @@ const ALLOWED_PRINT_EXTENSIONS = [".cpp", ".c", ".cc", ".cxx", ".java", ".py"];
 const MAX_PRINT_CHARS = 100_000;
 
 async function requirePrintManager(contestId: number) {
+  await requireContestAccess(contestId);
   const [user, superAdmin] = await Promise.all([
     getCurrentUser(),
     getCurrentSuper(),
@@ -38,6 +41,7 @@ export async function createPrintJob(
   code: string,
   sourceFilename?: string,
 ) {
+  await requireContestAccess(contestId);
   try {
     const token = (await cookies()).get("user_token")?.value;
     if (!token) return { error: "Please sign in before printing." };

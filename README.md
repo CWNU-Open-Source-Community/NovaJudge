@@ -31,6 +31,25 @@ CCS-compatible data feeds are built into one Next.js application.
 - API key authentication and ICPC CCS-compatible endpoints for external tools.
 - Training center and virtual participation support for logged-in global users.
 
+### Private contest access
+
+Private contests require a contest password. Every visitor, including signed-in
+team and global accounts, must verify it before viewing contest details,
+problems, standings, submissions, notices, editorials or private-only assets.
+This also applies after the contest ends. Super administrators retain access.
+The contest list and training center show only a locked contest ID until it is
+unlocked; unlocking grants no extra submission, source-code or staff privileges.
+
+Browser grants expire after 24 hours and are cleared on logout. Changing the
+contest password invalidates existing grants. Legacy private contests without
+a password deny access until an administrator configures one. CLI login takes
+`contestPassword` and returns `contestAccessToken`, sent on subsequent requests
+as `x-contest-access-token`. The Node.js client prompts for it; the PowerShell
+client reads `contestPassword` from its desktop credentials file. CCS Basic
+authentication is restricted to super administrators.
+
+Run access regression tests with `npm run test:contest-access`.
+
 ## Tech Stack
 
 - Next.js 16, React 19, TypeScript

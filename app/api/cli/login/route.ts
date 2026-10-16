@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { signAuth, validateApiKey } from "@/lib/auth";
+import { getJwtSecretKey, signAuth, validateApiKey } from "@/lib/auth";
 import { randomBytes } from "node:crypto";
 import { proctoringKeyHash, PROCTORING_REQUIRED } from "@/lib/proctoring-access";
+import { matchesContestPassword, signContestAccessToken } from "@/lib/contest-access-token";
 import { ContestStatus } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPrimaryClientIp } from "@/lib/request-ip";
@@ -12,6 +13,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const username = String(body?.username || "").trim();
     const password = String(body?.password || "");
+    const contestPassword = String(body?.contestPassword || "");
     const rawContestId = body?.contestId;
     const proctored = body?.loginSource === "PROCTORING";
     if (body?.loginSource !== undefined && !proctored) {
@@ -68,7 +70,7 @@ export async function POST(req: Request) {
         },
       },
       include: {
-        contest: { select: { id: true, title: true, status: true } },
+        contest: { select: { id: true, title: true, status: true, type: true, password: true } },
       },
     });
 
@@ -77,6 +79,17 @@ export async function POST(req: Request) {
         { error: "invalid username or password" },
         { status: 401 },
       );
+    }
+
+    let contestAccessToken: string | null = null;
+    if (user.contest.type === "PRIVATE") {
+      if (!matchesContestPassword(contestPassword, user.contest.password)) {
+        return NextResponse.json({
+          error: "请提供正确的比赛密码（contestPassword）",
+          code: "CONTEST_PASSWORD_REQUIRED",
+        }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
+      }
+      contestAccessToken = await signContestAccessToken(user.contest, getJwtSecretKey());
     }
 
     const ip = getPrimaryClientIp(req.headers) || "unknown";
@@ -113,14 +126,15 @@ export async function POST(req: Request) {
     return NextResponse.json({
       token,
       ...(proctoringKey ? { loginSource: "PROCTORING", proctoringKey } : {}),
+      contestAccessToken,
       user: {
         username: user.username,
         role: user.role,
         contestId: user.contestId,
         displayName: user.displayName,
       },
-      contest: user.contest,
-    }, { headers: { "Cache-Control": "no-store" } });
+      contest: { id: user.contest.id, title: user.contest.title, status: user.contest.status },
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("CLI login error:", error);
     return NextResponse.json(

@@ -1,5 +1,6 @@
-import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
-import { ContestStatus, ContestType } from "@/lib/generated/prisma/client";
+import { getCurrentSuper } from "@/lib/auth";
+import { ContestStatus } from "@/lib/generated/prisma/client";
+import { contestAccessResponse } from "@/lib/contest-access";
 import { prisma } from "@/lib/prisma";
 import { getRunningVirtualParticipation } from "@/lib/virtual-participation";
 import fs from "node:fs/promises";
@@ -34,6 +35,9 @@ export async function GET(
     return new NextResponse("Invalid contest id", { status: 400 });
   }
 
+  const denied = await contestAccessResponse(id);
+  if (denied) return denied;
+
   const contest = await prisma.contest.findUnique({
     where: { id },
     select: {
@@ -47,10 +51,8 @@ export async function GET(
     return new NextResponse("Contest not found", { status: 404 });
   }
 
-  const user = (await getCurrentUser()) as UserJwtPayload | null;
-  const superUser = (await getCurrentSuper()) as UserJwtPayload | null;
+  const superUser = await getCurrentSuper();
   const isGlobalAdmin = !!superUser?.isGlobalAdmin;
-  const isContestUser = user?.contestId === id;
   const runningVp =
     superUser?.userId && !isGlobalAdmin
       ? await getRunningVirtualParticipation(id, String(superUser.userId))
@@ -60,10 +62,6 @@ export async function GET(
     return new NextResponse("Editorial is not available during VP", {
       status: 403,
     });
-  }
-
-  if (contest.type === ContestType.PRIVATE && !isGlobalAdmin && !isContestUser) {
-    return new NextResponse("Forbidden", { status: 403 });
   }
 
   const config = (contest.config as ContestConfig | null) || {};
@@ -78,6 +76,7 @@ export async function GET(
       headers: {
         "Content-Disposition": `inline; filename="${config.editorialPdf.filename}"`,
         "Content-Type": "application/pdf",
+        "Cache-Control": "private, no-store",
       },
     });
   } catch {

@@ -3,6 +3,7 @@ import { verifyAuth } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { createContestSubmission } from "@/lib/contest-submission";
 import { prisma } from "@/lib/prisma";
+import { cliContestAccessResponse } from "../contest-access";
 
 export async function POST(req: Request) {
   try {
@@ -47,6 +48,9 @@ export async function POST(req: Request) {
       );
     }
 
+    const denied = await cliContestAccessResponse(req, contestId);
+    if (denied) return denied;
+
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
       select: { id: true, contestId: true, role: true },
@@ -58,6 +62,7 @@ export async function POST(req: Request) {
 
     const submission = await createContestSubmission({
       contestId,
+      contestAccessToken: req.headers.get("x-contest-access-token") || undefined,
       problemDisplayId,
       language,
       code,
@@ -73,7 +78,7 @@ export async function POST(req: Request) {
       success: true,
       submission,
       statusUrl: `/contest/${contestId}/status/${submission.id}`,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Internal server error";

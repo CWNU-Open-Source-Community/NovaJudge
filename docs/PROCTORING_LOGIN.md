@@ -4,6 +4,10 @@
 `loginSource: "PROCTORING"`，并在 `x-api-key` 请求头提供启用的超级管理员 API Key。
 该入口仅允许比赛 `TEAM` 账号建立监考登录；普通浏览器不能只靠一个固定标记建立此状态。
 
+私有赛还必须在请求体提供独立的 `contestPassword`。比赛账号密码、监考管理员 API Key
+和比赛密码分别校验，只有全部通过才会建立或更新监考绑定；缺少或错误的比赛密码返回
+`403` 和 `code: "CONTEST_PASSWORD_REQUIRED"`。公开赛无需填写 `contestPassword`。
+
 成功登录返回带有 `loginSource`、`proctoringKeyHash` 字段的 JWT，以及随机生成的
 `proctoringKey`。数据库比赛用户同时保存 `proctoringKeyHash` 和 `proctoringLoginAt`。
 随机凭据只返回给监考后台一次，不写入 URL；数据库不保存明文凭据。
@@ -11,6 +15,17 @@
 监考桌面客户端将 JWT 写入 HttpOnly Cookie，并在主进程内保存随机凭据。
 仅对配置的 NovaJudge 平台域名注入 `x-novajudge-proctor-key`，包含页面、接口及附件下载。
 服务器同时核对 JWT、数据库当前绑定和请求头中的凭据。
+
+私有赛登录同时返回 `contestAccessToken`，客户端必须保留该凭据：
+
+- 页面、接口和附件请求：将其写入名为 `contest_access_<contestId>` 的 HttpOnly Cookie，
+  `Path=/`、`SameSite=Lax`，HTTPS 部署启用 `Secure`，有效期不超过 24 小时。
+- CLI 请求：除 `Authorization: Bearer <token>` 和原有监考请求头外，
+  还应发送 `x-contest-access-token: <contestAccessToken>`。
+
+此凭据仅对指定比赛及当前比赛密码有效，修改比赛密码后必须重新登录获取。
+监考凭据和比赛授权凭据不可互相替代；不要把任何凭据写入 URL 或日志。
+退出登录会清除比赛授权 Cookie，但不会解除服务器保存的监考绑定。
 
 账号被监考登录绑定后：
 
@@ -28,6 +43,7 @@
 
 ```sh
 npx tsx --test lib/proctoring-access.test.ts
+npm run test:contest-access
 npx tsx scripts/test-proctoring-login.ts
 ```
 

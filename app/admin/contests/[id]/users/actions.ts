@@ -1,5 +1,6 @@
 "use server";
 
+import { requireSuperAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { revalidatePath } from "next/cache";
@@ -73,6 +74,7 @@ export async function getContestUsers(
   contestId: number,
   type: "TEAM" | "STAFF"
 ) {
+  await requireSuperAdmin();
   const roles =
     type === "TEAM"
       ? [ContestRole.TEAM]
@@ -99,6 +101,7 @@ export async function importUsers(
   usersData: ImportUsersData[], // 解析后的 JSON 数据
   roleType: "TEAM" | "STAFF"
 ) {
+  await requireSuperAdmin();
   const dataToInsert = [];
   const batchAutoLoginIps = new Map<string, string>();
 
@@ -206,6 +209,7 @@ export async function updateUser(
     autoLoginIp?: string | null;
   }
 ) {
+  await requireSuperAdmin();
   const updateData: UpdateUsersData = {};
   const normalizedAutoLoginIp = normalizeAutoLoginIp(data.autoLoginIp);
 
@@ -247,6 +251,7 @@ export async function updateUser(
 
 // 删除用户
 export async function deleteUser(userId: string, contestId: number) {
+  await requireSuperAdmin();
   await prisma.user.delete({
     where: {
       id: userId,
@@ -258,6 +263,7 @@ export async function deleteUser(userId: string, contestId: number) {
 
 // 批量删除用户
 export async function deleteUsers(userIds: string[], contestId: number) {
+  await requireSuperAdmin();
   if (!userIds.length) return;
 
   await prisma.user.deleteMany({

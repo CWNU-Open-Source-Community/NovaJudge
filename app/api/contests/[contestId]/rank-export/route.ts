@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { verifyAuth } from "@/lib/auth";
 import { ContestRole, Verdict } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { contestAccessResponse } from "@/lib/contest-access";
 
 type ContestExportConfig = {
   medal?: {
@@ -137,6 +138,8 @@ export async function GET(
   }
 
   try {
+    const denied = await contestAccessResponse(cid);
+    if (denied) return denied;
     if (!(await canExportRank(cid))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -434,7 +437,7 @@ export async function GET(
         "Content-Disposition": `attachment; filename="${encodeURIComponent(
           filename,
         )}"`,
-        "Cache-Control": "no-store",
+        "Cache-Control": "private, no-store",
       },
     });
   } catch (error) {

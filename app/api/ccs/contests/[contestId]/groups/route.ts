@@ -19,5 +19,5 @@ export async function GET(
   }
 
   const groups = await getGroups(id);
-  return NextResponse.json(groups);
+  return NextResponse.json(groups, { headers: { "Cache-Control": "private, no-store" } });
 }

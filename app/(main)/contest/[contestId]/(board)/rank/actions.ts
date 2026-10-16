@@ -1,6 +1,8 @@
 "use server";
 
-import { verifyAuth } from "@/lib/auth";
+import { requireContestAccess } from "@/lib/contest-access";
+
+import { getCurrentSuper, verifyAuth } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
@@ -8,20 +10,15 @@ import { revalidatePath } from "next/cache";
 import { ContestConfig } from "@/app/(main)/page";
 
 export async function unfreezeContest(contestId: number) {
+  await requireContestAccess(contestId);
   const cookieStore = await cookies();
   const token = cookieStore.get("user_token")?.value;
-  const adminToken = cookieStore.get("auth_token")?.value;
-
-  let isGlobalAdmin = false;
+  const globalUser = await getCurrentSuper();
+  const isGlobalAdmin = !!globalUser?.isGlobalAdmin;
   let isContestAdmin = false;
 
-  if (adminToken) {
-    const payload = await verifyAuth(adminToken);
-    if (payload?.userId) {
-      isGlobalAdmin = payload.isGlobalAdmin;
-    }
-  } else if (token) {
-    const payload = await verifyAuth(token);
+  if (token) {
+    const payload = await verifyAuth(token).catch(() => null);
     if (payload?.userId) {
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },

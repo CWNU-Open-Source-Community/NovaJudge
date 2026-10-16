@@ -1,5 +1,7 @@
 "use server";
 
+import { requireContestAccess } from "@/lib/contest-access";
+
 import { getCurrentSuper, verifyAuth } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { createContestSubmission } from "@/lib/contest-submission";
@@ -12,6 +14,7 @@ export async function submitCode(
   language: string,
   code: string,
 ) {
+  await requireContestAccess(contestId);
   try {
     const cookieStore = await cookies();
     const teamToken = cookieStore.get("user_token")?.value;

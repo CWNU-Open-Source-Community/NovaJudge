@@ -1,5 +1,7 @@
 "use server";
 
+import { requireContestAccess } from "@/lib/contest-access";
+
 import { getCurrentSuper, signAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getPrimaryClientIp } from "@/lib/request-ip";
@@ -24,6 +26,7 @@ function redirectToContestLogin(contestId: number, error?: string): never {
 
 // 比赛用户登录
 export async function loginContestUser(contestId: number, formData: FormData) {
+  await requireContestAccess(contestId);
   const username = String(formData.get("username") || "").trim();
   const password = String(formData.get("password") || "");
 
@@ -80,6 +83,7 @@ export async function loginContestUser(contestId: number, formData: FormData) {
 }
 
 export async function startContestVirtualParticipation(contestId: number) {
+  await requireContestAccess(contestId);
   const globalUser = await getCurrentSuper();
   if (!globalUser?.userId) {
     redirect(`/?login=true`);

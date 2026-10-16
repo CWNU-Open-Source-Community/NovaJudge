@@ -194,6 +194,12 @@ export async function POST(request: Request) {
 
         const contestJsonContent = await contestJsonEntry.async("text");
         const contestData = JSON.parse(contestJsonContent) as ContestData;
+        if (
+          contestData.type === ContestType.PRIVATE &&
+          (typeof contestData.password !== "string" || !contestData.password.trim())
+        ) {
+          throw new Error("私有赛必须设置非空比赛密码");
+        }
 
         // 4.2.2 读取其他比赛相关数据
         let usersData: UserData[] = [];

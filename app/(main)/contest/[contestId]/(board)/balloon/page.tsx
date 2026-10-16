@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import { prisma } from "@/lib/prisma";
 import {
   generateBalloons,
@@ -24,6 +25,7 @@ interface Props {
 export default async function BalloonPage({ params }: Props) {
   const { contestId } = await params;
   const cid = Number(contestId);
+  await requireContestAccess(cid);
 
   const user = await getCurrentUser();
   const superAdmin = (await getCurrentSuper()) as UserJwtPayload;
@@ -33,7 +35,7 @@ export default async function BalloonPage({ params }: Props) {
     role === ContestRole.ADMIN ||
     role === ContestRole.JUDGE ||
     role === ContestRole.BALLOON ||
-    superAdmin.isGlobalAdmin;
+    superAdmin?.isGlobalAdmin;
 
   if (!(user || superAdmin) || !isAuthorized) {
     return (

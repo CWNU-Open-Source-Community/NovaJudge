@@ -2,6 +2,9 @@ import { ContestRole, Verdict } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { enqueueJudge } from "@/lib/queue";
 import { redis } from "@/lib/redis";
+import { getJwtSecretKey } from "@/lib/auth";
+import { hasContestAccess } from "@/lib/contest-access";
+import { verifyContestAccessToken } from "@/lib/contest-access-token";
 import {
   getRunningVirtualParticipation,
   isVpEnabled,
@@ -78,12 +81,14 @@ export async function createContestSubmission({
   language,
   code,
   actor,
+  contestAccessToken,
 }: {
   contestId: number;
   problemDisplayId: string;
   language: string;
   code: string;
   actor: SubmissionActor;
+  contestAccessToken?: string;
 }) {
   const contestProblem = await prisma.contestProblem.findFirst({
     where: {
@@ -102,6 +107,14 @@ export async function createContestSubmission({
 
   const now = new Date();
   const contest = contestProblem.contest;
+  if (contest.type === "PRIVATE") {
+    const tokenAllowed = !!contestAccessToken && await verifyContestAccessToken(
+      contestAccessToken, contest, getJwtSecretKey(),
+    );
+    if (!tokenAllowed && !(await hasContestAccess(contestId))) {
+      throw new Error("请先输入比赛密码");
+    }
+  }
   const config = contest.config as ContestFreezeConfig | null;
   const isEnded = now > contest.endTime;
 

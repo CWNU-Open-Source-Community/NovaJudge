@@ -9,6 +9,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { TrainingNode } from "@/lib/generated/prisma/client";
 import { Metadata } from "next";
+import { hasContestAccess } from "@/lib/contest-access";
 
 export const metadata: Metadata = {
   title: "训练中心",
@@ -25,6 +26,7 @@ interface FileItem {
   solvedCount: number;
   totalCount: number;
   link: string;
+  locked?: boolean;
 }
 
 interface FolderItem {
@@ -75,6 +77,7 @@ export default async function TrainingCenterPage({
       const node: TrainingNode | null = await prisma.trainingNode.findFirst({
         where: {
           parentId: curr,
+          type: "FOLDER",
           OR: [{ slug: segment }, { id: segment }],
         },
       });
@@ -160,29 +163,7 @@ export default async function TrainingCenterPage({
         const part = node.slug || node.id;
         const newPath = currentPath === "/" ? part : `${currentPath}/${part}`;
 
-        // 计算该文件夹下所有比赛的数量 (递归)
-        // 使用 raw query 或 简单的 direct count
-        // 这里为了简单和性能，暂时只计算直接子节点的比赛数量 + 递归？
-        // 鉴于 Prisma 的限制，我们可以用 count() where parentId = node.id and type = CONTEST
-        // 但这只是第一层。
-        // 如果需要递归，最好用 queryRaw
-        // 这里我们先用 direct count 作为 POC，或者如果数据量不大，直接查所有 descendant
-
-        // 修正：使用 queryRaw 递归查询
-        // 同时查询比赛数量和涉及的所有比赛 ID
-        const countResult: { count: bigint }[] = await prisma.$queryRaw`
-          WITH RECURSIVE subtree AS (
-            SELECT id, type, "contestId" FROM "training_nodes" WHERE id = ${node.id}
-            UNION ALL
-            SELECT t.id, t.type, t."contestId" FROM "training_nodes" t
-            JOIN subtree s ON t."parentId" = s.id
-          )
-          SELECT COUNT(*) as count FROM subtree WHERE type = 'CONTEST';
-        `;
-        const contestCount = Number(countResult[0]?.count || 0);
-
-        // 计算过题数 (solved) 和 总题数 (total)
-        // 1. 获取该文件夹下所有 contestId
+        // Folder aggregates include only contests the visitor has unlocked.
         const contestIdsResult: { contestId: number }[] =
           await prisma.$queryRaw`
            WITH RECURSIVE subtree AS (
@@ -194,7 +175,10 @@ export default async function TrainingCenterPage({
           SELECT "contestId" FROM subtree WHERE type = 'CONTEST' AND "contestId" IS NOT NULL;
         `;
 
-        const contestIds = contestIdsResult.map((r) => r.contestId);
+        const visibleContests = await Promise.all(contestIdsResult.map(async (r) =>
+          await hasContestAccess(r.contestId) ? r.contestId : null,
+        ));
+        const contestIds = visibleContests.filter((id): id is number => id !== null);
 
         let solvedCount = 0;
         let totalCount = 0;
@@ -219,7 +203,7 @@ export default async function TrainingCenterPage({
           name: node.name,
           type: "folder",
           link: `/train?path=${newPath}`,
-          contestCount,
+          contestCount: contestIds.length,
           solvedCount,
           totalCount,
         };
@@ -227,6 +211,18 @@ export default async function TrainingCenterPage({
         // Contest
         const contest = node.contest;
         if (!contest) return null;
+        if (!(await hasContestAccess(contest.id))) {
+          return {
+            id: contest.id.toString(),
+            name: `私有赛 #${contest.id} · 需验证密码`,
+            type: "file",
+            problems: [],
+            solvedCount: 0,
+            totalCount: 0,
+            locked: true,
+            link: `/contest/${contest.id}/access`,
+          };
+        }
 
         const problemMap = statusMap.get(contest.id);
         const problemsStatus = contest.problems.map((p) => {
@@ -355,7 +351,9 @@ export default async function TrainingCenterPage({
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">
-                        {item.type === "file" ? (
+                        {item.type === "file" && item.locked ? (
+                          <span className="text-gray-400">需验证比赛密码</span>
+                        ) : item.type === "file" ? (
                           <div className="flex items-center justify-end gap-2">
                             <div className="flex gap-0.5">
                               {item.problems.map((p) => (

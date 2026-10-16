@@ -162,6 +162,7 @@ export async function GET(
   return new NextResponse(output, {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "private, no-store",
       "Content-Disposition": `attachment; filename="contest-${cid}-ghost.dat"`,
     },
   });

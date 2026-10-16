@@ -19,5 +19,5 @@ export async function GET(
   }
 
   const organizations = await getOrganizations(id);
-  return NextResponse.json(organizations);
+  return NextResponse.json(organizations, { headers: { "Cache-Control": "private, no-store" } });
 }

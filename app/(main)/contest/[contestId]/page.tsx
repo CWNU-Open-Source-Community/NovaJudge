@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 // app/contest/[contestId]/page.tsx
 
 import { getCurrentSuper, verifyAuth } from "@/lib/auth";
@@ -30,6 +31,7 @@ import {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
+  await requireContestAccess(contestId);
 
   const contest = await prisma.contest.findFirst({
     where: {
@@ -79,6 +81,7 @@ export default async function ContestLogin({
   const contestId = (await params).contestId;
   const { error, autoLogin } = await searchParams;
   const id = Number(contestId);
+  await requireContestAccess(id);
   const loginErrorMessage = getContestLoginErrorMessage(error);
 
   const contest = await prisma.contest.findUnique({
@@ -95,15 +98,12 @@ export default async function ContestLogin({
   let super_admin;
   let glabel_user;
   if (user_token) {
-    const payload = await verifyAuth(user_token);
-    if (!payload || !payload.userId) throw new Error("Invalid Token");
-    const username = payload.username;
-    user = await prisma.user.findFirst({
-      where: {
-        username,
-        contestId: id,
-      },
-    });
+    const payload = await verifyAuth(user_token).catch(() => null);
+    if (payload?.userId && payload.contestId === id) {
+      user = await prisma.user.findFirst({
+        where: { id: payload.userId, contestId: id },
+      });
+    }
   }
   if (globalSession) {
     if (globalSession.isGlobalAdmin) {

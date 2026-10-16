@@ -1,5 +1,6 @@
 "use server";
 
+import { requireSuperAdmin } from "@/lib/admin-auth";
 import { promises as fs } from "fs";
 import path from "path";
 import yaml from "js-yaml";
@@ -67,6 +68,7 @@ async function removeUploadDirectory(dir: string) {
 
 // 1. 获取数据
 export async function getProblemData(problemId: number) {
+  await requireSuperAdmin();
   const dir = getDataDir(problemId);
   try {
     await fs.access(dir);
@@ -101,6 +103,7 @@ export async function getProblemData(problemId: number) {
 
 // 2. 保存 YAML
 export async function saveYamlConfig(problemId: number, content: string) {
+  await requireSuperAdmin();
   const dir = getDataDir(problemId);
   const currentType = await getProblemType(problemId);
   await fs.mkdir(dir, { recursive: true });
@@ -135,6 +138,7 @@ export async function saveYamlConfig(problemId: number, content: string) {
 
 // 3. 上传文件
 export async function uploadFiles(problemId: number, formData: FormData) {
+  await requireSuperAdmin();
   const dir = getDataDir(problemId);
   const currentType = await getProblemType(problemId);
   const currentYaml = await readOptionalYaml(dir);
@@ -212,6 +216,7 @@ export async function uploadFiles(problemId: number, formData: FormData) {
 
 // 4. 删除文件
 export async function deleteFile(problemId: number, fileName: string) {
+  await requireSuperAdmin();
   const filePath = resolveJudgeDataPath(getDataDir(problemId), fileName);
   try {
     await fs.unlink(filePath);
@@ -221,6 +226,7 @@ export async function deleteFile(problemId: number, fileName: string) {
 
 // 【新增】读取文件内容
 export async function getFileContent(problemId: number, fileName: string) {
+  await requireSuperAdmin();
   const filePath = resolveJudgeDataPath(getDataDir(problemId), fileName);
   try {
     // 限制读取文件大小，防止读取过大的数据文件导致崩盘 (例如限制 20MB)
@@ -242,6 +248,7 @@ export async function saveFileContent(
   fileName: string,
   content: string,
 ) {
+  await requireSuperAdmin();
   const dir = getDataDir(problemId);
   if (fileName === "problem.yml") {
     await saveYamlConfig(problemId, content);

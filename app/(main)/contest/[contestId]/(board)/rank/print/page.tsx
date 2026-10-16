@@ -1,3 +1,4 @@
+import { requireContestAccess } from "@/lib/contest-access";
 import { ContestConfig } from "@/app/(main)/page";
 import { ContestRole, Verdict } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -32,6 +33,7 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
+  await requireContestAccess(contestId);
 
   const contest = await prisma.contest.findFirst({
     where: {
@@ -84,6 +86,7 @@ function getMedalCounts(total: number, config: ContestConfig | null) {
 
 export default async function RankPrintPage({ params }: Props) {
   const contestId = Number((await params).contestId);
+  await requireContestAccess(contestId);
   const contest = await prisma.contest.findUnique({
     where: { id: contestId },
   });

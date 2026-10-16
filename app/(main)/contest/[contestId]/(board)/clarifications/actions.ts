@@ -1,18 +1,30 @@
 "use server";
 
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
+import { requireContestAccess } from "@/lib/contest-access";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { ContestRole, ClariCategory } from "@/lib/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
-async function contestIdentity(contestId: number) {
-  const [payload, admin] = await Promise.all([getCurrentUser(), getCurrentSuper()]);
-  const id = (payload as UserJwtPayload | null)?.userId;
-  const user = id ? await prisma.user.findFirst({
-    where: { id, contestId }, select: { id: true, role: true },
-  }) : null;
-  return { user, isAdmin: !!admin?.isGlobalAdmin || user?.role === ContestRole.ADMIN || user?.role === ContestRole.JUDGE };
+async function getClarificationViewer(contestId: number) {
+  const [session, admin] = await Promise.all([
+    getCurrentUser(),
+    getCurrentSuper(),
+  ]);
+  const payload = session as UserJwtPayload | null;
+  const user = payload?.userId && payload.contestId === contestId
+    ? await prisma.user.findFirst({
+        where: { id: payload.userId, contestId },
+        select: { id: true, role: true },
+      })
+    : null;
+
+  return {
+    userId: user?.id,
+    isContestStaff: user?.role === ContestRole.ADMIN || user?.role === ContestRole.JUDGE,
+    isAdmin: !!admin?.isGlobalAdmin || user?.role === ContestRole.ADMIN || user?.role === ContestRole.JUDGE,
+  };
 }
 
 // 获取列表数据
@@ -20,8 +32,8 @@ export async function getClarificationData(
   contestId: number,
   page: number = 1
 ) {
-  const { user, isAdmin } = await contestIdentity(contestId);
-  const userId = user?.id;
+  await requireContestAccess(contestId);
+  const { userId, isAdmin } = await getClarificationViewer(contestId);
 
   // 1. 获取公告 (或者裁判公开的问答)
   const notifications = await prisma.clarification.findMany({
@@ -83,11 +95,11 @@ export async function getClarificationDetail(
   contestId: number,
   clariId: number
 ) {
-  const { user, isAdmin } = await contestIdentity(contestId);
-  const userId = user?.id;
+  await requireContestAccess(contestId);
+  const { userId, isAdmin } = await getClarificationViewer(contestId);
 
-  const thread = await prisma.clarification.findUnique({
-    where: { id: clariId },
+  const thread = await prisma.clarification.findFirst({
+    where: { id: clariId, contestId },
     include: {
       user: { select: { username: true, displayName: true } },
       replies: {
@@ -111,14 +123,15 @@ export async function getClarificationDetail(
 
 // 提交新提问 (选手)
 export async function submitQuestion(formData: FormData) {
+  const contestId = Number(formData.get("contestId"));
+  await requireContestAccess(contestId);
   try {
-    const contestId = Number(formData.get("contestId"));
     const title = formData.get("title") as string;
     const content = formData.get("content") as string;
     const displayId = formData.get("displayId") as string; // 'A', 'B' or 'General'
 
-    const { user } = await contestIdentity(contestId);
-    if (!user || !content || !title) return { error: "Missing required fields" };
+    const { userId } = await getClarificationViewer(contestId);
+    if (!userId || !content || !title) return { error: "Missing required fields" };
 
     // 根据 displayId 找 problemId
     let problemId = null;
@@ -136,7 +149,7 @@ export async function submitQuestion(formData: FormData) {
     await prisma.clarification.create({
       data: {
         contestId,
-        userId: user.id,
+        userId,
         title,
         content,
         displayId: displayId === "General" ? null : displayId,
@@ -157,19 +170,25 @@ export async function submitQuestion(formData: FormData) {
 // 提交回复（通用）
 export async function submitReply(formData: FormData) {
     const contestId = Number(formData.get("contestId"));
+    await requireContestAccess(contestId);
     const clariId = Number(formData.get("clariId"));
     const content = formData.get("content") as string;
-    const { user, isAdmin } = await contestIdentity(contestId);
-    if (!user || !content) throw new Error("Please sign in to this contest before replying.");
-    const thread = await prisma.clarification.findFirst({ where: { id: clariId, contestId } });
-    if (!thread || (!thread.isPublic && !isAdmin && thread.userId !== user.id)) {
+    const { userId, isAdmin } = await getClarificationViewer(contestId);
+
+    if (!userId || !content) throw new Error("Please sign in to this contest before replying.");
+
+    const thread = await prisma.clarification.findFirst({
+      where: { id: clariId, contestId },
+      select: { userId: true, isPublic: true },
+    });
+    if (!thread || (!thread.isPublic && !isAdmin && thread.userId !== userId)) {
       throw new Error("You cannot reply to this clarification.");
     }
 
     await prisma.reply.create({
       data: {
         clarificationId: clariId,
-        userId: user.id,
+        userId,
         content,
       },
     });
@@ -181,20 +200,16 @@ export async function submitReply(formData: FormData) {
 // 管理员发布公告 Action
 export async function publishAnnouncement(formData: FormData) {
     const contestId = Number(formData.get("contestId"));
+    await requireContestAccess(contestId);
     const title = formData.get("title") as string;
     const content = formData.get("content") as string;
-    const { user, isAdmin } = await contestIdentity(contestId);
-
-    if (!user) return;
-
-    // 严格权限校验
-    if (!isAdmin || !title || !content)
-      return;
+    const { userId, isContestStaff } = await getClarificationViewer(contestId);
+    if (!userId || !isContestStaff || !title || !content) return;
 
     await prisma.clarification.create({
       data: {
         contestId,
-        userId: user.id,
+        userId,
         title,
         content,
         category: ClariCategory.NOTICE,
@@ -211,7 +226,8 @@ export async function toggleClarificationVisibility(
   clariId: number,
   currentStatus: boolean
 ) {
-  const { isAdmin } = await contestIdentity(contestId);
+  await requireContestAccess(contestId);
+  const { isAdmin } = await getClarificationViewer(contestId);
   if (!isAdmin) throw new Error("Only contest judges can change clarification visibility.");
 
   await prisma.clarification.updateMany({
