@@ -28,6 +28,17 @@ NovaJudge 是一个轻量级在线评测（Online Judge）平台，面向 XCPC �
 - API Key 认证与 ICPC CCS 兼容接口，方便对接外部工具。
 - 面向登录用户的训练中心与虚拟参赛（VP）支持。
 
+### 从压缩包更新单道题目
+
+在后台题库列表点击目标题目的 **Update Problem**（上传图标），选择包含恰好一道题目的
+导出 ZIP，再点击 **Update Problem**。每次只能上传一个 ZIP；空题包或多题包会被拒绝。
+更新保留目标题目的 ID、比赛关联及提交记录，替换题面、样例、限制、判题配置、测试数据和附件，
+并删除压缩包中没有的旧文件。历史提交不会自动重判。普通 **Import** 仍用于新增题目。
+
+回归测试：`npm run test:problem-update`。
+启动本地服务后可运行真实上传测试：`npm run test:problem-update:integration`。脚本创建并清理临时题目、
+比赛和管理员，保留验证报告及 ZIP 到 `.local/problem-update-qa/`；可用 `PROBLEM_UPDATE_TEST_URL` 指定服务地址。
+
 ### 私有赛访问
 
 私有赛必须配置比赛密码。除超级管理员外，所有访问者（包括已登录的比赛账号和

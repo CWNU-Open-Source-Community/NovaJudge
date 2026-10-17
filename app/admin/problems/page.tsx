@@ -14,6 +14,7 @@ import {
 import Pagination from "@/components/Pagination";
 import RejudgeButton from "./RejudgeProblemButton";
 import DeleteProblemButton from "./DeleteProblemButton";
+import UpdateProblemButton from "./UpdateProblemButton";
 import { toast } from "sonner";
 
 export default function ProblemsPage() {
@@ -204,6 +205,11 @@ export default function ProblemsPage() {
                   >
                     <PencilSquareIcon className="w-5 h-5" />
                   </Link>
+                  <UpdateProblemButton
+                    problemId={problem.id}
+                    problemTitle={problem.title}
+                    onUpdated={() => loadProblems(currentPage)}
+                  />
                   <RejudgeButton problemId={problem.id} />
                   <DeleteProblemButton problemId={problem.id} />
                 </td>

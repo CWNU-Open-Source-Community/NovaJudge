@@ -31,6 +31,20 @@ CCS-compatible data feeds are built into one Next.js application.
 - API key authentication and ICPC CCS-compatible endpoints for external tools.
 - Training center and virtual participation support for logged-in global users.
 
+### Update one problem from a ZIP
+
+In the admin problem bank, click the target row's **Update Problem** upload icon,
+select an exported ZIP containing exactly one problem, then click **Update Problem**.
+Only one ZIP is accepted per update; archives with zero or multiple problems are rejected.
+The update keeps the target ID, contest links and submissions while replacing its statement,
+samples, limits, judge configuration, test data and assets, including removing obsolete files.
+Existing submissions are not automatically rejudged. The regular **Import** action still creates new problems.
+
+Run regression tests with `npm run test:problem-update`.
+With the local service running, use `npm run test:problem-update:integration` for real HTTP uploads.
+It creates and cleans up temporary problems, contests and an administrator, saving reports and ZIPs
+under `.local/problem-update-qa/`. Set `PROBLEM_UPDATE_TEST_URL` to override the service URL.
+
 ### Private contest access
 
 Private contests require a contest password. Every visitor, including signed-in
