@@ -6,13 +6,15 @@ import {
   verifyAuth,
 } from "@/lib/auth";
 import { cookies } from "next/headers";
-import { ContestRole, ContestStatus } from "@/lib/generated/prisma/client";
+import { ContestStatus } from "@/lib/generated/prisma/client";
 import VerdictBadge from "@/components/VerdictBadge";
 import Link from "next/link";
 import CodeViewer from "./CodeViewer";
 import { ContestConfig } from "@/app/(main)/page";
 import { getDictionary } from "@/lib/get-dictionary";
 import { getRunningVirtualParticipation } from "@/lib/virtual-participation";
+import { getContestManager } from "@/lib/contest-management-auth";
+import { ContestRejudgeButton } from "../RejudgeControls";
 
 interface Props {
   params: Promise<{
@@ -65,6 +67,7 @@ export default async function SubmissionDetail({ params }: Props) {
   if (!contestInfo || !submission) return notFound();
 
   const globalUser = await getCurrentSuper();
+  const canRejudge = Boolean(await getContestManager(cid));
 
   // 2. 获取当前用户信息
   const cookieStore = await cookies();
@@ -98,7 +101,7 @@ export default async function SubmissionDetail({ params }: Props) {
         },
       });
 
-      if (!currentUser || currentUser.contestId !== cid) {
+      if ((!currentUser || currentUser.contestId !== cid) && !isGlobalAdmin) {
         return notFound();
       }
     }
@@ -115,14 +118,10 @@ export default async function SubmissionDetail({ params }: Props) {
       (!!globalUser?.userId && submission.globalUser?.id === globalUser.userId &&
         (!runningVp || submission.virtualParticipationId === runningVp.id));
 
-    const isAdmin =
-      isGlobalAdmin ||
-      currentUser?.role === ContestRole.ADMIN ||
-      currentUser?.role === ContestRole.JUDGE;
     const isPublicOfficialSubmission =
       isContestEnded && !isFrozen && submission.virtualParticipationId === null;
     const hasPermission =
-      isOwner || isAdmin || (!isOwner && isPublicOfficialSubmission);
+      isOwner || canRejudge || (!isOwner && isPublicOfficialSubmission);
 
     if (!hasPermission) {
       return notFound();
@@ -157,12 +156,21 @@ export default async function SubmissionDetail({ params }: Props) {
 
   return (
     <div className="bg-white w-full shadow-sm border border-gray-100 rounded-sm p-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <h2 className="text-2xl font-serif font-bold text-gray-800">
           {dict.submission.submission} #{submission.displayId}
         </h2>
+        {canRejudge && (
+          <ContestRejudgeButton
+            contestId={cid}
+            submissionId={submission.id}
+            verdict={submission.verdict}
+          />
+        )}
         <Link
-          href={`/contest/${contestId}/status`}
+          href={canRejudge
+            ? `/contest/${contestId}/status?viewAll=true${submission.user?.id ? `&userId=${encodeURIComponent(submission.user.id)}` : ""}${contestProblem?.displayId ? `&problem=${encodeURIComponent(contestProblem.displayId)}` : ""}`
+            : `/contest/${contestId}/status`}
           className="text-blue-600 hover:text-blue-800 hover:underline"
         >
           ← Back to Status

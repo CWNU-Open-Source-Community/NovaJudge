@@ -8,17 +8,19 @@ import VerdictCell from "@/components/VerdictCell";
 export default async function GlobalSubmissionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; problem?: string }>;
+  searchParams: Promise<{ page?: string; problem?: string; team?: string }>;
 }) {
-  const { page, problem } = await searchParams;
+  const { page, problem, team } = await searchParams;
   const currentPage = Number(page) || 1;
   const pageSize = 15;
   const problemQuery = problem?.trim() || "";
+  const teamQuery = team?.trim() || "";
 
   const { submissions, total } = await getGlobalSubmissions(
     currentPage,
     pageSize,
     problemQuery,
+    teamQuery,
   );
 
   return (
@@ -42,13 +44,26 @@ export default async function GlobalSubmissionsPage({
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           />
         </div>
+        <div className="flex-1">
+          <label htmlFor="team-search" className="mb-2 block text-sm font-bold text-gray-700">
+            队伍 / 用户
+          </label>
+          <input
+            id="team-search"
+            type="search"
+            name="team"
+            defaultValue={teamQuery}
+            placeholder="队名、账号、学校或座位号"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          />
+        </div>
         <button
           type="submit"
           className="rounded-md bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700"
         >
           Search
         </button>
-        {problemQuery && (
+        {(problemQuery || teamQuery) && (
           <Link
             href="/admin/submissions"
             className="rounded-md border border-gray-300 px-4 py-2 text-center text-sm font-bold text-gray-700 transition hover:bg-gray-50"
@@ -97,9 +112,20 @@ export default async function GlobalSubmissionsPage({
                     </td>
                     <td className="px-6 py-4">
                       <div className="font-medium text-gray-900">
-                        {submitter}
+                        {sub.user?.displayName || sub.globalUser?.displayName || submitter}
                       </div>
+                      {(sub.user?.displayName || sub.globalUser?.displayName) && (
+                        <div className="text-xs text-gray-500">{submitter}</div>
+                      )}
                       <div className="text-xs text-gray-400">{fromContest}</div>
+                      {sub.contest && sub.user && (
+                        <Link
+                          href={`/contest/${sub.contest.id}/status?viewAll=true&userId=${encodeURIComponent(sub.user.id)}`}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          在比赛中管理该队提交
+                        </Link>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-blue-600">
                       <Link href={`/admin/problems/${sub.problemId}/test`}>
@@ -125,7 +151,7 @@ export default async function GlobalSubmissionsPage({
                       {sub.contest ? "Contest Source" : "Admin Test"}
                     </td>
                     <td className="px-6 py-4">
-                      <RejudgeButton submissionId={sub.id} />
+                      <RejudgeButton submissionId={sub.id} verdict={sub.verdict} />
                     </td>
                   </tr>
                 );

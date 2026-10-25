@@ -22,7 +22,9 @@ export default function RejudgeButton({ problemId }: { problemId: number }) {
       return;
     }
 
-    toast.success(`Queued ${result?.queued ?? 0} non-AC submissions`);
+    const message = `已入队 ${result?.queued ?? 0} 条，跳过 ${result?.skipped ?? 0} 条，入队失败 ${result?.failed ?? 0} 条`;
+    if (result?.failed) toast.error(message);
+    else toast.success(message);
   };
 
   return (

@@ -6,6 +6,7 @@ import { Verdict } from "@/lib/generated/prisma/enums";
 import { resolveJudgeDataPath } from "@/lib/problem-judge-config";
 import { runCommunicationCase, type CommunicationTrace } from "./judge/communication";
 import { createJudgeProgramCompiler } from "./judge/program-cache";
+import { getRunTimeLimits, getTimeLimitFailure } from "./judge/runtime-limits";
 import type { ProblemSample } from "./problem-samples";
 
 const GO_JUDGE_URL = process.env.GO_JUDGE_API || "http://localhost:5050";
@@ -239,6 +240,7 @@ async function compileUserCode(language: string, code: string) {
     };
   }
 
+  const compileLimits = getRunTimeLimits(10_000_000_000);
   const compileRes = await callGoJudge({
     cmd: [
       {
@@ -254,7 +256,7 @@ async function compileUserCode(language: string, code: string) {
           { name: "stdout", max: 1000000 },
           { name: "stderr", max: 1000000 },
         ],
-        cpuLimit: 10000000000,
+        ...compileLimits,
         memoryLimit: 1024 * 1024 * 1024,
         procLimit: 50,
         copyIn: {
@@ -267,6 +269,8 @@ async function compileUserCode(language: string, code: string) {
   });
 
   const result = compileRes[0];
+  const compileTimeout = getTimeLimitFailure(result, compileLimits);
+  if (compileTimeout?.verdict === "SYSTEM_ERROR") throw new Error(compileTimeout.message);
   if (result.status !== "Accepted") {
     return {
       ok: false as const,
@@ -302,6 +306,7 @@ function buildProgramCopyIn(params: {
 function mapRunStatusToDebugVerdict(status: string): SampleDebugVerdict {
   if (status === "Time Limit Exceeded") return "TLE";
   if (status === "Memory Limit Exceeded") return "MLE";
+  if (status === "Internal Error" || status === "File Error") return "SE";
   if (status === "Accepted") return "AC";
   return "RE";
 }
@@ -375,6 +380,7 @@ async function runNonInteractiveSample(params: {
     checkerFileId,
   } = params;
   const { timeLimit, memoryLimit } = getLanguageLimits(problem, language);
+  const runLimits = getRunTimeLimits(timeLimit);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cmdObj: any = {
@@ -389,7 +395,7 @@ async function runNonInteractiveSample(params: {
       { name: "stdout", max: 10485760 },
       { name: "stderr", max: 10485760 },
     ],
-    cpuLimit: timeLimit,
+    ...runLimits,
     memoryLimit: memoryLimit,
     procLimit: 50,
     stackLimit: STACK_SIZE_KB * 1024,
@@ -406,16 +412,19 @@ async function runNonInteractiveSample(params: {
     ? Math.floor(runResult.memory / 1024)
     : undefined;
 
-  if (runResult.status !== "Accepted") {
+  const timeoutFailure = getTimeLimitFailure(runResult, runLimits);
+  if (timeoutFailure || runResult.status !== "Accepted") {
     return {
       sampleIndex,
       input: sample.input,
       expectedOutput: sample.output,
       actualOutput,
-      verdict: mapRunStatusToDebugVerdict(runResult.status),
+      verdict: timeoutFailure
+        ? timeoutFailure.verdict === "TIME_LIMIT_EXCEEDED" ? "TLE" : "SE"
+        : mapRunStatusToDebugVerdict(runResult.status),
       timeUsedMs,
       memoryUsedKb,
-      message: runResult.files?.stderr || runResult.status,
+      message: timeoutFailure?.message || runResult.error || runResult.files?.stderr || runResult.status,
     } satisfies SampleDebugResult;
   }
 
@@ -442,7 +451,7 @@ async function runNonInteractiveSample(params: {
             { content: "", name: "stdout", max: 10485760 },
             { content: "", name: "stderr", max: 10485760 },
           ],
-          cpuLimit: 10000 * 1000000,
+          ...getRunTimeLimits(10_000_000_000),
           memoryLimit: 512 * 1024 * 1024,
           procLimit: 50,
           copyIn: {
@@ -461,11 +470,12 @@ async function runNonInteractiveSample(params: {
       input: sample.input,
       expectedOutput: sample.output,
       actualOutput,
-      verdict: checkerResult.exitStatus === 0 ? "AC" : "WA",
+      verdict: !["Accepted", "Nonzero Exit Status"].includes(checkerResult.status)
+        ? "SE" : checkerResult.exitStatus === 0 ? "AC" : "WA",
       timeUsedMs,
       memoryUsedKb,
       message:
-        checkerResult.files?.stderr || checkerResult.files?.stdout || undefined,
+        checkerResult.error || checkerResult.files?.stderr || checkerResult.files?.stdout || checkerResult.status,
     } satisfies SampleDebugResult;
   }
 
@@ -761,6 +771,7 @@ export async function judgeSubmission(submissionId: string) {
     for (let i = 0; i < testCases.length; i++) {
       const testCase = testCases[i];
       const { timeLimit, memoryLimit } = getLanguageLimits(problem, language);
+      const runLimits = getRunTimeLimits(timeLimit);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let res: any;
@@ -785,7 +796,7 @@ export async function judgeSubmission(submissionId: string) {
                 "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64",
               ],
               files: [null, null, { name: "stderr", max: 10485760 }],
-              cpuLimit: timeLimit,
+              ...runLimits,
               memoryLimit: memoryLimit,
               procLimit: 50,
               stackLimit: STACK_SIZE_KB * 1024,
@@ -799,7 +810,9 @@ export async function judgeSubmission(submissionId: string) {
               args: ["./interactor", "input.in", "output.xml"],
               env: ["PATH=/usr/bin:/bin"],
               files: [null, null, { name: "stderr", max: 10485760 }],
-              cpuLimit: 10000 * 1000000,
+              ...getRunTimeLimits(10_000_000_000),
+              // An interactor waiting for the solution must not expire first.
+              clockLimit: Math.max(runLimits.clockLimit, getRunTimeLimits(10_000_000_000).clockLimit),
               memoryLimit: 512 * 1024 * 1024,
               procLimit: 50,
               copyIn: {
@@ -818,18 +831,22 @@ export async function judgeSubmission(submissionId: string) {
         const interactorRes = runResults[1];
         res = userRes;
 
-        if (userRes.status === "Time Limit Exceeded") {
-          if (res.time > timeLimit) {
-            finalVerdict = Verdict.TIME_LIMIT_EXCEEDED;
-          } else {
-            finalVerdict = Verdict.RUNTIME_ERROR;
-          }
+        const timeoutFailure = getTimeLimitFailure(userRes, runLimits);
+        if (timeoutFailure) {
+          finalVerdict = timeoutFailure.verdict;
+          error = timeoutFailure.message;
         } else if (userRes.status === "Memory Limit Exceeded") {
           if (res.memory > memoryLimit) {
             finalVerdict = Verdict.MEMORY_LIMIT_EXCEEDED;
           } else {
             finalVerdict = Verdict.RUNTIME_ERROR;
           }
+        } else if (!["Accepted", "Nonzero Exit Status"].includes(interactorRes.status)) {
+          finalVerdict = Verdict.SYSTEM_ERROR;
+          error = `Interactor failed: ${interactorRes.status}`;
+        } else if (userRes.status === "Internal Error" || userRes.status === "File Error") {
+          finalVerdict = Verdict.SYSTEM_ERROR;
+          error = userRes.error || userRes.status;
         } else if (interactorRes.exitStatus !== 0) {
           finalVerdict = Verdict.WRONG_ANSWER;
           error = interactorRes.files?.stderr || "Interactive check failed";
@@ -851,7 +868,7 @@ export async function judgeSubmission(submissionId: string) {
             { name: "stdout", max: 10485760 },
             { name: "stderr", max: 10485760 },
           ],
-          cpuLimit: timeLimit,
+          ...runLimits,
           memoryLimit: memoryLimit,
           procLimit: 50,
           stackLimit: STACK_SIZE_KB * 1024,
@@ -865,15 +882,18 @@ export async function judgeSubmission(submissionId: string) {
         const runResults = await callGoJudge({ cmd: [cmdObj] });
         res = runResults[0];
 
-        if (res.status !== "Accepted") {
-          if (res.status === "Time Limit Exceeded") {
-            finalVerdict = Verdict.TIME_LIMIT_EXCEEDED;
+        const timeoutFailure = getTimeLimitFailure(res, runLimits);
+        if (timeoutFailure || res.status !== "Accepted") {
+          if (timeoutFailure) {
+            finalVerdict = timeoutFailure.verdict;
           } else if (res.status === "Memory Limit Exceeded") {
             finalVerdict = Verdict.MEMORY_LIMIT_EXCEEDED;
+          } else if (res.status === "Internal Error" || res.status === "File Error") {
+            finalVerdict = Verdict.SYSTEM_ERROR;
           } else {
             finalVerdict = Verdict.RUNTIME_ERROR;
           }
-          error = res.files?.stderr || "";
+          error = timeoutFailure?.message || res.error || res.files?.stderr || "";
         } else {
           const userOutput = res.files?.stdout || "";
 
@@ -887,7 +907,7 @@ export async function judgeSubmission(submissionId: string) {
                     { content: "", name: "stdout", max: 10485760 },
                     { content: "", name: "stderr", max: 10485760 },
                   ],
-                  cpuLimit: 10000 * 1000000,
+                  ...getRunTimeLimits(10_000_000_000),
                   memoryLimit: 512 * 1024 * 1024,
                   procLimit: 50,
                   copyIn: {
@@ -900,7 +920,10 @@ export async function judgeSubmission(submissionId: string) {
               ],
             });
             const chkResult = checkerRes[0];
-            if (chkResult.exitStatus !== 0) {
+            if (!["Accepted", "Nonzero Exit Status"].includes(chkResult.status)) {
+              finalVerdict = Verdict.SYSTEM_ERROR;
+              error = `Checker failed: ${chkResult.status}`;
+            } else if (chkResult.exitStatus !== 0) {
               finalVerdict = Verdict.WRONG_ANSWER;
             }
           } else {
@@ -913,12 +936,19 @@ export async function judgeSubmission(submissionId: string) {
         }
       }
 
-      const timeMs = Math.floor(res.time / 1000000);
-      const memoryKB = Math.floor(res.memory / 1024);
+      const timeMs = Number.isFinite(res.time) ? Math.max(0, Math.floor(res.time / 1000000)) : 0;
+      const memoryKB = Number.isFinite(res.memory) ? Math.max(0, Math.floor(res.memory / 1024)) : 0;
       maxTime = Math.max(maxTime, timeMs);
       maxMemory = Math.max(maxMemory, memoryKB);
 
       if (finalVerdict !== Verdict.ACCEPTED) {
+        if (finalVerdict === Verdict.TIME_LIMIT_EXCEEDED || finalVerdict === Verdict.SYSTEM_ERROR) {
+          console.warn("Judge execution diagnostic", {
+            submissionId, testCase: i + 1, language, verdict: finalVerdict,
+            status: res.status, cpuTimeNs: res.time, elapsedTimeNs: res.runTime,
+            ...runLimits, message: error,
+          });
+        }
         await updateProgress(submissionId, {
           verdict: finalVerdict,
           passedTests: i,

@@ -30,9 +30,8 @@ export interface ContestAwardsConfig {
     bronze?: string;
   };
   /** 快速解题奖：每题第一个 AC 的队伍（含打星队伍），默认关闭。
-   *  citation 采用 DOMjudge 原生格式：同一队伍多个一血合并为一个奖，
-   *  如 First to solve problem A / First to solve problems A and B /
-   *  First to solve problems A, B, C and D */
+   *  每题生成独立奖项，id 为 first-to-solve-${problemId}；
+   *  同一队伍的多个一血由 Resolver 合并展示。 */
   firstToSolve?: boolean;
   /** 优秀奖：未获金银铜、但解出至少 1 题的队伍，默认关闭 */
   excellenceAward?: boolean;
@@ -359,25 +358,15 @@ export async function getFeedAwards(contestId: number): Promise<FeedAward[]> {
     }
   }
 
-  // 快速解题奖：每题一血，按队伍合并（含打星队伍）
-  // citation 采用 DOMjudge 格式：First to solve problem A / problems A and B / A, B, C and D
+  // 快速解题奖：每题独立生成记录（含打星队伍），由 Resolver 合并展示
+  // ID 后缀与 CCS problems 的 id 一致，不能使用队伍排名或递增序号
   if (cfg.firstToSolve) {
     const firstSolves = await getFirstSolves(contestId);
-    const labelsByTeam = new Map<string, string[]>();
     firstSolves.forEach((fs) => {
-      const arr = labelsByTeam.get(fs.username) || [];
-      arr.push(fs.displayId);
-      labelsByTeam.set(fs.username, arr);
-    });
-    let ftsIndex = 0;
-    standings.forEach((t) => {
-      const labels = labelsByTeam.get(t.username);
-      if (!labels || labels.length === 0) return;
-      ftsIndex++;
       awards.push({
-        id: `first-to-solve-${ftsIndex}`,
-        citation: formatFtsCitation(labels),
-        team_ids: [t.username],
+        id: `first-to-solve-${fs.problemId}`,
+        citation: formatFtsCitation([fs.displayId]),
+        team_ids: [fs.username],
       });
     });
   }

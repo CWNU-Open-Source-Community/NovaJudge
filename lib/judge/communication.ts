@@ -1,4 +1,5 @@
 import { getCommunicationOutputLimit } from "../problem-judge-config";
+import { getRunTimeLimits, getTimeLimitFailure } from "./runtime-limits";
 
 const SECOND = 1_000_000_000;
 const DIAGNOSTIC_LIMIT = 64 * 1024;
@@ -33,6 +34,7 @@ export interface CommunicationSandboxResult {
   status: string;
   exitStatus: number;
   time: number;
+  runTime?: number;
   memory: number;
   error?: string;
   files?: Record<string, string>;
@@ -71,10 +73,14 @@ interface CommunicationOptions {
   captureTrace?: boolean;
 }
 
-function programVerdict(result: CommunicationSandboxResult): CommunicationVerdict {
+function programVerdict(
+  result: CommunicationSandboxResult,
+  limits: ReturnType<typeof getRunTimeLimits>,
+): CommunicationVerdict {
+  const timeFailure = getTimeLimitFailure(result, limits);
+  if (timeFailure) return timeFailure.verdict;
   switch (result.status) {
     case "Accepted": return result.exitStatus === 0 ? "ACCEPTED" : "RUNTIME_ERROR";
-    case "Time Limit Exceeded": return "TIME_LIMIT_EXCEEDED";
     case "Memory Limit Exceeded": return "MEMORY_LIMIT_EXCEEDED";
     // Message size is part of a communication problem's output contract.
     case "Output Limit Exceeded": return "WRONG_ANSWER";
@@ -100,6 +106,7 @@ function communicatorVerdict(result: CommunicationSandboxResult): CommunicationV
 export async function runCommunicationCase(options: CommunicationOptions): Promise<CommunicationResult> {
   if (!options.communicatorFileId) throw new Error("Communication judge is not configured.");
   const outputLimit = getCommunicationOutputLimit(options.config);
+  const programLimits = getRunTimeLimits(options.timeLimit);
   let timeUsedMs = 0;
   let memoryUsedKb = 0;
   let actualOutput = "";
@@ -132,8 +139,7 @@ export async function runCommunicationCase(options: CommunicationOptions): Promi
         { name: "stdout", max: outputLimit },
         { name: "stderr", max: DIAGNOSTIC_LIMIT },
       ],
-      cpuLimit: options.timeLimit,
-      clockLimit: Math.max(3 * options.timeLimit, 3 * SECOND),
+      ...programLimits,
       memoryLimit: options.memoryLimit,
       stackLimit: options.stackLimit,
       procLimit: 50,
@@ -150,12 +156,14 @@ export async function runCommunicationCase(options: CommunicationOptions): Promi
   }
 
   function programFailure(result: CommunicationSandboxResult, run: number) {
+    const timeFailure = getTimeLimitFailure(result, programLimits);
+    if (timeFailure) return finish(timeFailure.verdict, `Run ${run}: ${timeFailure.message}`);
     const diagnostic = result.status === "Output Limit Exceeded"
       ? `output exceeds ${outputLimit} bytes`
       : options.captureTrace
         ? result.files?.stderr || result.error || result.status
         : result.status;
-    return finish(programVerdict(result), `Run ${run}: ${diagnostic}`);
+    return finish(programVerdict(result, programLimits), `Run ${run}: ${diagnostic}`);
   }
 
   async function runCommunicator(mode: "prepare" | "check", userOutput: string, state?: string) {
@@ -167,8 +175,7 @@ export async function runCommunicationCase(options: CommunicationOptions): Promi
         { name: "stdout", max: mode === "prepare" ? SECOND_INPUT_LIMIT : DIAGNOSTIC_LIMIT },
         { name: "stderr", max: DIAGNOSTIC_LIMIT },
       ],
-      cpuLimit: 10 * SECOND,
-      clockLimit: 20 * SECOND,
+      ...getRunTimeLimits(10 * SECOND),
       memoryLimit: 512 * 1024 * 1024,
       procLimit: 50,
       copyIn: {
@@ -197,7 +204,7 @@ export async function runCommunicationCase(options: CommunicationOptions): Promi
 
   const first = await runProgram(options.input, 1);
   trace.firstOutput = first.files?.stdout || "";
-  if (programVerdict(first) !== "ACCEPTED") return programFailure(first, 1);
+  if (programVerdict(first, programLimits) !== "ACCEPTED") return programFailure(first, 1);
 
   const prepared = await runCommunicator("prepare", trace.firstOutput);
   const preparationVerdict = communicatorVerdict(prepared);
@@ -209,7 +216,7 @@ export async function runCommunicationCase(options: CommunicationOptions): Promi
 
   const second = await runProgram(trace.secondInput, 2);
   actualOutput = second.files?.stdout || "";
-  if (programVerdict(second) !== "ACCEPTED") return programFailure(second, 2);
+  if (programVerdict(second, programLimits) !== "ACCEPTED") return programFailure(second, 2);
 
   const checked = await runCommunicator("check", actualOutput, state);
   const verdict = communicatorVerdict(checked);

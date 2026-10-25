@@ -41,7 +41,7 @@ export function getMedalCounts(
 }
 
 /**
- * DOMjudge 原生的一血奖 citation 格式（同一队伍多个一血合并）：
+ * 一血奖 citation 格式；导出时每个奖项只传入该题的标签：
  * - ["A"]                      → First to solve problem A
  * - ["A","B"]                  → First to solve problems A and B
  * - ["A","B","C","D"]          → First to solve problems A, B, C and D

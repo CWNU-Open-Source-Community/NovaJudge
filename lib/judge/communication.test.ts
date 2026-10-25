@@ -54,6 +54,9 @@ test("two fresh runs receive only allowed input; limits and measurements are ind
   assert.deepEqual(commands[0].copyIn, { main: { fileId: "solution" } });
   assert.deepEqual(commands[2].copyIn, commands[0].copyIn);
   assert.equal(commands[0].cpuLimit, commands[2].cpuLimit);
+  assert.equal(commands[0].cpuLimit, 1_000_000_000, "CPU budgets must remain unchanged");
+  assert.equal(commands[0].clockLimit, commands[2].clockLimit);
+  assert.ok(commands[0].clockLimit > commands[0].cpuLimit, "wall time is a separate watchdog");
   assert.equal(commands[0].memoryLimit, commands[2].memoryLimit);
   assert.deepEqual(commands[2].files[0], { content: "second\nencoded" });
   assert.equal(commands[0].copyOut, undefined, "solution working files are never persisted");
@@ -107,14 +110,51 @@ for (const runNumber of [1, 2] as const) {
   ] as const) {
     test(`run ${runNumber}: ${status} stops judging with ${verdict}`, async () => {
       const prior = runNumber === 1 ? [] : [accepted("encoded"), accepted("second")];
-      const { run, commands } = harness([...prior, accepted("", { status, exitStatus: 9, time: 0 })]);
+      const { run, commands } = harness([...prior, accepted("", {
+        status, exitStatus: 9, time: status === "Time Limit Exceeded" ? 1_100_000_000 : 0,
+      })]);
       const result = await run;
       assert.equal(result.verdict, verdict);
       assert.match(result.message, new RegExp(`Run ${runNumber}:`));
       assert.equal(commands.length, runNumber === 1 ? 1 : 3);
     });
   }
+
+  test(`run ${runNumber}: wall-only timeout is a system error with safe diagnostics`, async () => {
+    const prior = runNumber === 1 ? [] : [accepted("encoded"), accepted("second")];
+    const { run, commands } = harness([...prior, accepted("", {
+      status: "Time Limit Exceeded", exitStatus: 9, time: 34_000_000, runTime: 60_100_000_000,
+      files: { stderr: "hidden input 392871" },
+    })]);
+    const result = await run;
+    assert.equal(result.verdict, "SYSTEM_ERROR");
+    assert.equal(result.timeUsedMs, runNumber === 1 ? 34 : 600);
+    assert.match(result.message, new RegExp(`Run ${runNumber}:`));
+    assert.match(result.message, /CPU/);
+    assert.doesNotMatch(result.message, /392871/);
+    assert.equal(commands.length, runNumber === 1 ? 1 : 3);
+  });
+
+  test(`run ${runNumber}: completed CPU overrun is still TLE`, async () => {
+    const prior = runNumber === 1 ? [] : [accepted("encoded"), accepted("second")];
+    const { run, commands } = harness([...prior, accepted("output", { time: 1_100_000_000 })]);
+    const result = await run;
+    assert.equal(result.verdict, "TIME_LIMIT_EXCEEDED");
+    assert.equal(commands.length, runNumber === 1 ? 1 : 3);
+  });
 }
+
+test("long elapsed time does not penalize either communication run within its CPU budget", async () => {
+  const { run } = harness([
+    accepted("encoded", { time: 34_000_000, runTime: 13_000_000_000 }),
+    accepted("second"),
+    accepted("decoded", { time: 60_000_000, runTime: 25_000_000_000 }),
+    accepted(),
+  ]);
+  const result = await run;
+  assert.equal(result.verdict, "ACCEPTED");
+  assert.equal(result.timeUsedMs, 60);
+});
 
 test("judge resource failure is a system error, never a contestant error", async () => {
   const { run } = harness([accepted("encoded"), accepted("", { status: "Time Limit Exceeded", exitStatus: 9 })]);

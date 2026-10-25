@@ -9,8 +9,10 @@ import ConfirmModal from "./ConfirmModal";
 
 export default function RejudgeButton({
   submissionId,
+  verdict,
 }: {
   submissionId: string;
+  verdict: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -25,7 +27,7 @@ export default function RejudgeButton({
     startTransition(async () => {
       try {
         // 调用 Server Action
-        const result = await rejudgeSubmission(submissionId);
+        const result = await rejudgeSubmission(submissionId, verdict === "ACCEPTED");
 
         if (result?.error) {
           toast.error(result.error);
@@ -47,16 +49,20 @@ export default function RejudgeButton({
       <ConfirmModal
         isOpen={isConfirmOpen}
         title="Rejudge Submission"
-        message="Rejudge this non-AC submission? Accepted submissions will be kept untouched."
-        confirmText="Rejudge"
+        message={verdict === "ACCEPTED"
+          ? "该提交已 AC。确认重新评测这条提交？结果可能发生变化。"
+          : "确认重新评测这条提交？"}
+        confirmText={verdict === "ACCEPTED" ? "确认重判 AC" : "确认重判"}
+        isDestructive={verdict === "ACCEPTED"}
         onConfirm={confirmRejudge}
         onCancel={() => setIsConfirmOpen(false)}
       />
       <button
         onClick={handleRejudge}
-        disabled={isPending}
+        disabled={isPending || verdict === "PENDING" || verdict === "JUDGING"}
         className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed p-1 rounded hover:bg-blue-50 transition-colors cursor-pointer"
         title="ReJudge"
+        aria-label="重判此提交"
       >
         <ArrowPathIcon
           className={`w-5 h-5 ${isPending ? "animate-spin" : ""}`}

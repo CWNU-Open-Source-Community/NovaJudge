@@ -3,7 +3,7 @@
 import { requireSuperAdmin } from "@/lib/admin-auth";
 import { Verdict } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { enqueueJudge } from "@/lib/queue";
+import { requeueSubmission } from "@/lib/contest-rejudge";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isProblemType } from "@/lib/problem-judge-config";
@@ -113,7 +113,7 @@ export async function rejudgeProblem(problemId: number) {
     const submissions = await prisma.submission.findMany({
       where: {
         problemId: problemId,
-        verdict: { not: Verdict.ACCEPTED },
+        verdict: { notIn: [Verdict.ACCEPTED, Verdict.PENDING, Verdict.JUDGING] },
       },
       select: {
         id: true,
@@ -123,32 +123,17 @@ export async function rejudgeProblem(problemId: number) {
     const submissionIds = submissions.map((s) => s.id);
 
     if (submissionIds.length === 0) {
-      return { success: true, queued: 0 };
+      return { success: true, queued: 0, skipped: 0, failed: 0 };
     }
 
-    // 2. 批量将状态重置为 PENDING
-    await prisma.submission.updateMany({
-      where: {
-        id: { in: submissionIds },
-      },
-      data: {
-        verdict: Verdict.PENDING,
-        timeUsed: null,
-        memoryUsed: null,
-        errorMessage: null,
-        passedTests: 0,
-        totalTests: 0,
-      },
-    });
-
-    // 3. 将所有 ID 推入判题队列（幂等入队，避免重复任务）
+    const result = { queued: 0, skipped: 0, failed: 0 };
     for (const id of submissionIds) {
-      await enqueueJudge(id);
+      result[await requeueSubmission(id).catch(() => "failed" as const)]++;
     }
 
     // 4. 刷新页面
     revalidatePath("/admin/problems");
-    return { success: true, queued: submissionIds.length };
+    return { success: result.failed === 0, ...result };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (e: any) {
     return { error: e.message || "Failed to rejudge problem" };

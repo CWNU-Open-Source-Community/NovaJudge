@@ -287,31 +287,18 @@ export default function AwardsClient({
     });
   }, [topThreeEnabled, top3Citations, official]);
 
-  // 快速解题奖预览（每题一血，按队伍合并，含打星队伍）
+  // 快速解题奖预览（每题独立一条，含打星队伍）
   const ftsPreview = useMemo(() => {
     if (!ftsEnabled) return [];
     const starSet = new Set(
       standings.filter((t) => t.isStar).map((t) => t.username),
     );
-    const labelsByTeam = new Map<string, string[]>();
-    initial.firstSolves.forEach((fs) => {
-      const arr = labelsByTeam.get(fs.username) || [];
-      arr.push(fs.displayId);
-      labelsByTeam.set(fs.username, arr);
-    });
-    return standings
-      .map((t) => {
-        const labels = labelsByTeam.get(t.username);
-        if (!labels || labels.length === 0) return null;
-        return {
-          username: t.username,
-          labels,
-          isStar: starSet.has(t.username),
-        };
-      })
-      .filter((x): x is { username: string; labels: string[]; isStar: boolean } =>
-        x !== null,
-      );
+    return initial.firstSolves.map((fs) => ({
+      problemId: fs.problemId,
+      displayId: fs.displayId,
+      username: fs.username,
+      isStar: starSet.has(fs.username),
+    }));
   }, [ftsEnabled, standings, initial.firstSolves]);
 
   // 优秀奖预览：未获金银铜、解出至少 1 题的队伍
@@ -689,7 +676,7 @@ export default function AwardsClient({
       <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6 space-y-5">
         <h3 className="font-bold text-gray-800">2. 自动奖项（可选）</h3>
 
-        {/* 快速解题奖：每题一血，按队伍合并 */}
+        {/* 快速解题奖：每题独立一条 */}
         <div className="p-4 border border-gray-200 rounded-lg">
           <label className="flex items-center gap-2 text-sm font-bold text-gray-800 cursor-pointer">
             <input
@@ -698,12 +685,12 @@ export default function AwardsClient({
               onChange={(e) => setFtsEnabled(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            快速解题奖（每题一血，打星队伍也参与评选；同一队伍多个一血合并为一个奖）
+            快速解题奖（每题一个奖项，打星队伍也参与评选；同一队伍多个一血由 Resolver 合并展示）
           </label>
           {ftsEnabled && (
             <div className="mt-3">
               <p className="text-xs font-bold text-gray-600 mb-1.5">
-                预览（DOMjudge 原生格式，导出时自动计算）
+                预览（每题一条奖项记录，导出时自动计算）
               </p>
               {ftsPreview.length === 0 ? (
                 <p className="text-sm text-gray-400">暂无 AC 记录。</p>
@@ -711,11 +698,11 @@ export default function AwardsClient({
                 <div className="space-y-1">
                   {ftsPreview.map((f) => (
                     <div
-                      key={f.username}
+                      key={f.problemId}
                       className="flex flex-wrap items-center gap-2 text-sm"
                     >
                       <span className="px-2.5 py-1 rounded-md bg-purple-50 border border-purple-200 text-xs font-bold text-purple-700">
-                        {formatFtsCitation(f.labels)}
+                        {formatFtsCitation([f.displayId])}
                       </span>
                       <span className="text-xs text-gray-500 font-mono">
                         → {f.username}

@@ -155,7 +155,21 @@ JUDGE_CONCURRENCY=4   # How many submissions each worker judges in parallel
 JUDGE_ID=1            # Worker ID (optional; auto-assigned when not set)
 JUDGE_WORKER_COUNT=4  # Worker count for "npm run worker:multi"
 JUDGE_WORKER_IDS=1,2  # Explicit ID list for "npm run worker:multi"
+JUDGE_WALL_WATCHDOG_MS=60000 # Minimum elapsed-time watchdog; not the contestant CPU budget
 ```
+
+Contestant TLE is based on measured CPU time. Scheduling and I/O waits do not
+consume that budget. Every contestant run has a separate elapsed-time watchdog
+of `max(JUDGE_WALL_WATCHDOG_MS, 20 × CPU limit)` to release stuck executions.
+If the watchdog expires without a measured CPU overrun, the submission receives
+`SYSTEM_ERROR` with CPU/elapsed timing diagnostics, not a contestant penalty.
+The CPU limit and existing language multipliers are unchanged. Restart the Web
+and Worker processes after updating the code or watchdog configuration.
+
+Run `npm run test:judge-runtime` for regression checks and
+`npm run test:judge-runtime:integration` against go-judge for real PyPy waiting,
+CPU exhaustion and watchdog checks. The integration checks use disposable
+programs and do not modify submissions or the database.
 
 ### How workers avoid conflicts
 

@@ -6,6 +6,7 @@ interface Team {
   rank: number | string;
   medal?: "Gold" | "Silver" | "Bronze" | "";
   id: string;
+  contestUserId?: string;
   username: string;
   displayName: string | null;
   members: string | null;
@@ -40,6 +41,7 @@ interface RankTableProps {
   teams: Team[];
   isMyTeam: boolean;
   isContestEnded: boolean;
+  canManageSubmissions: boolean;
   contestProblems: ContestProblem[];
   isFrozen: boolean;
   teamColumnWidthPercent: number;
@@ -50,6 +52,7 @@ export default function RankTable({
   teams,
   isMyTeam,
   isContestEnded,
+  canManageSubmissions,
   contestProblems,
   isFrozen,
   teamColumnWidthPercent,
@@ -188,7 +191,21 @@ export default function RankTable({
                         VP
                       </span>
                     )}
-                    {team.displayName || team.username}
+                    {canManageSubmissions && team.contestUserId ? (
+                      <Link
+                        href={{
+                          pathname: `/contest/${contestId}/status`,
+                          query: { viewAll: "true", userId: team.contestUserId },
+                        }}
+                        prefetch={false}
+                        className="rounded-sm underline decoration-blue-300 underline-offset-2 hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                        title={`查看 ${team.displayName || team.username} 的全部提交`}
+                      >
+                        {team.displayName || team.username}
+                      </Link>
+                    ) : (
+                      team.displayName || team.username
+                    )}
                   </div>
                   <div
                     className="block w-full min-w-0 truncate px-2 text-xs text-gray-900"
@@ -212,6 +229,7 @@ export default function RankTable({
               </td>
               {team.problems.map((prob, idx) => {
                 const cellBg = getCellColor(prob);
+                const contestProblem = contestProblems[idx];
 
                 // 专门处理蓝色样式 (Pending/Frozen)
                 const isFrozenCell =
@@ -303,6 +321,23 @@ export default function RankTable({
                           </span>
                         ) : null}
                       </div>
+                    )}
+                    {canManageSubmissions && team.contestUserId && contestProblem && (
+                      <Link
+                        href={{
+                          pathname: `/contest/${contestId}/status`,
+                          query: {
+                            viewAll: "true",
+                            userId: team.contestUserId,
+                            problem: contestProblem.displayId,
+                          },
+                        }}
+                        prefetch={false}
+                        className="mt-1 inline-flex max-w-full items-center justify-center rounded border border-blue-200 bg-white/95 px-1 py-0.5 text-[10px] font-medium leading-tight text-blue-800 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-800 print:hidden"
+                        aria-label={`查看 ${team.displayName || team.username} 的 ${contestProblem.displayId} 题提交`}
+                      >
+                        查看提交
+                      </Link>
                     )}
                   </td>
                 );

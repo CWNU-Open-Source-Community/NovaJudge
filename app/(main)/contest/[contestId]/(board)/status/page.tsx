@@ -17,6 +17,10 @@ import { ContestConfig } from "@/app/(main)/page";
 import { getDictionary } from "@/lib/get-dictionary";
 import { Metadata } from "next";
 import { getLatestVirtualParticipation } from "@/lib/virtual-participation";
+import { buildContestSubmissionWhere } from "@/lib/contest-submission-query";
+import type { ContestSubmissionFilters as SubmissionFilters } from "@/lib/contest-rejudge-types";
+import ContestSubmissionFilters from "./ContestSubmissionFilters";
+import ContestRejudgePanel from "./ContestRejudgePanel";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
@@ -46,6 +50,9 @@ interface Props {
     verdict?: Verdict;
     userSearch?: string;
     viewAll?: string;
+    runId?: string;
+    from?: string;
+    to?: string;
   }>;
   params: Promise<{
     contestId: string;
@@ -62,6 +69,9 @@ export default async function Status({ params, searchParams }: Props) {
     verdict,
     userSearch,
     viewAll = "false",
+    runId,
+    from,
+    to,
   } = await searchParams;
 
   const currentPage = parseInt(page as string) || 1;
@@ -139,13 +149,13 @@ export default async function Status({ params, searchParams }: Props) {
     ((isContestEnded && !isFrozen) || isAdmin || isGuest || Boolean(latestVp));
 
   // 用户选择查看所有提交且有权限
-  const userWantsViewAll = viewAll === "true";
+  const userWantsViewAll = isAdmin || viewAll === "true";
   const shouldViewAll = userWantsViewAll && canViewAll;
 
   const finalUserId = shouldViewAll ? userId : currentUser?.id;
 
   // 构建查询条件
-  const where: Prisma.SubmissionWhereInput = {
+  let where: Prisma.SubmissionWhereInput = {
     contestId: cid,
   };
 
@@ -156,7 +166,7 @@ export default async function Status({ params, searchParams }: Props) {
   }
 
   // 问题筛选
-  if (problem) {
+  if (problem && !isAdmin) {
     const contestProblem = await prisma.contestProblem.findFirst({
       where: {
         contestId: cid,
@@ -200,7 +210,18 @@ export default async function Status({ params, searchParams }: Props) {
     ];
   }
 
-  const [totalCount, submissions, allProblems, allLanguages, allVerdicts] =
+  const managerFilters: SubmissionFilters = { userId, userSearch, problem, language, verdict, runId, from, to };
+  let filterError = "";
+  if (isAdmin) {
+    try {
+      where = await buildContestSubmissionWhere(cid, managerFilters);
+    } catch (error) {
+      filterError = error instanceof Error ? error.message : "筛选条件无效，请重新选择。";
+      where = { contestId: cid, id: { in: [] } };
+    }
+  }
+
+  const [totalCount, submissions, allProblems, allLanguages, allVerdicts, teams] =
     await Promise.all([
       prisma.submission.count({ where }),
       prisma.submission.findMany({
@@ -211,6 +232,8 @@ export default async function Status({ params, searchParams }: Props) {
               id: true,
               username: true,
               displayName: true,
+              school: true,
+              seat: true,
             },
           },
           globalUser: {
@@ -245,7 +268,9 @@ export default async function Status({ params, searchParams }: Props) {
         select: {
           displayId: true,
           problemId: true,
+          problem: { select: { title: true } },
         },
+        orderBy: { displayId: "asc" },
       }),
       // 获取所有语言
       prisma.submission
@@ -263,6 +288,11 @@ export default async function Status({ params, searchParams }: Props) {
           distinct: ["verdict"],
         })
         .then((results) => results.map((r) => r.verdict)),
+      isAdmin ? prisma.user.findMany({
+        where: { contestId: cid },
+        select: { id: true, username: true, displayName: true, school: true, seat: true },
+        orderBy: { username: "asc" },
+      }) : Promise.resolve([]),
     ]);
 
   const displaySubmissions = submissions.map((submission) => {
@@ -314,7 +344,7 @@ export default async function Status({ params, searchParams }: Props) {
   };
 
   const statusLabel =
-    !shouldViewAll && currentUser
+    isAdmin ? "（本场全部提交）" : !shouldViewAll && currentUser
       ? "(Your Submissions)"
       : !shouldViewAll && latestVp
         ? `(Your latest VP #${latestVp.attemptNo})`
@@ -333,7 +363,7 @@ export default async function Status({ params, searchParams }: Props) {
             {statusLabel}
           </span>
         </h2>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+        {!isAdmin && <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <SearchAndFilter
             canSearch={canSearch}
             problems={allProblems}
@@ -345,10 +375,47 @@ export default async function Status({ params, searchParams }: Props) {
           {(currentUser || latestVp) && (
             <StatusControls canViewAll={canViewAll} />
           )}
-        </div>
+        </div>}
       </div>
 
-      {contestInfo.status === ContestStatus.PENDING ? (
+      {isAdmin && <ContestSubmissionFilters
+        key={JSON.stringify(managerFilters)}
+        filters={managerFilters}
+        teams={teams}
+        problems={allProblems.map((cp) => ({ displayId: cp.displayId, title: cp.problem.title }))}
+        languages={allLanguages}
+        verdicts={Object.values(Verdict)}
+        languageRecord={languageRecord}
+        verdictRecord={verdictRecord}
+      />}
+      {filterError && <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{filterError}</p>}
+      {isAdmin ? <ContestRejudgePanel
+        key={cid}
+        scopeKey={`${JSON.stringify(managerFilters)}:${currentPage}`}
+        contestId={cid}
+        filters={managerFilters}
+        totalCount={totalCount}
+        disabled={Boolean(filterError)}
+        submissions={submissions.map((submission) => ({
+          id: submission.id,
+          displayId: submission.displayId,
+          teamName: submission.user?.displayName || submission.globalUser?.displayName || submission.user?.username || submission.globalUser?.username || "Unknown",
+          username: submission.user?.username || submission.globalUser?.username || "",
+          school: submission.user?.school || null,
+          seat: submission.user?.seat || null,
+          problemLabel: problemIdMap.get(submission.problemId) || "?",
+          problemTitle: submission.problem.title,
+          submittedAt: submission.submittedAt.toISOString(),
+          language: languageRecord[submission.language] || submission.language,
+          verdict: submission.verdict,
+          timeUsed: submission.timeUsed,
+          memoryUsed: submission.memoryUsed,
+          passedTests: submission.passedTests,
+          totalTests: submission.totalTests,
+          errorMessage: submission.errorMessage,
+          virtualAttempt: submission.virtualParticipation?.attemptNo ?? null,
+        }))}
+      /> : contestInfo.status === ContestStatus.PENDING ? (
         <div className="text-center py-10 text-gray-500">
           {dict.contestList.noContestsFound}
         </div>

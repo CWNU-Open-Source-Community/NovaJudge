@@ -112,9 +112,9 @@ export default function RejudgeBatchPanel() {
         toast.error(result.error);
         return;
       }
-      toast.success(
-        `Rejudge request sent for ${result.queued} submissions`,
-      );
+      const message = `已入队 ${result.queued ?? 0} 条，跳过 ${result.skipped ?? 0} 条，入队失败 ${result.failed ?? 0} 条`;
+      if (result.failed) toast.error(message);
+      else toast.success(message);
       setCount(null);
       router.refresh();
     } catch {
@@ -213,11 +213,11 @@ export default function RejudgeBatchPanel() {
           </div>
 
           <div>
-            <label className={labelClass}>Username（可选，模糊匹配）</label>
+            <label className={labelClass}>队伍 / 用户（可选，模糊匹配）</label>
             <input
               type="text"
               className={inputClass + " w-full"}
-              placeholder="e.g. team01 / admin"
+              placeholder="队名、账号、学校或座位号"
               value={filters.username ?? ""}
               onChange={(e) => setField("username", e.target.value)}
             />

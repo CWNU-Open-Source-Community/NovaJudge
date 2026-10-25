@@ -184,8 +184,13 @@ export default async function Rank({ params, searchParams }: Props) {
     config?.frozenDuration !== 0 &&
     (freezeTime ? effectiveNow.getTime() >= freezeTime : false);
 
-  // 管理员可以看到实时榜单
-  const canSeeLiveBoard = isGlobalAdmin || isContestAdmin;
+  // 本场管理员和裁判可查看实时榜单并定位提交；其他管理操作保持原权限。
+  const canManageSubmissions =
+    isGlobalAdmin ||
+    (currentUser?.contestId === cid &&
+      (currentUser.role === ContestRole.ADMIN ||
+        currentUser.role === ContestRole.JUDGE));
+  const canSeeLiveBoard = canManageSubmissions;
   // 普通用户（包括未登录）看到的榜单是否应该是封榜状态
   const shouldShowFrozenState = isFrozen && !canSeeLiveBoard;
 
@@ -301,6 +306,7 @@ export default async function Rank({ params, searchParams }: Props) {
     rank: number | string;
     medal?: "Gold" | "Silver" | "Bronze" | "";
     id: string;
+    contestUserId?: string;
     username: string;
     displayName: string | null;
     members: string | null;
@@ -557,6 +563,7 @@ export default async function Rank({ params, searchParams }: Props) {
         rank: 0,
         medal: "",
         id: team.id,
+        contestUserId: team.id,
         username: team.username,
         displayName: team.displayName,
         members: team.members,
@@ -645,7 +652,8 @@ export default async function Rank({ params, searchParams }: Props) {
   });
   const isContestEnded =
     contestInfo.status === ContestStatus.ENDED || now > contestInfo.endTime;
-  const showUnfreezeButton = canSeeLiveBoard && isContestEnded && isFrozen;
+  const canManageContest = isGlobalAdmin || isContestAdmin;
+  const showUnfreezeButton = canManageContest && isContestEnded && isFrozen;
   const canOpenRankSubmissions = isContestEnded && !runningViewerVp;
 
   const dict = await getDictionary();
@@ -1051,7 +1059,7 @@ export default async function Rank({ params, searchParams }: Props) {
         <h2 className="text-2xl font-serif font-bold text-gray-800 sm:pl-2 flex flex-wrap items-center gap-y-2">
           Rank
           {showUnfreezeButton && <UnfreezeButton contest={{ id: contestInfo.id, config: contestInfo.config }} />}
-          {canSeeLiveBoard && (
+          {canManageContest && (
             <span className="ml-2 flex items-center gap-2">
               <ExportRankResultsButton contestId={cid} />
               <ExportEventFeedButton contestId={cid} />
@@ -1083,6 +1091,12 @@ export default async function Rank({ params, searchParams }: Props) {
         </div>
       </div>
 
+      {canManageSubmissions && (
+        <p className="mb-3 text-xs text-gray-600 print:hidden">
+          点击队名查看该队提交，或点击题目格内的「查看提交」定位到该队该题并进行重判。
+        </p>
+      )}
+
       {shouldShowFrozenState && (
         <div className="mb-4 p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
           <p className="text-blue-800 font-semibold flex items-center gap-2">
@@ -1105,6 +1119,7 @@ export default async function Rank({ params, searchParams }: Props) {
                 teams={[myRank]}
                 isMyTeam={true}
                 isContestEnded={canOpenRankSubmissions}
+                canManageSubmissions={canManageSubmissions}
                 contestProblems={contestProblems}
                 isFrozen={isFrozen}
                 teamColumnWidthPercent={teamColumnWidthPercent}
@@ -1117,6 +1132,7 @@ export default async function Rank({ params, searchParams }: Props) {
             teams={displayTeamRankings}
             isMyTeam={false}
             isContestEnded={canOpenRankSubmissions}
+            canManageSubmissions={canManageSubmissions}
             contestProblems={contestProblems}
             isFrozen={isFrozen}
             teamColumnWidthPercent={teamColumnWidthPercent}
@@ -1128,6 +1144,7 @@ export default async function Rank({ params, searchParams }: Props) {
                 teams={globalUpsolvingRanks}
                 isMyTeam={false}
                 isContestEnded={canOpenRankSubmissions}
+                canManageSubmissions={canManageSubmissions}
                 contestProblems={contestProblems}
                 isFrozen={isFrozen}
                 teamColumnWidthPercent={teamColumnWidthPercent}
