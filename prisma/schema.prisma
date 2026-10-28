@@ -125,6 +125,7 @@ model User {
   updatedAt DateTime  @updatedAt
   balloons  Balloon[]
   printJobs PrintJob[]
+  cliDevices CliDevice[]
 
   // 联合唯一索引：保证同一场比赛内 username 唯一
   @@unique([contestId, username])
@@ -162,8 +163,39 @@ model Contest {
 
   // 训练中心节点
   trainingNodes TrainingNode[]
+  cliSettings CliSettings[]
+  cliDevices CliDevice[]
 
   @@map("contests")
+}
+
+// Administrator-selected contest for browser-paired contestant CLI devices.
+model CliSettings {
+  id              Int      @id @default(1)
+  activeContestId Int?
+  activeContest   Contest? @relation(fields: [activeContestId], references: [id], onDelete: SetNull)
+
+  @@map("cli_settings")
+}
+
+model CliDevice {
+  id                 String   @id @default(uuid())
+  tokenHash          String   @unique @db.VarChar(64)
+  userCode           String   @unique @db.VarChar(9)
+  contestId          Int
+  contest            Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  userId             String?
+  user               User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  contestAccessToken String?  @db.Text
+  proctoringKeyHash   String?  @db.VarChar(64) // 监考签发的设备随当前监考登录绑定失效
+  pairingExpiresAt   DateTime
+  expiresAt          DateTime
+  approvedAt         DateTime?
+  createdAt          DateTime @default(now())
+
+  @@index([contestId])
+  @@index([userId])
+  @@map("cli_devices")
 }
 
 // 新增气球模型

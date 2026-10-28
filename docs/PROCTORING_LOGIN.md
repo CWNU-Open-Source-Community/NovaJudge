@@ -35,6 +35,33 @@
 - 其他未绑定的比赛账号保持原有登录方式；全局超级管理员登录与管理功能正常。
 - 绑定属于该场比赛的账号，客户端退出、注销或考试结束不会自动恢复普通浏览器登录。
 
+## 内网 macOS 自动绑定 submit
+
+监考桌面客户端仅在运行时选择 **intranet 内网后台**、使用 macOS 且登录 NovaJudge 考试时，
+安装内置的原生 `submit` 并获取专用提交授权。公网模式不安装、不签发；从内网切换到公网时，
+撤销并清理本客户端此前建立的提交授权。安装不需要访问互联网或安装额外运行时。
+
+监考登录成功后，桌面主进程调用 `POST /api/cli/device/proctoring`，请求体为 `{}`，请求头为：
+
+- `Authorization: Bearer <监考登录 JWT>`
+- `x-novajudge-proctor-key: <监考登录返回的随机凭据>`
+- 私有赛另加 `x-contest-access-token: <已有比赛授权>`
+
+服务端验证当前监考绑定及 TEAM 身份，要求登录比赛等于管理员指定的当前 CLI 比赛。
+未启用返回 `CLI_DISABLED`，不匹配返回 `CONTEST_CHANGED`，不自动改变管理员配置。
+成功响应包含 `deviceToken`、`loginSource: "PROCTORING"`、`contest`、`user`、`expiresAt`。
+客户端加上 `baseUrl`，原子写入 `~/.novajudge-submit.json`，权限为 `0600`。
+该文件只包含专用提交授权，不保存账号密码、管理员 API Key、监考 JWT 或监考随机凭据。
+
+`submit A.cpp` 会直接显示当前队伍及比赛，输入 `y` 后提交，无需再次打开浏览器绑定。
+授权期限不超过监考登录 JWT 和已有私有赛授权；再次监考登录、管理员切换比赛、
+修改私有赛密码会使旧授权失效。监考客户端退出、注销、结束考试或切换账号时，通过
+`DELETE /api/cli/device` 携带提交令牌撤销授权，并仅移除自己创建且仍匹配的本地配置。
+失效的监考授权提示回到监考客户端恢复，不进入普通浏览器配对流程。
+
+自动授权另需部署 `20261028000000_cli_devices` 和 `20261028010000_cli_proctoring_devices`
+两个迁移中的表及字段，然后重新生成 Prisma Client。普通网页配对仍只支持未绑定监考的队伍。
+
 升级需增加 `prisma/migrations/20261013000000_proctored_logins/migration.sql` 中的两个可空字段，
 生成 Prisma Client、重新构建并重启 NovaJudge；已有用户初始均未绑定。
 项目原有 `prisma db push` 部署方式同样可以添加这些字段。

@@ -77,7 +77,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       submission,
-      statusUrl: `/contest/${contestId}/status/${submission.id}`,
+      statusUrl: `/contest/${contestId}/status/${submission.displayId}`,
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message =

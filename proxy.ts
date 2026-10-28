@@ -9,7 +9,7 @@ export async function proxy(req: NextRequest) {
   const userToken = req.cookies.get("user_token")?.value || req.headers.get("authorization")?.match(/^Bearer (\S+)$/i)?.[1];
   const globalToken = req.cookies.get("auth_token")?.value;
   const administrator = globalToken ? await getVerifiedGlobalUser(globalToken) : null;
-  if (userToken && !administrator?.isGlobalAdmin && !["/api/auth/login", "/api/auth/logout"].includes(path)) {
+  if (userToken && !userToken.startsWith("njcli_") && !administrator?.isGlobalAdmin && !["/api/auth/login", "/api/auth/logout"].includes(path)) {
     let payload;
     try { payload = await verifyAuth(userToken); } catch { /* Existing route authentication handles invalid tokens. */ }
     if (payload?.contestId && !payload.isGlobalAdmin) {

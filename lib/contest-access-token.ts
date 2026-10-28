@@ -30,15 +30,17 @@ function credentialVersion(contest: ContestCredential, secret: Uint8Array) {
 export async function signContestAccessToken(
   contest: ContestCredential,
   secret: Uint8Array,
+  maxAgeSeconds = CONTEST_ACCESS_MAX_AGE,
 ) {
   if (!contest.password) throw new Error("Private contest password is not configured");
+  if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds <= 0) throw new Error("Invalid contest access duration");
   return new SignJWT({ credential: credentialVersion(contest, secret) })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuer(ISSUER)
     .setAudience(`contest:${contest.id}`)
     .setSubject(String(contest.id))
     .setIssuedAt()
-    .setExpirationTime(`${CONTEST_ACCESS_MAX_AGE}s`)
+    .setExpirationTime(`${maxAgeSeconds}s`)
     .sign(secret);
 }
 

@@ -58,11 +58,21 @@ Browser grants expire after 24 hours and are cleared on logout. Changing the
 contest password invalidates existing grants. Legacy private contests without
 a password deny access until an administrator configures one. CLI login takes
 `contestPassword` and returns `contestAccessToken`, sent on subsequent requests
-as `x-contest-access-token`. The Node.js client prompts for it; the PowerShell
-client reads `contestPassword` from its desktop credentials file. CCS Basic
+as `x-contest-access-token`. The macOS client collects it on the browser binding
+page. The legacy Node.js client prompts in the terminal; the PowerShell client
+reads `contestPassword` from its desktop credentials file. CCS Basic
 authentication is restricted to super administrators.
 
 Run access regression tests with `npm run test:contest-access`.
+
+### Contestant CLI for macOS
+
+An administrator selects the site's active CLI contest in **System Settings**.
+Open `/cli` to install the global `submit` command, then run `submit A.cpp`.
+On first use, a browser page opens to sign in with the contest team account and
+bind your Mac. Selecting a different contest prompts a new browser sign-in.
+It uses macOS built-in tools and needs no extra runtime. See the
+[installation and usage guide](./docs/CONTESTANT_CLI.md).
 
 ## Tech Stack
 

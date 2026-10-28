@@ -1,4 +1,4 @@
-import { ContestRole, Verdict } from "@/lib/generated/prisma/client";
+import { ContestRole, Verdict, type Prisma, type Submission } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { enqueueJudge } from "@/lib/queue";
 import { redis } from "@/lib/redis";
@@ -82,6 +82,7 @@ export async function createContestSubmission({
   code,
   actor,
   contestAccessToken,
+  persistSubmission,
 }: {
   contestId: number;
   problemDisplayId: string;
@@ -89,6 +90,7 @@ export async function createContestSubmission({
   code: string;
   actor: SubmissionActor;
   contestAccessToken?: string;
+  persistSubmission?: (data: Prisma.SubmissionUncheckedCreateInput) => Promise<Submission>;
 }) {
   const contestProblem = await prisma.contestProblem.findFirst({
     where: {
@@ -174,20 +176,23 @@ export async function createContestSubmission({
 
   const nextId = await getNextDisplayId(contestId);
 
-  const submission = await prisma.submission.create({
-    data: {
-      displayId: nextId,
-      code,
-      language,
-      contestId,
-      problemId: contestProblem.problemId,
-      userId: actor.type === "contest" ? actor.userId : null,
-      globalUserId: actor.type === "global" ? actor.globalUserId : null,
-      virtualParticipationId,
-      verdict: Verdict.PENDING,
-      codeLength: code.length,
-    },
-  });
+  const submissionData: Prisma.SubmissionUncheckedCreateInput = {
+    displayId: nextId,
+    code,
+    language,
+    contestId,
+    problemId: contestProblem.problemId,
+    userId: actor.type === "contest" ? actor.userId : null,
+    globalUserId: actor.type === "global" ? actor.globalUserId : null,
+    virtualParticipationId,
+    verdict: Verdict.PENDING,
+    codeLength: code.length,
+  };
+  // An optional persistence hook can revalidate authorization atomically with
+  // this insert. It must finish its transaction before judge jobs are queued.
+  const submission = persistSubmission
+    ? await persistSubmission(submissionData)
+    : await prisma.submission.create({ data: submissionData });
 
   try {
     await withTimeout(

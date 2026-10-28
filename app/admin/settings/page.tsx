@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import CliSettings from "./CliSettings";
 
 type EnvSetting = {
   key: string;
@@ -97,6 +98,8 @@ export default function SystemSettingsPage() {
           Manage runtime service links for the judge platform.
         </p>
       </div>
+
+      <CliSettings />
 
       <form onSubmit={handleSubmit} className="rounded-lg bg-white p-6 shadow">
         <div className="flex flex-col gap-2 border-b border-gray-200 pb-5">

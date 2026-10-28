@@ -1,0 +1,401 @@
+#!/bin/bash
+# NovaJudge native macOS submit
+# Native macOS client: Bash, JavaScript for Automation, Foundation and curl only.
+set -eu
+umask 077
+
+script_path="${BASH_SOURCE[0]}"
+while [ -L "$script_path" ]; do
+  script_dir="$(cd -P "$(dirname "$script_path")" && pwd)"
+  script_path="$(/usr/bin/readlink "$script_path")"
+  case "$script_path" in /*) ;; *) script_path="$script_dir/$script_path" ;; esac
+done
+export NOVAJUDGE_SUBMIT_SCRIPT_DIR="$(cd -P "$(dirname "$script_path")" && pwd)"
+# osascript reads its program from stdin; keep the caller's input for confirmation.
+/usr/bin/osascript -l JavaScript - "$@" 3<&0 <<'JXA'
+ObjC.import("Foundation");
+ObjC.import("stdlib");
+
+const env = $.NSProcessInfo.processInfo.environment;
+const fm = $.NSFileManager.defaultManager;
+function getenv(name) {
+  const value = env.objectForKey(name);
+  return value.isNil() ? "" : ObjC.unwrap(value);
+}
+const home = getenv("HOME") || ObjC.unwrap($.NSHomeDirectory());
+const configPath = home + "/.novajudge-submit.json";
+const defaultsPath = getenv("NOVAJUDGE_SUBMIT_SCRIPT_DIR") + "/submit-defaults.json";
+
+function data(text) { return $(String(text)).dataUsingEncoding($.NSUTF8StringEncoding); }
+function decode(value) {
+  const result = $.NSString.alloc.initWithDataEncoding(value, $.NSUTF8StringEncoding);
+  if (result.isNil()) throw new Error("Input must be UTF-8 text.");
+  return ObjC.unwrap(result);
+}
+function print(text, error) {
+  (error ? $.NSFileHandle.fileHandleWithStandardError : $.NSFileHandle.fileHandleWithStandardOutput)
+    .writeData(data(String(text) + "\n"));
+}
+function exists(file) { return fm.fileExistsAtPath(file); }
+function readText(file) {
+  const contents = $.NSData.dataWithContentsOfFile(file);
+  if (contents.isNil()) throw new Error("Cannot read file: " + file);
+  return decode(contents);
+}
+function readJson(file, fallback) {
+  if (!exists(file)) return fallback;
+  let value;
+  try { value = JSON.parse(readText(file)); }
+  catch (_) { throw new Error("Invalid JSON file: " + file); }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Expected a JSON object in: " + file);
+  }
+  return value;
+}
+function writeConfig(config) {
+  if (!$(JSON.stringify(config, null, 2) + "\n").writeToFileAtomicallyEncodingError(
+      configPath, true, $.NSUTF8StringEncoding, null)) {
+    throw new Error("Cannot save login: " + configPath);
+  }
+  if (!fm.setAttributesOfItemAtPathError({ NSFilePosixPermissions: 384 }, configPath, null)) {
+    throw new Error("Cannot protect login file permissions: " + configPath);
+  }
+}
+function normalizeUrl(value) {
+  const result = String(value || "").trim().replace(/\/+$/, "");
+  // Only server origins / deployment prefixes; credentials, query strings and fragments are invalid here.
+  if (!/^https?:\/\/[^\s\/?#@]+(?:\/[^\s?#]*)?$/.test(result)) {
+    throw new Error("Server URL must be an http:// or https:// URL without credentials, query or fragment.");
+  }
+  return result;
+}
+function defaultUrl(flags, config) {
+  const explicit = flags.url || getenv("NOVAJUDGE_URL") || (config && config.baseUrl);
+  if (explicit) return normalizeUrl(explicit);
+  const defaults = readJson(defaultsPath, {});
+  return normalizeUrl(defaults.baseUrl || defaults.url || "http://localhost:3001");
+}
+function parse(args, allowed) {
+  const flags = {}, rest = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--") { rest.push.apply(rest, args.slice(i + 1)); break; }
+    if (arg.charAt(0) !== "-") { rest.push(arg); continue; }
+    const match = arg.match(/^--([^=]+)(?:=(.*))?$/);
+    if (!match || !Object.prototype.hasOwnProperty.call(allowed, match[1])) {
+      throw new Error("Unknown option: " + arg + ". Run submit --help.");
+    }
+    const key = match[1];
+    if (Object.prototype.hasOwnProperty.call(flags, key)) throw new Error("Repeated option: --" + key);
+    if (allowed[key] === "boolean") {
+      if (match[2] !== undefined) throw new Error("--" + key + " does not take a value.");
+      flags[key] = true;
+    } else {
+      const value = match[2] === undefined ? args[++i] : match[2];
+      if (value === undefined || value === "" || value.indexOf("--") === 0) {
+        throw new Error("Missing value for --" + key + ".");
+      }
+      flags[key] = value;
+    }
+  }
+  return { flags: flags, rest: rest };
+}
+function runTask(command, args, stdin) {
+  const task = $.NSTask.alloc.init;
+  task.launchPath = command;
+  task.arguments = args;
+  const out = $.NSPipe.pipe, err = $.NSPipe.pipe;
+  task.standardOutput = out;
+  task.standardError = err;
+  let input;
+  if (typeof stdin === "string") {
+    input = $.NSPipe.pipe;
+    task.standardInput = input;
+  } else if (stdin) {
+    task.standardInput = stdin;
+  }
+  task.launch;
+  if (input) {
+    input.fileHandleForWriting.writeData(data(stdin));
+    input.fileHandleForWriting.closeFile;
+  }
+  const stdout = decode(out.fileHandleForReading.readDataToEndOfFile);
+  const stderr = decode(err.fileHandleForReading.readDataToEndOfFile);
+  task.waitUntilExit;
+  return { status: task.terminationStatus, stdout: stdout, stderr: stderr };
+}
+function curlValue(value) {
+  return '"' + String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+    .replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/\t/g, "\\t") + '"';
+}
+function request(baseUrl, method, endpoint, payload, config) {
+  const lines = ["url = " + curlValue(normalizeUrl(baseUrl) + endpoint),
+    "request = " + curlValue(method), 'header = "Content-Type: application/json"'];
+  if (config) {
+    lines.push("header = " + curlValue("Authorization: Bearer " + config.deviceToken));
+  }
+  if (payload !== undefined) lines.push("data-binary = " + curlValue(JSON.stringify(payload)));
+  // The config (including credentials and source code) goes through stdin, never process arguments.
+  const result = runTask("/usr/bin/curl", ["--disable", "--silent", "--show-error", "--connect-timeout", "10",
+    "--max-time", "30", "--max-filesize", "10485760", "--write-out", "\n%{http_code}", "--config", "-"], lines.join("\n"));
+  if (result.status !== 0) {
+    throw new Error("Cannot reach " + baseUrl + ": " + result.stderr.trim());
+  }
+  const separator = result.stdout.lastIndexOf("\n");
+  const status = Number(result.stdout.slice(separator + 1));
+  const body = result.stdout.slice(0, separator);
+  let response;
+  try { response = body ? JSON.parse(body) : {}; }
+  catch (_) { throw new Error("Server returned HTTP " + status + " with a non-JSON response. Check the server URL."); }
+  if (!response || typeof response !== "object") throw new Error("Invalid server response (HTTP " + status + ").");
+  return { status: status, ok: status >= 200 && status < 300, data: response };
+}
+function responseError(result, prefix) {
+  const error = new Error(prefix + ": " + (result.data.error || "HTTP " + result.status));
+  error.code = result.data.code;
+  return error;
+}
+function verificationUrl(config) {
+  // This protocol has one fixed verification route. Reject protocol-relative URLs,
+  // backslashes, redirects and any path/query that could expose the device token.
+  const code = String(config.userCode || "");
+  if (!/^[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$/.test(code) ||
+      config.verificationPath !== "/cli/connect?code=" + encodeURIComponent(code)) {
+    throw new Error("Server returned an invalid browser verification path.");
+  }
+  return normalizeUrl(config.baseUrl) + config.verificationPath;
+}
+function showVerification(config) {
+  const url = verificationUrl(config);
+  print("Sign in to your team in the browser to connect this computer.");
+  print("Pairing code: " + config.userCode);
+  print("Open: " + url);
+  if (getenv("NOVAJUDGE_NO_BROWSER") !== "1") {
+    try {
+      if (runTask("/usr/bin/open", [url]).status !== 0) print("Could not open the browser. Open the URL above manually.", true);
+    } catch (_) { print("Could not open the browser. Open the URL above manually.", true); }
+  }
+  print("Waiting for browser authorization... (Ctrl+C to cancel)");
+}
+function deviceState(config) {
+  const result = request(config.baseUrl, "GET", "/api/cli/device", undefined, config);
+  if (result.status === 401) return { status: "expired" };
+  if (!result.ok && isProctoring(config, result.data)) throw new Error(stateMessage(result.data, config));
+  if (!result.ok) throw responseError(result, "Cannot check authorization");
+  if (["pending", "ready", "expired", "contest_changed", "disabled"].indexOf(result.data.status) === -1) {
+    throw new Error("Server returned an invalid authorization status.");
+  }
+  return result.data;
+}
+function isProctoring(config, state) {
+  return !!((config && config.loginSource === "PROCTORING") || (state && state.loginSource === "PROCTORING"));
+}
+function stateMessage(state, config) {
+  if (state.code === "CLI_DISABLED") return "The administrator has not enabled a current contest for submit. Contact the administrator.";
+  if (isProctoring(config, state)) return "This submit authorization is managed by the monitoring client. Reconnect through the monitoring client to restore submission access.";
+  if (state.status === "expired") return "Browser authorization expired. Run submit again to reconnect.";
+  if (state.status === "contest_changed") return "The current contest changed. Run submit again to reconnect in the browser.";
+  if (state.code === "REAUTH_REQUIRED") return "This team needs new browser authorization. Run submit again to reconnect.";
+  return state.error || "Command-line submission is disabled. Contact the administrator.";
+}
+function saveReady(config, state) {
+  if (!state.contest || !Number.isSafeInteger(state.contest.id) || state.contest.id <= 0 ||
+      !state.user || typeof state.user.username !== "string" || !state.user.username) {
+    throw new Error("Server authorization is missing the contest or team.");
+  }
+  config.contest = state.contest;
+  config.user = state.user;
+  if (state.loginSource === "PROCTORING" || state.loginSource === "BROWSER") config.loginSource = state.loginSource;
+  if (state.expiresAt) config.expiresAt = state.expiresAt;
+  writeConfig(config);
+  return config;
+}
+function showBinding(config) {
+  print("Contest: #" + config.contest.id + " " + config.contest.title);
+  print("Team: " + (config.user.displayName || config.user.username) + " (" + config.user.username + ")");
+}
+function confirmSubmission(config, filename, problem, language) {
+  print("\nSubmission information:");
+  print("Server: " + config.baseUrl);
+  showBinding(config);
+  print("File: " + filename);
+  print("Problem: " + problem);
+  print("Language: " + language);
+  const input = $.NSFileHandle.alloc.initWithFileDescriptor(3);
+  while (true) {
+    $.NSFileHandle.fileHandleWithStandardOutput.writeData(data("Submit this file? [y/N] "));
+    const line = $.NSMutableData.data;
+    while (true) {
+      const byte = input.readDataOfLength(1);
+      if (Number(byte.length) === 0) { print("\nCancelled. Nothing was submitted."); return false; }
+      if (byte.isEqualToData(data("\n"))) break;
+      line.appendData(byte);
+    }
+    const answer = decode(line).trim().toLowerCase();
+    if (answer === "y") return true;
+    if (answer === "" || answer === "n") { print("Cancelled. Nothing was submitted."); return false; }
+    print("Please enter y or n.");
+  }
+}
+function waitForAuthorization(config) {
+  showVerification(config);
+  const expiresAt = Date.parse(config.expiresAt);
+  if (!Number.isFinite(expiresAt)) throw new Error("Server returned an invalid pairing expiration time.");
+  const deadline = Math.min(expiresAt, Date.now() + 10 * 60 * 1000);
+  const interval = Math.max(2, Math.min(10, Number(config.pollInterval) || 2));
+  while (true) {
+    const state = deviceState(config);
+    if (state.status === "ready") {
+      saveReady(config, state);
+      print("Browser authorization complete.");
+      return config;
+    }
+    if (state.status !== "pending") throw new Error(stateMessage(state));
+    if (Date.now() >= deadline) throw new Error("Pairing code expired. Run submit again to get a new code.");
+    $.NSThread.sleepForTimeInterval(Math.max(0, Math.min(interval, (deadline - Date.now()) / 1000)));
+  }
+}
+function pair(baseUrl) {
+  const result = request(baseUrl, "POST", "/api/cli/device", {});
+  if (!result.ok) throw responseError(result, "Cannot start browser authorization");
+  const value = result.data;
+  if (typeof value.deviceToken !== "string" || !/^njcli_[A-Za-z0-9_-]+$/.test(value.deviceToken)) {
+    throw new Error("Server returned an invalid device authorization.");
+  }
+  const config = { baseUrl: baseUrl, deviceToken: value.deviceToken, userCode: value.userCode,
+    verificationPath: value.verificationPath, expiresAt: value.expiresAt,
+    pollInterval: value.pollInterval, contest: value.contest };
+  verificationUrl(config);
+  if (!Number.isFinite(Date.parse(config.expiresAt))) throw new Error("Server returned an invalid pairing expiration time.");
+  writeConfig(config);
+  return waitForAuthorization(config);
+}
+function ensureBound() {
+  const config = readJson(configPath, {});
+  if (!config.deviceToken || !config.baseUrl) {
+    if (isProctoring(config)) throw new Error(stateMessage({}, config));
+    return pair(defaultUrl({}, config));
+  }
+  const state = deviceState(config);
+  if (state.status === "ready") return saveReady(config, state);
+  if (isProctoring(config, state)) throw new Error(stateMessage(state, config));
+  if (state.status === "pending" && Date.parse(config.expiresAt) > Date.now()) return waitForAuthorization(config);
+  if (state.status === "expired" || state.status === "contest_changed" || state.status === "pending" || state.code === "REAUTH_REQUIRED") {
+    print(state.status === "pending" ? "Pairing code expired; requesting a new code." : stateMessage(state));
+    return pair(normalizeUrl(config.baseUrl));
+  }
+  throw new Error(stateMessage(state));
+}
+function login(args) {
+  const parsed = parse(args, { url: "value" });
+  if (parsed.rest.length) throw new Error("Unexpected login argument: " + parsed.rest[0]);
+  const current = readJson(configPath, {});
+  if (isProctoring(current)) throw new Error(stateMessage({}, current));
+  const config = pair(defaultUrl(parsed.flags, current));
+  showBinding(config);
+}
+function submit(args) {
+  const parsed = parse(args, { problem: "value", language: "value" });
+  if (parsed.rest.length !== 1) throw new Error("Provide exactly one source file, for example: submit A.cpp");
+  const filename = parsed.rest[0];
+  const directory = Ref();
+  if (!fm.fileExistsAtPathIsDirectory(filename, directory) || directory[0]) throw new Error("Source file not found: " + filename);
+  const name = filename.split("/").pop();
+  const extension = (name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
+  const inferred = (name.slice(0, extension ? -extension.length : undefined).match(/^([A-Za-z][A-Za-z0-9_-]*)/) || ["", ""])[1];
+  const problem = String(parsed.flags.problem || inferred).trim().toUpperCase();
+  const languages = { ".c": "c", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".java": "java", ".py": "pypy3", ".py3": "pypy3" };
+  const language = String(parsed.flags.language || languages[extension] || "").trim();
+  if (!problem) throw new Error("Cannot infer problem. Use: submit --problem A main.cpp");
+  if (!language) throw new Error("Cannot infer language. Use: submit --language cpp A.txt");
+  const code = readText(filename);
+  if (!code.trim()) throw new Error("Source file is empty: " + filename);
+  let config = ensureBound();
+  if (!confirmSubmission(config, filename, problem, language)) return;
+  const payload = { problem: problem, language: language, code: code };
+  let result = request(config.baseUrl, "POST", "/api/cli/device/submit", payload, config);
+  if (!result.ok && isProctoring(config) && (result.status === 401 ||
+      ["CONTEST_CHANGED", "REAUTH_REQUIRED", "DEVICE_EXPIRED", "INVALID_DEVICE_TOKEN", "PAIRING_REQUIRED", "CLI_DISABLED"].indexOf(result.data.code) !== -1)) {
+    throw new Error(stateMessage(result.data, config));
+  }
+  if (result.status === 401 || result.data.code === "CONTEST_CHANGED" || result.data.code === "REAUTH_REQUIRED") {
+    print("Browser authorization must be renewed before submitting.");
+    config = pair(normalizeUrl(config.baseUrl));
+    if (!confirmSubmission(config, filename, problem, language)) return;
+    result = request(config.baseUrl, "POST", "/api/cli/device/submit", payload, config);
+  }
+  if (!result.ok) {
+    const error = responseError(result, "Submit failed");
+    throw error;
+  }
+  if (!result.data.submission || !Number.isSafeInteger(result.data.submission.displayId) || result.data.submission.displayId <= 0) {
+    throw new Error("Server accepted the request but returned no contest submission number. Check the contest page before submitting again.");
+  }
+  const submission = result.data.submission;
+  print("Submitted #" + submission.displayId + " " + problem + " " + language);
+  print(normalizeUrl(config.baseUrl) + "/contest/" + config.contest.id + "/status/" + submission.displayId);
+}
+function usage() {
+  print("NovaJudge submit — native macOS client\n\n" +
+    "Usage:\n" +
+    "  submit A.cpp\n" +
+    "  submit --problem A main.cpp\n" +
+    "  submit --language cpp A.txt\n" +
+    "  submit login [--url <server>]\n" +
+    "  submit status\n" +
+    "  submit logout\n\n" +
+    "Your first submission opens a browser to sign in to your team and connect this computer.\n" +
+    "The administrator selects the current contest. Later submissions reuse your browser authorization.\n" +
+    "When the monitoring client connects submit automatically, manage its authorization in that client.\n" +
+    "Review the submission information and enter y to submit; n or Enter cancels.\n" +
+    "No contest ID, username or password is entered in the terminal.\n" +
+    "NOVAJUDGE_URL overrides the installed default server for login; --url has priority.\n" +
+    "NOVAJUDGE_NO_BROWSER=1 prints the verification URL without opening the browser automatically.\n" +
+    "Saved device authorization: " + configPath);
+}
+function logout() {
+  try {
+    const config = readJson(configPath, {});
+    if (config.deviceToken && config.baseUrl) {
+      const result = request(config.baseUrl, "DELETE", "/api/cli/device", undefined, config);
+      if (!result.ok && result.status !== 401) throw responseError(result, "Cannot revoke browser authorization");
+    }
+  } catch (error) {
+    print("Warning: " + (error.message || error) + " The saved authorization will still be removed locally.", true);
+  }
+  if (exists(configPath) && !fm.removeItemAtPathError(configPath, null)) throw new Error("Cannot remove saved authorization: " + configPath);
+  print("Logged out. Saved device authorization removed.");
+}
+function status() {
+  const config = readJson(configPath, {});
+  if (!config.deviceToken || !config.baseUrl) {
+    print(isProctoring(config) ? stateMessage({}, config) : "Not connected. Run submit A.cpp to connect in the browser.");
+    return;
+  }
+  const state = deviceState(config);
+  print("Server: " + config.baseUrl);
+  print("Authorization: " + state.status);
+  if (state.status === "ready") saveReady(config, state);
+  print("Authorization source: " + (isProctoring(config, state) ? "monitoring client" : "browser"));
+  if (state.status === "ready") showBinding(config);
+  else if (isProctoring(config, state)) print(stateMessage(state, config));
+  else if (state.status === "pending") print("Complete browser authorization: " + verificationUrl(config));
+  else print(stateMessage(state));
+}
+function run(args) {
+  try {
+    if (!args.length || args.indexOf("--help") !== -1 || args.indexOf("-h") !== -1 || args[0] === "help") { usage(); return; }
+    if (args[0] === "login") { login(args.slice(1)); return; }
+    if (args[0] === "status" || args[0] === "logout") {
+      if (args.length !== 1) throw new Error("Unexpected argument: " + args[1]);
+      if (args[0] === "logout") logout();
+      else status();
+      return;
+    }
+    submit(args);
+  } catch (error) {
+    print("submit: " + (error.message || error), true);
+    $.exit(1);
+  }
+}
+JXA
