@@ -1,0 +1,71 @@
+name: novajudge-proctor-manual-e2e
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: e2e
+      POSTGRES_PASSWORD: local_judge_e2e_only
+      POSTGRES_DB: novajudge_e2e_test
+      TZ: Asia/Shanghai
+    ports: ["127.0.0.1:55432:5432"]
+    volumes: ["judge-db:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U e2e -d novajudge_e2e_test"]
+      interval: 5s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:56379:6379"]
+    volumes: ["judge-redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 30
+  judge:
+    image: novajudge-manual-e2e-judge:local
+    build:
+      context: ../judge
+      dockerfile: Dockerfile
+    privileged: true
+    shm_size: 512m
+    environment:
+      TZ: Asia/Shanghai
+    ports: ["127.0.0.1:55050:5050"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5050/config"]
+      interval: 5s
+      retries: 30
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: local_mysql_root_e2e_only
+      MYSQL_DATABASE: proctor_e2e_test
+      MYSQL_USER: e2e
+      MYSQL_PASSWORD: local_proctor_e2e_only
+      TZ: Asia/Shanghai
+    ports: ["127.0.0.1:53307:3306"]
+    volumes: ["proctor-db:/var/lib/mysql"]
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql --protocol=tcp -h 127.0.0.1 -u\"$$MYSQL_USER\" \"$$MYSQL_DATABASE\" -e 'SELECT 1' >/dev/null"]
+      start_period: 30s
+      interval: 5s
+      retries: 30
+  media:
+    image: bluenviron/mediamtx:1
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: "127.0.0.1"
+      MTX_AUTHHTTPADDRESS: "http://host.docker.internal:4031/api/media/auth"
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8889:8889"
+      - "127.0.0.1:9997:9997"
+      - "127.0.0.1:8189:8189/tcp"
+      - "127.0.0.1:8189:8189/udp"
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+volumes:
+  judge-db:
+  judge-redis:
+  proctor-db:

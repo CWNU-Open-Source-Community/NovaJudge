@@ -9,6 +9,7 @@ import { getPrimaryClientIp } from "@/lib/request-ip";
 import { createContestSubmission } from "@/lib/contest-submission";
 import { enforceCliRateLimit } from "@/lib/cli-rate-limit";
 import { lockCliSettings } from "@/lib/cli-settings-lock";
+import { assertCliEnabled, isCliEnabled } from "@/lib/cli-deployment";
 import { proctoringAccessAllowed, PROCTORING_HEADER } from "@/lib/proctoring-access";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import {
@@ -49,8 +50,17 @@ export function cliErrorResponse(error: unknown) {
 }
 
 export async function activeCliContest(db: Prisma.TransactionClient = prisma) {
+  if (!isCliEnabled()) return null;
   const settings = await db.cliSettings.findUnique({ where: { id: 1 }, select: { activeContest: { select: contestSelect } } });
   return settings?.activeContest ?? null;
+}
+
+export async function assertActiveCliContest(contestId: number, db: Prisma.TransactionClient = prisma) {
+  assertCliEnabled();
+  const contest = await activeCliContest(db);
+  if (!contest) throw new CliDeviceError("The administrator has not selected a CLI contest.", 409, "CLI_DISABLED");
+  if (contest.id !== contestId) throw new CliDeviceError("The active CLI contest changed. Sign in for the selected contest again.", 409, "CONTEST_CHANGED");
+  return contest;
 }
 
 function displayContest(contest: { id: number; title: string; type: string }, allowed = false) {
@@ -59,10 +69,11 @@ function displayContest(contest: { id: number; title: string; type: string }, al
 
 export async function publicCliSettings() {
   const contest = await activeCliContest();
-  return { contest: contest ? displayContest(contest, contest.type === "PUBLIC" || await hasContestAccess(contest.id)) : null };
+  return { enabled: isCliEnabled(), contest: contest ? displayContest(contest, contest.type === "PUBLIC" || await hasContestAccess(contest.id)) : null };
 }
 
 export async function createCliDevice(request: Request) {
+  assertCliEnabled();
   await enforceCliRateLimit(request, "pair");
   const contest = await activeCliContest();
   if (!contest) throw new CliDeviceError("The administrator has not selected a CLI contest.", 409, "CLI_DISABLED");
@@ -97,6 +108,7 @@ export async function createCliDevice(request: Request) {
 }
 
 export async function createProctoringCliDevice(request: Request) {
+  assertCliEnabled();
   const token = request.headers.get("authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
   if (!token) throw new CliDeviceError("A monitored login Bearer token is required.", 401, "PROCTORING_AUTH_REQUIRED");
   let payload;
@@ -174,6 +186,7 @@ async function stateOf(device: LoadedDevice, db: Prisma.TransactionClient = pris
 }
 
 export async function getCliDevice(request: Request) {
+  assertCliEnabled();
   const device = await deviceFromRequest(request);
   const state = await stateOf(device);
   return {
@@ -201,6 +214,7 @@ function throwForState(state: CliDeviceState) {
 }
 
 export async function cliApprovalDetails(code: unknown) {
+  assertCliEnabled();
   const device = await prisma.cliDevice.findUnique({ where: { userCode: normalizeCliUserCode(code) }, include: deviceInclude });
   if (!device) throw new CliDeviceError("Pairing code not found. Run submit login to obtain a new code.", 404, "INVALID_CODE");
   const state = await stateOf(device);
@@ -214,6 +228,7 @@ export async function cliApprovalDetails(code: unknown) {
 }
 
 export async function approveCliDevice(request: Request, body: Record<string, unknown>) {
+  assertCliEnabled();
   const userCode = normalizeCliUserCode(body.code);
   await enforceCliRateLimit(request, "approve", userCode);
   const username = typeof body.username === "string" ? body.username.trim() : "";
@@ -241,6 +256,7 @@ export async function approveCliDevice(request: Request, body: Record<string, un
   const now = new Date();
   await prisma.$transaction(async (tx) => {
     await lockCliSettings(tx, "shared");
+    assertCliEnabled();
     const settings = await tx.cliSettings.findUnique({ where: { id: 1 }, select: { activeContestId: true } });
     if (settings?.activeContestId !== device.contestId) throw new CliDeviceError("The active contest changed. Obtain a new pairing code.", 409, "CONTEST_CHANGED");
     // Recheck the account after password verification, then claim the code once.
@@ -259,6 +275,7 @@ export async function approveCliDevice(request: Request, body: Record<string, un
 }
 
 export async function submitCliDevice(request: Request, body: Record<string, unknown>) {
+  assertCliEnabled();
   const device = await deviceFromRequest(request);
   throwForState(await stateOf(device));
   if (!device.user) throw new CliDeviceError("Bind a team account first.", 403, "REAUTH_REQUIRED");
@@ -276,6 +293,7 @@ export async function submitCliDevice(request: Request, body: Record<string, unk
       actor: { type: "contest", userId: device.user.id, role: device.user.role, isGlobalAdmin: false },
       persistSubmission: (data) => prisma.$transaction(async (tx) => {
         await lockCliSettings(tx, "shared");
+        assertCliEnabled();
         const currentDevice = await deviceFromRequest(request, tx);
         throwForState(await stateOf(currentDevice, tx));
         if (currentDevice.contestId !== data.contestId || currentDevice.user?.id !== data.userId) {

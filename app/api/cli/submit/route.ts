@@ -4,9 +4,13 @@ import { ContestRole } from "@/lib/generated/prisma/client";
 import { createContestSubmission } from "@/lib/contest-submission";
 import { prisma } from "@/lib/prisma";
 import { cliContestAccessResponse } from "../contest-access";
+import { assertCliEnabled } from "@/lib/cli-deployment";
+import { assertActiveCliContest, CliDeviceError, cliErrorResponse } from "@/lib/cli-devices";
+import { lockCliSettings } from "@/lib/cli-settings-lock";
 
 export async function POST(req: Request) {
   try {
+    assertCliEnabled();
     const auth = req.headers.get("authorization") || "";
     const match = auth.match(/^Bearer\s+(.+)$/i);
     if (!match) {
@@ -48,6 +52,7 @@ export async function POST(req: Request) {
       );
     }
 
+    await assertActiveCliContest(contestId);
     const denied = await cliContestAccessResponse(req, contestId);
     if (denied) return denied;
 
@@ -72,6 +77,11 @@ export async function POST(req: Request) {
         role: user.role,
         isGlobalAdmin: false,
       },
+      persistSubmission: (data) => prisma.$transaction(async (tx) => {
+        await lockCliSettings(tx, "shared");
+        await assertActiveCliContest(contestId, tx);
+        return tx.submission.create({ data });
+      }),
     });
 
     return NextResponse.json({
@@ -80,6 +90,7 @@ export async function POST(req: Request) {
       statusUrl: `/contest/${contestId}/status/${submission.displayId}`,
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
+    if (error instanceof CliDeviceError) return cliErrorResponse(error);
     const message =
       error instanceof Error ? error.message : "Internal server error";
     const status =

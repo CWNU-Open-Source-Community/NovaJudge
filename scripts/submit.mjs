@@ -12,7 +12,14 @@ const DESKTOP_CREDENTIAL_PATH = path.join(
   "Desktop",
   "novajudge-submit.json",
 );
-const DEFAULT_BASE_URL = process.env.NOVAJUDGE_URL || "http://localhost:3001";
+const DEFAULT_BASE_URL = process.env.NOVAJUDGE_URL;
+
+function serverUrl(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("No server URL configured. Use your intranet contest server with submit login --url <server>, NOVAJUDGE_URL, or the desktop credential file's url field.");
+  }
+  return value.trim().replace(/\/$/, "");
+}
 
 const EXT_LANGUAGE = new Map([
   [".c", "c"],
@@ -26,7 +33,7 @@ const EXT_LANGUAGE = new Map([
 
 function usage() {
   console.log(`Usage:
-  submit login --url http://localhost:3001 --contest 1001 --user team001
+  submit login --url https://judge.example --contest 1001 --user team001
   submit A.cpp
   submit --problem A main.cpp
   submit status
@@ -34,7 +41,7 @@ function usage() {
 Desktop credential file:
   ${DESKTOP_CREDENTIAL_PATH}
   {
-    "url": "http://localhost:3001",
+    "url": "https://judge.example",
     "contestId": 1001,
     "username": "team001",
     "password": "team-password",
@@ -42,7 +49,7 @@ Desktop credential file:
   }
 
 Environment:
-  NOVAJUDGE_URL can override the default server URL for login.`);
+  NOVAJUDGE_URL supplies the server URL for login when --url is omitted.`);
 }
 
 function readConfig() {
@@ -63,10 +70,7 @@ function readDesktopCredentials() {
   const username = String(raw.username || raw.user || "").trim();
   const password = String(raw.password || "").trim();
   const contestPassword = String(raw.contestPassword || "");
-  const baseUrl = String(raw.url || raw.baseUrl || DEFAULT_BASE_URL).replace(
-    /\/$/,
-    "",
-  );
+  const baseUrl = serverUrl(raw.url || raw.baseUrl || DEFAULT_BASE_URL);
   const contestId =
     raw.contestId === undefined || raw.contestId === null
       ? null
@@ -165,9 +169,9 @@ async function loginFromDesktopCredentials() {
 
 async function login(args) {
   const { flags } = parseFlags(args);
+  const baseUrl = serverUrl(flags.url || DEFAULT_BASE_URL);
   const rl = readline.createInterface({ input, output });
 
-  const baseUrl = String(flags.url || DEFAULT_BASE_URL).replace(/\/$/, "");
   const contestId = flags.contest ? Number(flags.contest) : null;
   const username = flags.user
     ? String(flags.user)
@@ -236,7 +240,7 @@ async function submit(args) {
 
     if (!config) {
       console.error(
-        "Not logged in. Run: submit login --contest <id> --user <username>, or put novajudge-submit.json on Desktop.",
+        "Not logged in. Run: submit login --url <server> --contest <id> --user <username>, or put novajudge-submit.json on Desktop.",
       );
       process.exit(1);
     }
@@ -302,12 +306,17 @@ function status() {
 
 const [commandOrFile, ...rest] = process.argv.slice(2);
 
-if (!commandOrFile || commandOrFile === "-h" || commandOrFile === "--help") {
-  usage();
-} else if (commandOrFile === "login") {
-  await login(rest);
-} else if (commandOrFile === "status") {
-  status();
-} else {
-  await submit([commandOrFile, ...rest]);
+try {
+  if (!commandOrFile || commandOrFile === "-h" || commandOrFile === "--help") {
+    usage();
+  } else if (commandOrFile === "login") {
+    await login(rest);
+  } else if (commandOrFile === "status") {
+    status();
+  } else {
+    await submit([commandOrFile, ...rest]);
+  }
+} catch (error) {
+  console.error(`submit: ${error instanceof Error ? error.message : error}`);
+  process.exitCode = 1;
 }

@@ -9,6 +9,7 @@ import ts from "typescript";
 import * as tokens from "./contest-access-token";
 import * as crypto from "node:crypto";
 import * as proctoring from "./proctoring-access";
+import * as cliPolicy from "./cli-device-policy";
 
 const secret = new TextEncoder().encode("contest-api-access-regression-secret");
 const privateContest = { id: 1001, title: "Private contest", status: "RUNNING", type: "PRIVATE", password: "private password" };
@@ -32,6 +33,13 @@ function loadModule<T>(filename: string, dependencies: Record<string, unknown>, 
 
 function baseDependencies() {
   return {
+    "@/lib/cli-deployment": { isCliEnabled: () => true, assertCliEnabled() {} },
+    "@/lib/cli-devices": {
+      CliDeviceError: cliPolicy.CliDeviceError,
+      assertActiveCliContest: async () => {},
+      cliErrorResponse: (error: InstanceType<typeof cliPolicy.CliDeviceError>) => NextResponse.json({ error: error.message, code: error.code }, { status: error.status }),
+    },
+    "@/lib/cli-settings-lock": { lockCliSettings: async () => {} },
     "next/server": { NextResponse },
     "@/lib/contest-access-token": tokens,
     "@/lib/proctoring-access": proctoring,
@@ -115,7 +123,7 @@ test("CLI contest grants reject missing, cross-contest, and revoked credentials"
   assert.equal(await api.cliContestAccessResponse(request(""), 1001), null);
 });
 
-test("private proctoring login requires both contest password and administrator authorization", async () => {
+test("public deployment keeps private proctoring login with contest password and administrator authorization", async () => {
   const cases = [
     { contestPassword: "", apiKey: "admin", role: "TEAM", allowed: false },
     { contestPassword: "wrong", apiKey: "admin", role: "TEAM", allowed: false },
@@ -129,6 +137,7 @@ test("private proctoring login requires both contest password and administrator 
     const signedPayloads: Array<Record<string, unknown>> = [];
     const route = loadModule<Route>("app/api/cli/login/route.ts", {
       ...baseDependencies(), bcryptjs: { compare: async () => true },
+      "@/lib/cli-deployment": { assertCliEnabled: () => { throw new cliPolicy.CliDeviceError("CLI disabled", 403, "CLI_DISABLED"); } },
       "@/lib/auth": {
         getJwtSecretKey: () => secret,
         validateApiKey: async (key: string) => key === "admin" ? { role: "SUPER_ADMIN" } : key === "ordinary" ? { role: "GLOBAL_USER" } : null,

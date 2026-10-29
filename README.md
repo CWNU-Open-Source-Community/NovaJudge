@@ -58,20 +58,28 @@ Browser grants expire after 24 hours and are cleared on logout. Changing the
 contest password invalidates existing grants. Legacy private contests without
 a password deny access until an administrator configures one. CLI login takes
 `contestPassword` and returns `contestAccessToken`, sent on subsequent requests
-as `x-contest-access-token`. The macOS client collects it on the browser binding
-page. The legacy Node.js client prompts in the terminal; the PowerShell client
-reads `contestPassword` from its desktop credentials file. CCS Basic
+as `x-contest-access-token`. Native macOS and Windows clients collect it on the browser
+binding page. The legacy Node.js client prompts in the terminal. CCS Basic
 authentication is restricted to super administrators.
 
 Run access regression tests with `npm run test:contest-access`.
 
-### Contestant CLI for macOS
+### Contestant CLI for macOS and Windows
+
+The CLI is disabled by default. Only on an intranet deployment, set
+`NOVAJUDGE_CLI_MODE=intranet` and restart the Web service. Public deployments
+must leave it unset or set it to `public`; browser submissions and proctoring
+login remain available. The server rejects CLI installation, pairing and
+submissions when disabled, including previously issued device tokens and legacy clients.
 
 An administrator selects the site's active CLI contest in **System Settings**.
 Open `/cli` to install the global `submit` command, then run `submit A.cpp`.
 On first use, a browser page opens to sign in with the contest team account and
-bind your Mac. Selecting a different contest prompts a new browser sign-in.
-It uses macOS built-in tools and needs no extra runtime. See the
+bind your computer. Selecting a different contest prompts a new browser sign-in.
+It uses built-in macOS tools or Windows PowerShell 5.1 and needs no extra runtime.
+Intranet monitoring clients can install the bundled script offline and bind the team
+using a dedicated submission grant. Every submission requires explicit confirmation.
+See the
 [installation and usage guide](./docs/CONTESTANT_CLI.md).
 
 ## Tech Stack

@@ -8,6 +8,7 @@ import { ContestRole, Verdict } from "@/lib/generated/prisma/client";
 import { Metadata } from "next";
 import Link from "next/link";
 import { CommandLineIcon } from "@heroicons/react/24/outline";
+import { isCliEnabled } from "@/lib/cli-deployment";
 import {
   getLatestVirtualParticipation,
   getRunningVirtualParticipation,
@@ -170,18 +171,18 @@ export default async function SubmitPage({ params, searchParams }: Props) {
           problemId={displayId}
           isAdmin={isSubmitDisabled}
         />
-        <Link
+        {isCliEnabled() && <Link
           href="/cli"
           className="flex items-start gap-3 bg-white border border-gray-200 shadow-sm rounded-sm p-4 hover:border-blue-300 transition-colors"
         >
           <CommandLineIcon className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" />
           <div>
-            <p className="text-sm font-bold text-gray-800">从 Mac 终端快速提交</p>
+            <p className="text-sm font-bold text-gray-800">从 Windows 或 Mac 终端提交</p>
             <p className="text-sm text-gray-600 mt-1">
               安装 submit 命令，无需额外环境。目标比赛由管理员统一指定，首次使用在网页绑定队伍账号。
             </p>
           </div>
-        </Link>
+        </Link>}
       </div>
     </div>
   );

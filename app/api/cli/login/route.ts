@@ -7,6 +7,8 @@ import { matchesContestPassword, signContestAccessToken } from "@/lib/contest-ac
 import { ContestStatus } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPrimaryClientIp } from "@/lib/request-ip";
+import { assertCliEnabled } from "@/lib/cli-deployment";
+import { assertActiveCliContest, CliDeviceError, cliErrorResponse } from "@/lib/cli-devices";
 
 export async function POST(req: Request) {
   try {
@@ -19,6 +21,9 @@ export async function POST(req: Request) {
     if (body?.loginSource !== undefined && !proctored) {
       return NextResponse.json({ error: "invalid loginSource" }, { status: 400 });
     }
+    // This endpoint also signs browser sessions for the proctoring platform.
+    // Those sessions must remain available when public deployments disable submit.
+    if (!proctored) assertCliEnabled();
 
     if (!username || !password) {
       return NextResponse.json(
@@ -61,6 +66,8 @@ export async function POST(req: Request) {
 
       contestId = candidates[0].contestId;
     }
+
+    if (!proctored) await assertActiveCliContest(contestId);
 
     const user = await prisma.user.findUnique({
       where: {
@@ -136,6 +143,7 @@ export async function POST(req: Request) {
       contest: { id: user.contest.id, title: user.contest.title, status: user.contest.status },
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
+    if (error instanceof CliDeviceError) return cliErrorResponse(error);
     console.error("CLI login error:", error);
     return NextResponse.json(
       { error: "Internal server error" },

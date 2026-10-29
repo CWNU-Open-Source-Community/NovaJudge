@@ -3,9 +3,12 @@ import { verifyAuth } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { cliContestAccessResponse } from "../contest-access";
+import { assertCliEnabled } from "@/lib/cli-deployment";
+import { assertActiveCliContest, CliDeviceError, cliErrorResponse } from "@/lib/cli-devices";
 
 export async function POST(req: Request) {
   try {
+    assertCliEnabled();
     const auth = req.headers.get("authorization") || "";
     const match = auth.match(/^Bearer\s+(.+)$/i);
     if (!match) {
@@ -45,6 +48,7 @@ export async function POST(req: Request) {
       );
     }
 
+    await assertActiveCliContest(contestId);
     const denied = await cliContestAccessResponse(req, contestId);
     if (denied) return denied;
 
@@ -87,6 +91,7 @@ export async function POST(req: Request) {
       problemName: `${contestProblem.displayId} - ${contestProblem.problem.title}`,
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
+    if (error instanceof CliDeviceError) return cliErrorResponse(error);
     const message =
       error instanceof Error ? error.message : "Internal server error";
     const status =

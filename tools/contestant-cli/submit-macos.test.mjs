@@ -90,6 +90,33 @@ async function fixture(t, handler) {
 }
 function success(result) { assert.equal(result.code, 0, result.stderr); }
 
+test("missing server URL fails before pairing; local commands remain usable", { skip: !mac }, async (t) => {
+  const f = await fixture(t);
+  await fs.unlink(f.defaults);
+  await fs.writeFile(path.join(f.directory, "A.cpp"), "int main(){}\n");
+  for (const args of [["login"], ["A.cpp"]]) {
+    const result = await f.run(args);
+    assert.notEqual(result.code, 0);
+    assert.match(result.stderr, /No server URL configured/);
+    assert.match(result.stderr, /intranet contest site's \/cli page/);
+    assert.match(result.stderr, /submit login --url/);
+    assert.doesNotMatch(result.stdout, /Pairing code/);
+  }
+  assert.deepEqual(f.requests, []);
+  await assert.rejects(fs.access(f.config));
+  success(await f.run(["--help"]));
+  const status = await f.run(["status"]);
+  success(status);
+  assert.match(status.stdout, /Not connected/);
+  success(await f.run(["logout"]));
+  assert.deepEqual(f.requests, []);
+  success(await f.run(["login", "--url", f.url]));
+  assert.equal(JSON.parse(await fs.readFile(f.config, "utf8")).baseUrl, f.url);
+  assert.deepEqual(f.requests.map((r) => [r.method, r.path]), [
+    ["POST", "/api/cli/device"], ["GET", "/api/cli/device"]
+  ]);
+});
+
 // Only the test runner uses Node. Every client subprocess has a system-only PATH.
 test("first submit pairs in browser; later submits reuse authorization and server-selected contest", { skip: !mac }, async (t) => {
   const f = await fixture(t);

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { assertSameOriginJson, CliDeviceError } from "@/lib/cli-device-policy";
 import { cliErrorResponse, cliJson, readCliJson } from "@/lib/cli-devices";
 import { lockCliSettings } from "@/lib/cli-settings-lock";
+import { assertCliEnabled, isCliEnabled } from "@/lib/cli-deployment";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ async function settingsResponse() {
     prisma.cliSettings.findUnique({ where: { id: 1 }, select: { activeContestId: true } }),
     prisma.contest.findMany({ orderBy: { id: "desc" }, select: { id: true, title: true, status: true, type: true } }),
   ]);
-  return cliJson({ activeContestId: settings?.activeContestId ?? null, contests });
+  return cliJson({ enabled: isCliEnabled(), activeContestId: settings?.activeContestId ?? null, contests });
 }
 
 export async function GET() {
@@ -32,6 +33,7 @@ export async function PUT(request: Request) {
     if (activeContestId !== null && (typeof activeContestId !== "number" || !Number.isSafeInteger(activeContestId) || activeContestId <= 0)) {
       throw new CliDeviceError("activeContestId must be a positive integer or null.", 400, "INVALID_CONTEST");
     }
+    if (activeContestId !== null) assertCliEnabled();
     if (activeContestId !== null && !await prisma.contest.findUnique({ where: { id: activeContestId }, select: { id: true } })) {
       throw new CliDeviceError("Contest not found.", 404, "CONTEST_NOT_FOUND");
     }

@@ -19,7 +19,7 @@ const secret = new TextEncoder().encode("cli-device-regression-secret");
 const validToken = `njcli_${"a".repeat(43)}`;
 const proctoringProof = "p".repeat(43);
 
-function loadModule<T>(filename: string, dependencies: Record<string, unknown>) {
+function loadModule<T>(filename: string, dependencies: Record<string, unknown>, globals = {}) {
   const compiled = ts.transpileModule(readFileSync(path.resolve(filename), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   });
@@ -30,7 +30,7 @@ function loadModule<T>(filename: string, dependencies: Record<string, unknown>) 
       if (!(name in dependencies)) throw new Error(`Unexpected import: ${name}`);
       return dependencies[name];
     },
-    console: { error() {} }, Date, SyntaxError, Error, setTimeout, clearTimeout,
+    console: { error() {} }, Date, SyntaxError, Error, setTimeout, clearTimeout, Response, URL, ...globals,
   }, { filename });
   return exports as T;
 }
@@ -53,6 +53,7 @@ function harness(privateContest = false) {
     pairingExpiresAt: new Date(Date.now() + 60_000), expiresAt: new Date(Date.now() + 3_600_000),
   };
   const state = {
+    cliEnabled: true,
     activeContestId: 2 as number | null, device: device as TestDevice | null, grantsAllowed: false, loginUpdates: 0,
     submissions: [] as Record<string, unknown>[], persisted: [] as Record<string, unknown>[], locks: [] as string[],
     duringPasswordCheck: null as (() => void) | null, beforePersistence: null as (() => void) | null,
@@ -126,6 +127,10 @@ function harness(privateContest = false) {
       return result;
     } },
     "@/lib/cli-device-policy": policy,
+    "@/lib/cli-deployment": {
+      isCliEnabled: () => state.cliEnabled,
+      assertCliEnabled: () => { if (!state.cliEnabled) throw new policy.CliDeviceError("CLI is disabled on this deployment.", 403, "CLI_DISABLED"); },
+    },
     "@/lib/cli-rate-limit": { enforceCliRateLimit: async () => {} },
     "@/lib/cli-settings-lock": { lockCliSettings },
   });
@@ -136,6 +141,119 @@ const request = (token = validToken) => new Request(`${base}/api/cli/device`, { 
 const approvalBody = { code: "ABCD-EFGH", username: "team", password: "correct password" };
 const proctoringRequest = (headers: Record<string, string> = {}) => new Request(`${base}/api/cli/device/proctoring`, {
   method: "POST", headers: { "content-type": "application/json", authorization: "Bearer monitored-jwt", [proctoring.PROCTORING_HEADER]: proctoringProof, ...headers }, body: "{}",
+});
+
+test("CLI deployment policy fails closed unless explicitly set to intranet", () => {
+  for (const mode of [undefined, "", "public", "true", "INTRANET", "intranet"]) {
+    const deployment = loadModule<typeof import("./cli-deployment")>("lib/cli-deployment.ts", {
+      "@/lib/cli-device-policy": policy,
+    }, { process: { env: { NOVAJUDGE_CLI_MODE: mode } } });
+    assert.equal(deployment.isCliEnabled(), mode === "intranet", String(mode));
+    if (mode === "intranet") assert.doesNotThrow(() => deployment.assertCliEnabled());
+    else assert.throws(() => deployment.assertCliEnabled(), { status: 403, code: "CLI_DISABLED" });
+  }
+});
+
+test("public deployments block new and existing CLI devices but still allow revocation", async () => {
+  const { service, state } = harness();
+  await service.approveCliDevice(request(), approvalBody);
+  state.cliEnabled = false;
+  assert.equal(await service.activeCliContest(), null);
+  assert.equal((await service.publicCliSettings()).enabled, false);
+  assert.equal((await service.publicCliSettings()).contest, null);
+  const rejected = [
+    () => service.createCliDevice(request()),
+    () => service.createProctoringCliDevice(proctoringRequest()),
+    () => service.getCliDevice(request()),
+    () => service.cliApprovalDetails(approvalBody.code),
+    () => service.approveCliDevice(request(), approvalBody),
+    () => service.submitCliDevice(request(), { problem: "A", language: "cpp", code: "int main(){}" }),
+    () => service.assertActiveCliContest(2),
+  ];
+  for (const call of rejected) await assert.rejects(call(), { status: 403, code: "CLI_DISABLED" });
+  assert.equal(state.persisted.length, 0);
+  await service.revokeCliDevice(request());
+  assert.equal(state.device, null);
+});
+
+test("CLI contest checks reject stale legacy tokens and administrators' disabled selections", async () => {
+  const { service, state } = harness();
+  assert.equal((await service.assertActiveCliContest(2)).id, 2);
+  assert.equal((await service.publicCliSettings()).enabled, true);
+  await assert.rejects(service.assertActiveCliContest(3), { code: "CONTEST_CHANGED", status: 409 });
+  state.activeContestId = null;
+  await assert.rejects(service.assertActiveCliContest(2), { code: "CLI_DISABLED", status: 409 });
+});
+
+test("public deployment blocks legacy CLI APIs and installer downloads before credentials or files are accessed", async () => {
+  const service = harness().service;
+  const dependencies = {
+    "next/server": { NextResponse },
+    "node:fs/promises": { readFile: async () => { throw new Error("Should not read installer files"); } },
+    "node:path": path,
+    "node:crypto": {},
+    bcryptjs: {},
+    "@/lib/auth": {},
+    "@/lib/prisma": {},
+    "@/lib/generated/prisma/client": {},
+    "@/lib/proctoring-access": proctoring,
+    "@/lib/contest-access-token": grants,
+    "@/lib/request-ip": {},
+    "@/lib/contest-submission": {},
+    "@/lib/cli-settings-lock": { lockCliSettings },
+    "../contest-access": {},
+    "@/lib/cli-devices": service,
+    "@/lib/cli-deployment": { assertCliEnabled: () => { throw new policy.CliDeviceError("Intranet deployment required.", 403, "CLI_DISABLED"); } },
+  };
+  for (const endpoint of ["login", "context", "submit", "install", "download"]) {
+    const route = loadModule<{ GET(request: Request): Promise<Response>; POST(request: Request): Promise<Response> }>(`app/api/cli/${endpoint}/route.ts`, dependencies);
+    const isDownload = endpoint === "install" || endpoint === "download";
+    const response = await route[isDownload ? "GET" : "POST"](new Request(`${base}/api/cli/${endpoint}`, {
+      method: isDownload ? "GET" : "POST",
+      headers: { authorization: "Bearer previously-valid-token", "content-type": "application/json" },
+      ...(isDownload ? {} : { body: JSON.stringify({ username: "team", password: "password", contestId: 2 }) }),
+    }));
+    assert.equal(response.status, 403, endpoint);
+    assert.equal((await response.json()).code, "CLI_DISABLED", endpoint);
+    assert.equal(response.headers.get("cache-control"), "private, no-store", endpoint);
+  }
+});
+
+test("public deployment admin settings remain readable and can be cleared but cannot enable a contest", async () => {
+  const service = harness().service;
+  let selected: number | null = 2;
+  let invalidated = 0;
+  const db = {
+    cliSettings: {
+      findUnique: async () => ({ activeContestId: selected }),
+      upsert: async ({ update }: { update: { activeContestId: number | null } }) => { selected = update.activeContestId; },
+    },
+    contest: { findMany: async () => [] },
+    cliDevice: { updateMany: async () => { invalidated++; } },
+    $transaction: async <T>(callback: (tx: unknown) => Promise<T>) => callback(db),
+  };
+  const route = loadModule<{ GET(): Promise<Response>; PUT(request: Request): Promise<Response> }>("app/api/admin/cli-settings/route.ts", {
+    "@/lib/auth": { getCurrentSuper: async () => ({ isGlobalAdmin: true }) },
+    "@/lib/prisma": { prisma: db },
+    "@/lib/cli-device-policy": policy,
+    "@/lib/cli-devices": service,
+    "@/lib/cli-settings-lock": { lockCliSettings: async () => {} },
+    "@/lib/cli-deployment": {
+      isCliEnabled: () => false,
+      assertCliEnabled: () => { throw new policy.CliDeviceError("Intranet deployment required.", 403, "CLI_DISABLED"); },
+    },
+  });
+  const result = await (await route.GET()).json();
+  assert.equal(result.enabled, false);
+  assert.equal(result.activeContestId, 2);
+  const put = (activeContestId: number | null) => route.PUT(new Request(`${base}/api/admin/cli-settings`, {
+    method: "PUT", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify({ activeContestId }),
+  }));
+  assert.equal((await put(3)).status, 403);
+  assert.equal(selected, 2);
+  assert.equal((await put(null)).status, 200);
+  assert.equal(selected, null);
+  assert.equal(invalidated, 1);
 });
 
 test("device credentials use independent random secrets and store only a SHA-256 hash", () => {
@@ -424,6 +542,9 @@ test("submissions use the server's bound contest and user; contest changes requi
 test("legacy CLI submission links use the contest display ID rather than the database UUID", async () => {
   const submission = { id: "554902db-2c7c-4fde-adc7-44539171f0cb", displayId: 73 };
   const route = loadModule<typeof import("../app/api/cli/submit/route")>("app/api/cli/submit/route.ts", {
+    "@/lib/cli-deployment": { assertCliEnabled() {} },
+    "@/lib/cli-devices": { ...harness().service, assertActiveCliContest: async () => {} },
+    "@/lib/cli-settings-lock": { lockCliSettings },
     "next/server": { NextResponse },
     "@/lib/auth": { verifyAuth: async () => ({ userId: "team-id", contestId: 2, role: "TEAM" }) },
     "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" } },
@@ -439,6 +560,47 @@ test("legacy CLI submission links use the contest display ID rather than the dat
   const result = await response.json();
   assert.equal(result.submission.id, submission.id);
   assert.equal(result.statusUrl, "/contest/2/status/73");
+});
+
+test("legacy JWT submissions obey the selected contest and recheck it before persistence", async () => {
+  for (const scenario of ["allowed", "wrongContest", "noContest", "changedInFlight", "deploymentDisabledInFlight"] as const) {
+    const { service, state } = harness();
+    let writes = 0;
+    let locks = 0;
+    if (scenario === "wrongContest") state.activeContestId = 3;
+    if (scenario === "noContest") state.activeContestId = null;
+    const db = {
+      user: { findUnique: async () => ({ id: "team-id", contestId: 2, role: "TEAM" }) },
+      cliSettings: { findUnique: async () => ({ activeContest: state.activeContestId ? { id: state.activeContestId } : null }) },
+      submission: { create: async () => { writes++; return { id: "saved", displayId: 73 }; } },
+      $transaction: async <T>(callback: (tx: unknown) => Promise<T>) => callback(db),
+    };
+    const route = loadModule<typeof import("../app/api/cli/submit/route")>("app/api/cli/submit/route.ts", {
+      "next/server": { NextResponse },
+      "@/lib/cli-deployment": { assertCliEnabled: () => {} },
+      "@/lib/cli-devices": service,
+      "@/lib/auth": { verifyAuth: async () => ({ userId: "team-id", contestId: 2, role: "TEAM" }) },
+      "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" } },
+      "@/lib/prisma": { prisma: db },
+      "../contest-access": { cliContestAccessResponse: async () => null },
+      "@/lib/cli-settings-lock": { lockCliSettings: async (_tx: unknown, mode: string) => { assert.equal(mode, "shared"); locks++; } },
+      "@/lib/contest-submission": { createContestSubmission: async (input: { persistSubmission: (data: Record<string, unknown>) => Promise<unknown> }) => {
+        if (scenario === "changedInFlight") state.activeContestId = 3;
+        if (scenario === "deploymentDisabledInFlight") state.cliEnabled = false;
+        return input.persistSubmission({ contestId: 2, userId: "team-id" });
+      } },
+    });
+    const response = await route.POST(new Request(`${base}/api/cli/submit`, {
+      method: "POST", headers: { authorization: "Bearer previously-valid-token", "content-type": "application/json" },
+      body: JSON.stringify({ problem: "A", language: "cpp", code: "int main(){}" }),
+    }));
+    assert.equal(response.status, scenario === "allowed" ? 200 : scenario === "deploymentDisabledInFlight" ? 403 : 409, scenario);
+    if (scenario !== "allowed") {
+      assert.equal((await response.json()).code, scenario === "noContest" || scenario === "deploymentDisabledInFlight" ? "CLI_DISABLED" : "CONTEST_CHANGED", scenario);
+    }
+    assert.equal(writes, scenario === "allowed" ? 1 : 0, scenario);
+    assert.equal(locks, scenario === "wrongContest" || scenario === "noContest" ? 0 : 1, scenario);
+  }
 });
 
 test("switching the active contest after initial authorization rejects persistence without a submission", async () => {
@@ -537,6 +699,7 @@ test("pending and approved expiry are enforced, invalid tokens fail, and logout 
 test("admin settings reject unauthenticated requests without querying or changing settings", async () => {
   const service = harness().service;
   const route = loadModule<{ GET(): Promise<Response>; PUT(request: Request): Promise<Response> }>("app/api/admin/cli-settings/route.ts", {
+    "@/lib/cli-deployment": { isCliEnabled: () => true, assertCliEnabled() {} },
     "@/lib/auth": { getCurrentSuper: async () => null },
     "@/lib/prisma": { prisma: new Proxy({}, { get() { throw new Error("Unauthorized database access"); } }) },
     "@/lib/cli-device-policy": policy,

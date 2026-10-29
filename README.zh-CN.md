@@ -49,18 +49,24 @@ NovaJudge 是一个轻量级在线评测（Online Judge）平台，面向 XCPC �
 浏览器访问凭证有效期为 24 小时，退出登录会清除凭证，修改比赛密码会使旧凭证失效。
 未配置密码的历史私有赛默认拒绝访问，需要管理员先设置密码。CLI 登录私有赛时还需
 提供 `contestPassword`，后续请求携带返回的 `contestAccessToken`（`x-contest-access-token` 请求头）；
-macOS 客户端在网页绑定时填写比赛密码；原有 Node.js 客户端在终端提示输入，
-PowerShell 客户端从桌面凭据文件的 `contestPassword` 字段读取。
+macOS 和 Windows 原生客户端在网页绑定时填写比赛密码；原有 Node.js 客户端在终端提示输入。
 CCS Basic 认证仅允许超级管理员。
 
 权限回归测试：`npm run test:contest-access`。
 
-### macOS 选手命令行
+### macOS 与 Windows 选手命令行
+
+此功能默认关闭，仅用于内网部署。在内网服务器设置 `NOVAJUDGE_CLI_MODE=intranet`
+并重启 Web 服务后，再指定命令行比赛。公网服务器不设置此变量或保持 `public`，
+安装下载、设备绑定和命令行提交接口均关闭，旧设备令牌与旧版客户端也不能绕过。
+普通网页提交和公网监考登录继续可用。
 
 管理员在后台系统设置中指定全站命令行的当前比赛。选手打开 `/cli` 页面安装全局
 `submit` 命令，首次运行 `submit A.cpp` 时自动打开网页，用比赛队伍账号登录并绑定电脑。
 管理员切换比赛后，客户端会自动要求在网页重新绑定新比赛的队伍账号。
-仅使用 macOS 内置工具，无需额外运行时。参见[安装与使用说明](./docs/CONTESTANT_CLI.md)。
+仅使用 macOS 内置工具或 Windows PowerShell 5.1，无需额外运行时。
+内网监考客户端可离线安装脚本并用专用提交授权自动绑定队伍；每次提交均需明确确认。
+参见[安装与使用说明](./docs/CONTESTANT_CLI.md)。
 
 ## 技术栈
 

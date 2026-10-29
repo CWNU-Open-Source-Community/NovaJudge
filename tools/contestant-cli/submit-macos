@@ -73,7 +73,9 @@ function defaultUrl(flags, config) {
   const explicit = flags.url || getenv("NOVAJUDGE_URL") || (config && config.baseUrl);
   if (explicit) return normalizeUrl(explicit);
   const defaults = readJson(defaultsPath, {});
-  return normalizeUrl(defaults.baseUrl || defaults.url || "http://localhost:3001");
+  const installed = defaults.baseUrl || defaults.url;
+  if (installed) return normalizeUrl(installed);
+  throw new Error("No server URL configured. Install submit from your intranet contest site's /cli page, or run submit login --url <server>.");
 }
 function parse(args, allowed) {
   const flags = {}, rest = [];

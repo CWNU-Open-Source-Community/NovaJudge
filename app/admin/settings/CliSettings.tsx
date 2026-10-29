@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 type CliSettingsData = {
+  enabled: boolean;
   activeContestId: number | null;
   contests: { id: number; title: string; status: string; type: string }[];
 };
@@ -65,7 +66,7 @@ export default function CliSettings() {
       <div className="border-b border-gray-200 pb-5">
         <h2 className="text-lg font-medium text-gray-900">submit 命令行比赛</h2>
         <p className="mt-2 text-sm text-gray-500 leading-relaxed">
-          为全站命令行选手指定当前比赛。选手首次提交时会打开网页，登录该比赛的队伍账号并绑定电脑。
+          此功能仅用于内网部署。为命令行选手指定当前比赛，首次提交时在网页绑定该比赛的队伍账号。
           保存后立即生效，无需重启服务。
         </p>
       </div>
@@ -73,6 +74,10 @@ export default function CliSettings() {
         <p className="mt-6 text-sm text-gray-500">正在加载比赛…</p>
       ) : settings ? (
         <div className="mt-6 space-y-3">
+          {!settings.enabled && <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+            当前部署已关闭 submit。仅在内网服务器设置 NOVAJUDGE_CLI_MODE=intranet 并重启服务后，才能启用命令行比赛。
+            公网服务器应保持关闭，网页提交和监考登录不受影响。
+          </p>}
           <label htmlFor="cli-contest" className="block text-sm font-medium text-gray-900">
             当前比赛
           </label>
@@ -80,7 +85,7 @@ export default function CliSettings() {
             id="cli-contest"
             value={selectedContest}
             onChange={(event) => setSelectedContest(event.target.value)}
-            disabled={saving}
+            disabled={saving || !settings.enabled}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           >
             <option value="">关闭命令行提交</option>
@@ -100,7 +105,7 @@ export default function CliSettings() {
       <div className="mt-6 flex justify-end">
         <button
           type="submit"
-          disabled={loading || saving || !settings}
+          disabled={loading || saving || !settings?.enabled}
           className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {saving ? "保存中…" : "保存命令行设置"}

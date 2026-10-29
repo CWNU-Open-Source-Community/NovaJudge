@@ -1,0 +1,31 @@
+# Same HTTP authorization as the application; local-only WHIP/HLS deployment.
+logLevel: info
+api: true
+apiAddress: :9997
+authMethod: http
+authHTTPAddress: http://host.docker.internal:4031/api/media/auth
+authHTTPExclude: []
+rtsp: false
+srt: false
+playback: false
+moq: false
+rtmp: false
+hls: true
+hlsAddress: :8080
+hlsAllowOrigins: ['*']
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsAlwaysRemux: false
+webrtc: true
+webrtcAddress: :8889
+webrtcAllowOrigins: ['*']
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: :8189
+pathDefaults:
+  source: publisher
+  overridePublisher: true
+  record: false
+paths:
+  all_others: {}

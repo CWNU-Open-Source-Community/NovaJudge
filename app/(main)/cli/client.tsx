@@ -8,6 +8,7 @@ const subscribe = () => () => {};
 const getOrigin = () => window.location.origin;
 const getServerOrigin = () => "";
 const shellQuote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+const powershellQuote = (value: string) => `'${value.replace(/'/g, "''")}'`;
 
 export default function CliInstructions() {
   const [contest, setContest] = useState<{ id: number; title: string } | null>(null);
@@ -16,6 +17,9 @@ export default function CliInstructions() {
   const origin = useSyncExternalStore(subscribe, getOrigin, getServerOrigin);
   const installer = origin
     ? `curl -fsSL ${shellQuote(`${origin}/api/cli/install`)} | /bin/bash -s --`
+    : "";
+  const windowsInstaller = origin
+    ? `$installer = Join-Path $env:TEMP 'novajudge-install.ps1'\nInvoke-WebRequest -UseBasicParsing ${powershellQuote(`${origin}/api/cli/install?platform=windows`)} -OutFile $installer\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer`
     : "";
 
   useEffect(() => {
@@ -45,10 +49,10 @@ export default function CliInstructions() {
           </h1>
         </div>
         <p className="text-gray-600 leading-relaxed">
-          在自己的 Mac 上安装一次，就能在任意代码目录运行
+          在自己的 Windows 电脑或 Mac 上安装一次，就能在任意代码目录运行
           <code className="mx-1 text-gray-900">submit A.cpp</code>提交比赛代码。
-          支持 Apple Silicon 和 Intel Mac，仅使用 macOS 内置工具，无需安装
-          Node.js、Python、Homebrew 或 Xcode，也无需下载运行时。
+          Windows 使用系统自带的 PowerShell 5.1；macOS 支持 Apple Silicon 和 Intel Mac。
+          无需安装 Node.js、Python 或额外运行时。
         </p>
         <div className="mt-4 rounded-sm border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
           {loadingContest ? "正在读取当前命令行比赛…" : contestError ? contestError : contest
@@ -60,7 +64,7 @@ export default function CliInstructions() {
       <section className="bg-white border border-gray-200 shadow-sm rounded-sm p-6 space-y-3">
         <h2 className="text-lg font-bold text-gray-800">使用内网监考客户端</h2>
         <p className="text-sm text-gray-600 leading-relaxed">
-          在支持此功能的 macOS 内网监考客户端登录 NovaJudge 后，客户端会自动安装
+          在支持此功能的 Windows 或 macOS 内网监考客户端登录 NovaJudge 后，客户端会自动安装
           <code className="mx-1">submit</code>并绑定当前队伍，无需再执行下方安装和网页绑定步骤。
           打开新终端即可使用；每次提交仍需输入 <code>y</code> 确认。
           退出监考登录或授权失效后，请回到监考客户端重新登录。外网模式不启用自动安装和绑定。
@@ -69,6 +73,17 @@ export default function CliInstructions() {
 
       <section className="bg-white border border-gray-200 shadow-sm rounded-sm p-6 space-y-4">
         <h2 className="text-lg font-bold text-gray-800">1. 安装到当前用户</h2>
+        <h3 className="font-semibold text-gray-800">Windows 10 / 11</h3>
+        <p className="text-sm text-gray-600 leading-relaxed">
+          打开 Windows PowerShell，以普通用户运行下方命令。安装器将命令放入
+          <code className="mx-1">%LOCALAPPDATA%\NovaJudge\submit</code>，并加入当前用户 PATH。
+          无需管理员权限；安装后关闭并重新打开终端应用（包括 Windows Terminal 或 VS Code）。
+        </p>
+        {origin ? <CodeBlock code={`${windowsInstaller} -Url ${powershellQuote(origin)}`} />
+          : <p className="text-sm text-gray-500">正在生成当前网站的安装命令…</p>}
+        <p className="text-sm text-gray-600">当前 PowerShell 窗口立即使用：</p>
+        <CodeBlock code={'$env:Path = "$env:LOCALAPPDATA\\NovaJudge\\submit;$env:Path"'} />
+        <h3 className="font-semibold text-gray-800">macOS</h3>
         <p className="text-sm text-gray-600 leading-relaxed">
           打开 macOS「终端」，复制并运行下方命令。安装器会从当前比赛网站下载脚本，
           保存网站地址，并将命令安装到 <code>~/.local/bin/submit</code>。
@@ -125,9 +140,12 @@ export default function CliInstructions() {
           卸载前可先运行 <code>submit logout</code> 清除本地登录凭据；
           下方卸载命令保留登录配置。
         </p>
+        <p className="text-sm text-gray-600">Windows PowerShell：</p>
+        {origin && <CodeBlock code={`${windowsInstaller} -Uninstall`} />}
+        <p className="text-sm text-gray-600">macOS 终端：</p>
         {origin && <CodeBlock code={`${installer} --uninstall`} />}
         <p className="text-sm text-gray-500">
-          当前安装器仅支持 macOS。Windows 和 Linux 安装入口尚未提供。
+          当前支持 Windows 10 / 11 与 macOS。Linux 安装入口尚未提供。
         </p>
       </section>
     </div>
