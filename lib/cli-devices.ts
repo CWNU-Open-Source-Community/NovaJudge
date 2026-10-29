@@ -11,6 +11,7 @@ import { enforceCliRateLimit } from "@/lib/cli-rate-limit";
 import { lockCliSettings } from "@/lib/cli-settings-lock";
 import { assertCliEnabled, isCliEnabled } from "@/lib/cli-deployment";
 import { proctoringAccessAllowed, PROCTORING_HEADER } from "@/lib/proctoring-access";
+import { validatePrintFile } from "@/lib/print-file-policy";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import {
   CLI_DEVICE_SECONDS, CLI_PAIRING_SECONDS, CliDeviceError,
@@ -149,7 +150,7 @@ export async function createProctoringCliDevice(request: Request) {
       expiresAt = new Date(Math.min(expiresAt.getTime(), decodeJwt(contestAccessToken!).exp! * 1000));
     }
     if (expiresAt <= now) throw new CliDeviceError("The monitored login expired. Sign in through the proctoring client again.", 401, "PROCTORING_AUTH_REQUIRED");
-    // The stored device token hash is the only secret needed by submission APIs;
+    // The stored device token hash is the only secret needed by CLI APIs;
     // the monitor's full JWT and access key are never copied into this record.
     const credentials = generateCliCredentials();
     await tx.cliDevice.create({ data: {
@@ -307,4 +308,49 @@ export async function submitCliDevice(request: Request, body: Record<string, unk
     throw new CliDeviceError(error instanceof Error ? error.message : "Submission failed.", 400, "SUBMISSION_REJECTED");
   }
   return { success: true, submission, statusUrl: `/contest/${device.contestId}/status/${submission.displayId}` };
+}
+
+async function monitoredPrintDevice(request: Request, db: Prisma.TransactionClient = prisma) {
+  assertCliEnabled();
+  const device = await deviceFromRequest(request, db);
+  // Only the server-issued monitoring grant qualifies. Request fields or the
+  // presence of a monitoring header cannot upgrade an ordinary paired device.
+  if (!device.proctoringKeyHash) {
+    throw new CliDeviceError("Sign in through the proctoring client to use printfile.", 403, "PROCTORING_CLIENT_REQUIRED");
+  }
+  throwForState(await stateOf(device, db));
+  if (!device.user || device.proctoringKeyHash !== device.user.proctoringKeyHash) {
+    throw new CliDeviceError("Sign in through the proctoring client again.", 403, "REAUTH_REQUIRED");
+  }
+  return { device, user: device.user };
+}
+
+export async function getCliPrintContext(request: Request) {
+  const { device, user } = await monitoredPrintDevice(request);
+  return {
+    loginSource: "PROCTORING" as const,
+    contest: displayContest(device.contest, true),
+    user: { username: user.username, displayName: user.displayName },
+    expiresAt: device.expiresAt.toISOString(),
+  };
+}
+
+export async function printCliDevice(request: Request, body: Record<string, unknown>) {
+  const initial = await monitoredPrintDevice(request);
+  const file = validatePrintFile(body);
+  return prisma.$transaction(async (tx) => {
+    // Serialize against the administrator's CLI contest switch and re-read
+    // grants, private contest access and team identity immediately before write.
+    await lockCliSettings(tx, "shared");
+    const { device, user } = await monitoredPrintDevice(request, tx);
+    if (device.contestId !== initial.device.contestId || user.id !== initial.user.id ||
+        device.proctoringKeyHash !== initial.device.proctoringKeyHash) {
+      throw new CliDeviceError("The monitored device binding changed. Sign in through the proctoring client again.", 403, "REAUTH_REQUIRED");
+    }
+    const printJob = await tx.printJob.create({
+      data: { contestId: device.contestId, userId: user.id, ...file },
+      select: { id: true, sourceFilename: true, language: true, status: true },
+    });
+    return { success: true, printJob, contest: displayContest(device.contest, true) };
+  });
 }

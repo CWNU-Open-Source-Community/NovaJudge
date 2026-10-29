@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 
 const installer = await readFile(new URL("../tools/contestant-cli/install-macos.sh", import.meta.url), "utf8");
-const fixture = '#!/bin/bash\n# NovaJudge native macOS submit\nprintf "native submit fixture\\n"\n';
+const fixture = '#!/bin/bash\n# NovaJudge native macOS submit\nprintf "native submit fixture\\n"\nprintf "arg:<%s>\\n" "$@"\n';
 
 function run(command, args, env, input = "") {
   return new Promise((resolve, reject) => {
@@ -45,6 +45,7 @@ test("macOS native installer: clean PATH, spaces, update, failure safety and uni
   const env = { HOME: home, ZDOTDIR: home, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", SHELL: "/bin/zsh", TMPDIR: os.tmpdir() };
   const install = (...args) => run("/bin/bash", ["-s", "--", ...args], env, installer);
   const command = path.join(home, ".local/bin/submit");
+  const printCommand = path.join(home, ".local/bin/printfile");
   const defaults = path.join(home, ".local/share/novajudge-submit/submit-defaults.json");
   try {
     await writeFile(path.join(home, ".profile"), "# existing profile\nexport KEEP_ME=yes\n");
@@ -53,6 +54,10 @@ test("macOS native installer: clean PATH, spaces, update, failure safety and uni
     assert.deepEqual(JSON.parse(await readFile(defaults)), { baseUrl: url });
     assert.equal((await stat(command)).mode & 0o777, 0o755);
     assert.match((await run(command, ["--help"], env)).stdout, /native submit fixture/);
+    assert.equal((await stat(printCommand)).mode & 0o777, 0o755);
+    const printed = await run("/bin/zsh", ["-lc", 'printfile "source file.cpp" y'], env);
+    assert.equal(printed.code, 0, printed.stderr);
+    assert.match(printed.stdout, /arg:<printfile>\narg:<source file.cpp>\narg:<y>/);
     // A fresh zsh finds the command with only stock macOS tools in PATH.
     const login = await run("/bin/zsh", ["-lc", "submit --help"], env);
     assert.equal(login.code, 0, login.stderr);
@@ -64,9 +69,12 @@ test("macOS native installer: clean PATH, spaces, update, failure safety and uni
     assert.match(await readFile(path.join(home, ".profile"), "utf8"), /export KEEP_ME=yes/);
     await assert.rejects(stat(path.join(home, ".bash_profile")), { code: "ENOENT" });
 
+    // Older submit installations have no printfile wrapper; upgrade adds it.
+    await rm(printCommand);
     const reinstalled = await install("--url", `${url}/alternate/`);
     assert.equal(reinstalled.code, 0, reinstalled.stderr);
     assert.equal(JSON.parse(await readFile(defaults)).baseUrl, `${url}/alternate`);
+    assert.equal((await stat(printCommand)).mode & 0o777, 0o755);
     assert.equal((await readFile(path.join(home, ".zshrc"), "utf8")).split("# >>> NovaJudge submit >>>").length, 2);
 
     // Reject malformed blocks before modifying any profile or installed file.
@@ -105,6 +113,7 @@ test("macOS native installer: clean PATH, spaces, update, failure safety and uni
     const removed = await install("--uninstall");
     assert.equal(removed.code, 0, removed.stderr);
     await assert.rejects(stat(command), { code: "ENOENT" });
+    await assert.rejects(stat(printCommand), { code: "ENOENT" });
     assert.match(await readFile(config, "utf8"), /fixture-only/);
     assert.doesNotMatch(await readFile(path.join(home, ".zshrc"), "utf8"), /NovaJudge/);
     assert.match(await readFile(path.join(home, ".profile"), "utf8"), /export KEEP_ME=yes/);
@@ -113,8 +122,13 @@ test("macOS native installer: clean PATH, spaces, update, failure safety and uni
     assert.equal((await install("--uninstall")).code, 0);
 
     await mkdir(path.dirname(command), { recursive: true });
-    await writeFile(command, "unrelated command");
     responseBody = fixture;
+    await writeFile(printCommand, "unrelated print command");
+    assert.notEqual((await install("--url", url)).code, 0);
+    assert.notEqual((await install("--uninstall")).code, 0);
+    assert.equal(await readFile(printCommand, "utf8"), "unrelated print command");
+    await rm(printCommand);
+    await writeFile(command, "unrelated command");
     assert.notEqual((await install("--url", url)).code, 0);
     assert.equal(await readFile(command, "utf8"), "unrelated command");
     assert.notEqual((await install("--uninstall")).code, 0);
@@ -144,6 +158,9 @@ test("bundled offline installation needs no download and preserves device creden
     const login = await run("/bin/zsh", ["-lc", "submit --help"], env);
     assert.equal(login.code, 0, login.stderr);
     assert.match(login.stdout, /native submit fixture/);
+    const printed = await run("/bin/zsh", ["-lc", 'printfile "source file.cpp" n'], env);
+    assert.equal(printed.code, 0, printed.stderr);
+    assert.match(printed.stdout, /arg:<printfile>\narg:<source file.cpp>\narg:<n>/);
   } finally {
     await rm(home, { recursive: true, force: true });
   }

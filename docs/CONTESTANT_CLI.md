@@ -1,12 +1,15 @@
 # macOS 与 Windows 选手命令行
 
-`submit` 安装在选手自己的电脑上，用于在终端向 NovaJudge 提交比赛代码。
-Windows 10 / 11 使用内置 Windows PowerShell 5.1；Apple Silicon 和 Intel Mac 使用内置的 Bash、curl 和 osascript。
-无需安装 Node.js、Python、Homebrew、Xcode 或其他运行时，也不需要管理员权限、克隆仓库或 npm。
+`submit` 和 `printfile` 安装在选手自己的电脑上，用于向 NovaJudge 提交比赛代码和打印请求。
+`printfile` 仅允许使用监考客户端登录后签发的设备授权，普通网页绑定不适用。
+Windows 客户端要求 Windows PowerShell 5.1；Windows 10 / 11 通常已内置，Windows 7 需先升级系统组件，见下文。
+Apple Silicon 和 Intel Mac 使用内置的 Bash、curl 和 osascript。
+系统组件准备完成后，选手无需安装 Node.js、Python、Homebrew 或 Xcode，
+命令安装和使用不需要管理员权限、克隆仓库或 npm。
 
 ## 仅在内网部署启用
 
-submit 默认关闭。只有内网 NovaJudge 的 Web 服务可以设置以下环境变量，然后重启服务：
+submit 和 printfile 默认关闭。只有内网 NovaJudge 的 Web 服务可以设置以下环境变量，然后重启服务：
 
 ```env
 NOVAJUDGE_CLI_MODE=intranet
@@ -16,7 +19,7 @@ NOVAJUDGE_CLI_MODE=intranet
 表示是否需要比赛密码，不代表公网/内网。公网部署应不设置此变量，或保持 `NOVAJUDGE_CLI_MODE=public`。
 不要根据请求的 Host、转发头或选手 IP 自动启用，也不要将已启用的内网实例通过公网代理开放。
 
-关闭时不展示安装入口，`/cli` 和绑定页面显示“页面未找到”，安装下载、绑定与提交 API 拒绝使用；
+关闭时不展示安装入口，`/cli` 和绑定页面显示“页面未找到”，安装下载、绑定、提交与命令行打印 API 拒绝使用；
 旧版 CLI 和已签发的设备授权同样受限。设备注销仍可撤销授权。
 普通网页提交与 `loginSource: "PROCTORING"` 的监考登录不受这个开关影响。
 
@@ -43,12 +46,32 @@ $env:Path = "$env:LOCALAPPDATA\NovaJudge\submit;$env:Path"
 submit A.cpp
 ```
 
-安装包使用 `submit.cmd` / `submit.bat` 启动器和 `novajudge-submit.ps1`，避免 PowerShell 优先解析
+安装包使用 `submit.cmd` / `submit.bat`、`printfile.cmd` / `printfile.bat` 启动器和 `novajudge-submit.ps1`，避免 PowerShell 优先解析
 同名 `.ps1` 被默认执行策略拦截。无需修改全局执行策略；组织强制的组策略仍由管理员管理。
 旧版桌面 `novajudge-submit.json` 的用户名密码文件不再使用，改用网页或监考专用设备授权。
 如仍出现旧版登录提示，在 PowerShell 运行 `Get-Command submit`（CMD 使用 `where.exe submit`）
 查看实际命令路径，移除或调整旧命令/别名。也可直接运行
 `& "$env:LOCALAPPDATA\NovaJudge\submit\submit.cmd" A.cpp`。
+
+### Windows 7 比赛电脑准备
+
+Windows 7 自带 PowerShell 2.0，不能直接运行当前 submit / printfile；本项目要求
+Windows PowerShell 5.1。赛前由机房管理员准备以下环境，选手使用命令时无需管理员权限：
+
+1. 确认系统已安装 Windows 7 SP1。
+2. 安装 .NET Framework 4.5.2 或更高的 Win7 兼容版本。
+3. 从 [微软 WMF 5.1 下载页](https://www.microsoft.com/en-us/download/details.aspx?id=54616)
+   下载匹配系统位数的安装包：64 位为 `Win7AndW2K8R2-KB3191566-x64.zip`，
+   32 位为 `Win7-KB3191566-x86.zip`。解压后按包内说明运行安装脚本并重启。
+   如果已装 WMF 3.0，先按 [微软升级说明](https://devblogs.microsoft.com/powershell/windows-management-framework-wmf-5-1-released/)
+   卸载它；不要求先装 WMF 4.0。安装包可提前拷入内网。
+4. 在比赛电脑 PowerShell 运行 `$PSVersionTable.PSVersion`，确认显示 `Major = 5`、`Minor = 1`。
+5. 安装包含新版脚本的监考客户端，选择内网后台并登录 NovaJudge。新开终端，分别运行
+   `submit version`、`printfile A.cpp n`，再运行 `printfile A.cpp y`，检查 NovaJudge 打印队列。
+
+使用 HTTPS 的内网仍需系统信任正确的服务器证书并支持其 TLS 配置，不关闭证书校验。
+本次开发在 Windows PowerShell 5.1 上验证，未在 Win7 真机验证；赛前应在实际 32/64 位比赛镜像
+各完成一次监考登录、安装、确认/取消打印、注销失效验收。监考应用本身也必须使用保留 Win7 支持的版本。
 
 ### macOS
 
@@ -60,7 +83,7 @@ curl -fsSL 'https://judge.example/api/cli/install' | /bin/bash -s -- --url 'http
 
 选手在另一台电脑上使用时，应打开实际比赛网站，使用它的地址；`localhost` 指选手自己的电脑。
 没有配置网站地址时，客户端会报错提示安装或指定 `--url`，不会自动连接本机。
-安装命令会从该网站下载原生脚本到 `~/.local/bin/submit` 并保存默认网站地址。
+安装命令会从该网站下载原生脚本，在 `~/.local/bin` 创建 `submit` 和 `printfile` 命令并保存默认网站地址。
 安装后打开新终端，或在当前终端运行：
 
 ```bash
@@ -77,7 +100,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ## 内网监考登录
 
 使用支持此功能的 Windows 或 macOS 监考客户端时，连接内网后台并完成 NovaJudge 登录后，
-客户端会安装 `submit` 并自动绑定当前队伍。新开终端运行 `submit A.cpp`，核对信息并输入
+客户端会安装 `submit`、`printfile` 并自动绑定当前队伍。新开终端运行 `submit A.cpp`，核对信息并输入
 `y` 即可提交，无需再次网页登录。已有终端首次安装后需要重新打开以载入命令路径。
 
 公网模式不安装或启用此功能。退出监考、结束考试、切换账号或切换到公网会清理监考客户端
@@ -137,10 +160,40 @@ submit logout
 文件仅当前用户可读写，不保存队伍密码。
 退出时会同时撤销服务端授权；管理员切换或关闭比赛后，旧授权立即失效。
 
+## 监考账号使用 printfile
+
+完成内网监考登录后，在代码目录运行：
+
+```text
+printfile A.cpp
+printfile "source file.py" y
+printfile Main.java n
+```
+
+格式为 `printfile <文件名> [y/N]`。未提供末尾参数时，终端先显示网站、比赛、队伍、文件名、
+大小和语言，再提示是否发送打印请求，不输出源码正文。只有输入 `y` 或 `Y` 才发送；
+`n`、`N`、回车或结束输入都会取消。末尾指定 `y` 或 `n` 时也会显示预览，再按该参数处理。
+每次调用都显示文件信息；确认与发送使用一次读取的文件快照，等待确认期间修改文件不会改变本次请求内容。
+
+只接受 `.cpp`、`.c`、`.cc`、`.cxx`、`.java`、`.py` 后缀（不区分大小写），
+自动识别 C++、C、Java、Python，不需要题号。文件必须是有效 UTF-8 文本，
+最多 120,000 字节且解码后最多 100,000 个 UTF-16 代码单元；空文件、仅空白文件、
+二进制内容和终端控制字符（制表符、回车、换行除外）会被拒绝。
+
+成功后输出打印请求编号；管理员或打印工作人员在当前比赛的**打印队列**处理，
+选手也可在网页打印窗口查看自己的请求状态。不会在选手电脑直接调用打印机。
+网络失败时不会自动重发；如果请求可能已送达，请先检查网页中的打印记录，以免重复排队。
+
+此命令复用 `~/.novajudge-submit.json` 的监考设备授权。普通网页登录绑定的设备、
+伪造本地 `loginSource` 标记、失效授权以及其他比赛的设备均不能打印。
+授权失效时回到监考客户端重新登录，不会打开浏览器重新配对。
+打印遵循现有比赛打印队列规则，不要求匹配题号，也不经过判题 worker。
+
 ## 更新与卸载
 
 更新时重新运行 `/cli` 页面上的安装命令，已有设备绑定配置会保留。
-已安装旧版的用户也需重新运行安装命令，才能使用提交前确认功能。
+已安装旧版的用户也需重新运行安装命令，才能使用 printfile。安装和卸载同时处理这两个命令。
+printfile 复用已有打印表，不需要新增数据库迁移；服务端 API 和选手脚本均需升级。
 
 卸载命令保留本地登录配置；如需清除凭据，请先运行 `submit logout`。
 将下方地址替换为实际比赛网站的地址，或直接使用 `/cli` 页面生成的命令：
@@ -172,6 +225,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\path\to\bundle\insta
 ```
 
 `-SourceDir` 完全使用随包文件，不发起下载，安装和更新均保留用户设备授权。
+安装器会生成 printfile 启动器，因此资源目录仍只需要上述四个文件。监考客户端发布新版本时，
+需要同时更新随包的安装器和原生脚本；只更新 NovaJudge 服务器不会替换旧监考客户端内置的文件。
+macOS 同样需要更新随包的 `install-macos.sh` 和 `submit-macos`。
 监考主进程随后按 [监考专用登录](PROCTORING_LOGIN.md) 获取设备令牌并写入当前用户的
 `.novajudge-submit.json`。首次安装后应重新打开终端应用，或在启动选手终端时添加安装目录到其 PATH。
 公网模式不调用安装/签发流程。退出、结束考试或切换账号时撤销服务器设备授权，并仅移除本客户端拥有且仍匹配的配置。
@@ -200,7 +256,7 @@ Windows 真实联调使用独立的本机测试数据库（数据库名必须含
 
 在 macOS 开发机上运行 `npm run test:submit-macos`，验证安装、重复安装、卸载、
 登录、参数和提交请求。测试使用临时用户目录，不改开发者的登录和终端配置。
-运行 `npm run test:cli-device` 验证设备授权、比赛切换、私有赛和权限边界。
+运行 `npm run test:cli-device` 验证设备授权、比赛切换、私有赛、打印队列和文件验证边界。
 运行 `npm run test:submit-legacy` 验证旧版 Node.js 客户端的地址配置边界。
 
 本地 3001 服务的测试比赛 #2（队伍 `team0001`、A 题为 A+B）处于比赛时间内时，

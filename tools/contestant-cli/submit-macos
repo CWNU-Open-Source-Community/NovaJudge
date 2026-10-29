@@ -36,6 +36,11 @@ function print(text, error) {
   (error ? $.NSFileHandle.fileHandleWithStandardError : $.NSFileHandle.fileHandleWithStandardOutput)
     .writeData(data(String(text) + "\n"));
 }
+function terminalText(value) {
+  return String(value).replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, function(character) {
+    return "\\u" + ("0000" + character.charCodeAt(0).toString(16)).slice(-4);
+  });
+}
 function exists(file) { return fm.fileExistsAtPath(file); }
 function readText(file) {
   const contents = $.NSData.dataWithContentsOfFile(file);
@@ -337,6 +342,123 @@ function submit(args) {
   print("Submitted #" + submission.displayId + " " + problem + " " + language);
   print(normalizeUrl(config.baseUrl) + "/contest/" + config.contest.id + "/status/" + submission.displayId);
 }
+function printAccessMessage(result) {
+  if (result && result.data && ["CLI_DISABLED", "CLI_DEPLOYMENT_DISABLED"].indexOf(result.data.code) !== -1) {
+    return "Printing is not enabled for the current intranet contest. Contact the administrator.";
+  }
+  return "Printfile requires authorization from the monitoring client. Reconnect through the monitoring client to restore printing access.";
+}
+function printContext() {
+  const config = readJson(configPath, {});
+  if (!config.deviceToken || !config.baseUrl || (config.loginSource && config.loginSource !== "PROCTORING")) {
+    throw new Error(printAccessMessage());
+  }
+  const result = request(config.baseUrl, "GET", "/api/cli/device/print", undefined, config);
+  if (!result.ok) throw new Error(printAccessMessage(result));
+  const value = result.data;
+  if (value.loginSource !== "PROCTORING") throw new Error(printAccessMessage());
+  if (!value.contest || !Number.isSafeInteger(value.contest.id) || value.contest.id <= 0 ||
+      typeof value.contest.title !== "string" || !value.user ||
+      typeof value.user.username !== "string" || !value.user.username ||
+      (value.user.displayName != null && typeof value.user.displayName !== "string")) {
+    throw new Error("Server printing authorization is missing the contest or team. Reconnect through the monitoring client.");
+  }
+  return { baseUrl: config.baseUrl, deviceToken: config.deviceToken, contest: value.contest, user: value.user };
+}
+function printSource(filename) {
+  const directory = Ref();
+  if (!fm.fileExistsAtPathIsDirectory(filename, directory) || directory[0]) throw new Error("Source file not found: " + filename);
+  const name = filename.split("/").pop();
+  const extension = (name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
+  const languages = { ".c": "c", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".java": "java", ".py": "pypy3" };
+  if (!Object.prototype.hasOwnProperty.call(languages, extension)) {
+    throw new Error("Printfile only accepts .cpp, .c, .cc, .cxx, .java and .py source files.");
+  }
+  if (name.length > 255 || /[\\/:\u0000-\u001f\u007f-\u009f]/.test(name)) {
+    throw new Error("Source filename must be at most 255 characters and must not contain path separators, colons or control characters.");
+  }
+  // Keep this one snapshot for the displayed metadata and upload, even if the file changes while confirming.
+  // Read one byte beyond the limit to reject oversized files without loading them into memory.
+  const input = $.NSFileHandle.fileHandleForReadingAtPath(filename);
+  if (input.isNil()) throw new Error("Cannot read file: " + filename);
+  let contents;
+  try { contents = input.readDataOfLength(120001); }
+  finally { input.closeFile; }
+  const bytes = Number(contents.length);
+  if (bytes > 120000) throw new Error("Printfile source must not exceed 120000 UTF-8 bytes.");
+  const code = decode(contents).replace(/^\uFEFF/, "");
+  if (code.length > 100000) throw new Error("Printfile source must not exceed 100000 characters.");
+  if (!code.trim()) throw new Error("Source file is empty: " + filename);
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(code)) {
+    throw new Error("Printfile source must be text without NUL or control characters (except tab and line endings).");
+  }
+  return { name: name, bytes: bytes, language: languages[extension], code: code };
+}
+function confirmPrint(config, source, suppliedAnswer) {
+  print("\nPrint request information:");
+  print("Server: " + terminalText(config.baseUrl));
+  print("Contest: #" + config.contest.id + " " + terminalText(config.contest.title));
+  print("Team: " + terminalText(config.user.displayName || config.user.username) + " (" + terminalText(config.user.username) + ")");
+  print("File: " + terminalText(source.name));
+  print("Size: " + source.bytes + " bytes");
+  const label = { c: "C", cpp: "C++", java: "Java", pypy3: "Python" }[source.language];
+  print("Language: " + label + " (" + source.language + ")");
+  if (suppliedAnswer !== undefined) {
+    print("Send this print request? [y/N] " + suppliedAnswer);
+    if (suppliedAnswer === "y") return true;
+    print("Cancelled. No print request was sent.");
+    return false;
+  }
+  const input = $.NSFileHandle.alloc.initWithFileDescriptor(3);
+  while (true) {
+    $.NSFileHandle.fileHandleWithStandardOutput.writeData(data("Send this print request? [y/N] "));
+    const line = $.NSMutableData.data;
+    while (true) {
+      const byte = input.readDataOfLength(1);
+      if (Number(byte.length) === 0) { print("\nCancelled. No print request was sent."); return false; }
+      if (byte.isEqualToData(data("\n"))) break;
+      line.appendData(byte);
+    }
+    const answer = decode(line).trim().toLowerCase();
+    if (answer === "y") return true;
+    if (answer === "" || answer === "n") { print("Cancelled. No print request was sent."); return false; }
+    print("Please enter y or n.");
+  }
+}
+function printfile(args) {
+  const parsed = parse(args, {});
+  if (parsed.rest.length < 1 || parsed.rest.length > 2) {
+    throw new Error("Usage: printfile <filename> [y/N]");
+  }
+  const suppliedAnswer = parsed.rest.length === 2 ? parsed.rest[1].toLowerCase() : undefined;
+  if (suppliedAnswer !== undefined && suppliedAnswer !== "y" && suppliedAnswer !== "n") {
+    throw new Error("The optional printfile confirmation argument must be y or n.");
+  }
+  const source = printSource(parsed.rest[0]);
+  const config = printContext();
+  if (!confirmPrint(config, source, suppliedAnswer)) return;
+  // Never retry this POST: a lost response may still mean that the print request was accepted.
+  let result;
+  try {
+    result = request(config.baseUrl, "POST", "/api/cli/device/print",
+      { sourceFilename: source.name, code: source.code }, config);
+  } catch (error) {
+    throw new Error("Could not confirm the print request result. Check NovaJudge's print queue before trying again. " + (error.message || error));
+  }
+  if (!result.ok) {
+    if (result.status === 401 || ["CONTEST_CHANGED", "REAUTH_REQUIRED", "DEVICE_EXPIRED", "INVALID_DEVICE_TOKEN",
+      "PAIRING_REQUIRED", "CLI_DISABLED", "CLI_DEPLOYMENT_DISABLED", "PROCTORING_CLIENT_REQUIRED"].indexOf(result.data.code) !== -1) {
+      throw new Error(printAccessMessage(result));
+    }
+    throw responseError(result, "Print request failed");
+  }
+  const job = result.data.printJob;
+  if (result.data.success !== true || !job || typeof job.id !== "string" || !job.id) {
+    throw new Error("The server returned no print request number. Check NovaJudge's print queue before trying again.");
+  }
+  print("Print request received: " + terminalText(job.id));
+  print("Status: " + terminalText(job.status || "PENDING"));
+}
 function usage() {
   print("NovaJudge submit — native macOS client\n\n" +
     "Usage:\n" +
@@ -346,6 +468,11 @@ function usage() {
     "  submit login [--url <server>]\n" +
     "  submit status\n" +
     "  submit logout\n\n" +
+    "  printfile <filename> [y/N]\n" +
+    "  submit printfile <filename> [y/N]\n\n" +
+    "Printfile is available only for monitoring-client accounts in an enabled intranet contest.\n" +
+    "Review the file name, size, language, server, contest and team before confirmation.\n" +
+    "Accepted files: .cpp, .c, .cc, .cxx, .java, .py. Source content is not displayed.\n" +
     "Your first submission opens a browser to sign in to your team and connect this computer.\n" +
     "The administrator selects the current contest. Later submissions reuse your browser authorization.\n" +
     "When the monitoring client connects submit automatically, manage its authorization in that client.\n" +
@@ -388,6 +515,7 @@ function run(args) {
   try {
     if (!args.length || args.indexOf("--help") !== -1 || args.indexOf("-h") !== -1 || args[0] === "help") { usage(); return; }
     if (args[0] === "login") { login(args.slice(1)); return; }
+    if (args[0] === "printfile") { printfile(args.slice(1)); return; }
     if (args[0] === "status" || args[0] === "logout") {
       if (args.length !== 1) throw new Error("Unexpected argument: " + args[1]);
       if (args[0] === "logout") logout();
@@ -396,7 +524,7 @@ function run(args) {
     }
     submit(args);
   } catch (error) {
-    print("submit: " + (error.message || error), true);
+    print((args[0] === "printfile" ? "printfile: " : "submit: ") + terminalText(error.message || error), true);
     $.exit(1);
   }
 }

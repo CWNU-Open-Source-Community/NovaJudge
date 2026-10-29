@@ -10,7 +10,7 @@ Offline:   bash install-macos.sh --url https://judge.example.com --source /path/
 Uninstall: bash install-macos.sh --uninstall
 
 macOS only. No sudo, package manager, or extra runtime is required.
-Installs submit into ~/.local/bin and configures zsh and bash PATH.
+Installs submit and printfile into ~/.local/bin and configures zsh and bash PATH.
 Run the install command again to update or change the default server.
 Uninstall keeps your login; run submit logout first to remove it.
 USAGE
@@ -40,6 +40,7 @@ done
 INSTALL_DIR="$HOME/.local/share/novajudge-submit"
 BIN_DIR="$HOME/.local/bin"
 COMMAND="$BIN_DIR/submit"
+PRINT_COMMAND="$BIN_DIR/printfile"
 MARKER='NovaJudge macOS submit installation v1'
 PATH_START='# >>> NovaJudge submit >>>'
 PATH_END='# <<< NovaJudge submit <<<'
@@ -65,8 +66,8 @@ owns_install() {
     /usr/bin/grep -Fqx "$MARKER" "$INSTALL_DIR/.install-marker"
 }
 owns_command() {
-  [ -f "$COMMAND" ] && [ ! -L "$COMMAND" ] &&
-    /usr/bin/grep -Fqx "# $MARKER" "$COMMAND"
+  [ -f "$1" ] && [ ! -L "$1" ] &&
+    /usr/bin/grep -Fqx "# $MARKER" "$1"
 }
 valid_path_blocks() {
   /usr/bin/awk -v start="$PATH_START" -v end="$PATH_END" '
@@ -78,11 +79,13 @@ valid_path_blocks() {
 
 STAGING=''
 COMMAND_TMP=''
+PRINT_COMMAND_TMP=''
 RC_TMP=''
 BACKUP=''
 cleanup() {
   [ -z "$STAGING" ] || /bin/rm -rf "$STAGING"
   [ -z "$COMMAND_TMP" ] || /bin/rm -f "$COMMAND_TMP"
+  [ -z "$PRINT_COMMAND_TMP" ] || /bin/rm -f "$PRINT_COMMAND_TMP"
   [ -z "$RC_TMP" ] || /bin/rm -f "$RC_TMP"
   if [ -n "$BACKUP" ] && [ -d "$BACKUP" ]; then
     if [ ! -e "$INSTALL_DIR" ]; then /bin/mv "$BACKUP" "$INSTALL_DIR"; fi
@@ -96,7 +99,10 @@ if $UNINSTALL; then
   [ -z "$SERVER_URL" ] || die 'Use --url for installation or --uninstall for removal.'
   [ -z "$LOCAL_SOURCE" ] || die 'Use --source for installation, not removal.'
   if [ -e "$COMMAND" ] || [ -L "$COMMAND" ]; then
-    owns_command || die "Refusing to remove another command: $COMMAND"
+    owns_command "$COMMAND" || die "Refusing to remove another command: $COMMAND"
+  fi
+  if [ -e "$PRINT_COMMAND" ] || [ -L "$PRINT_COMMAND" ]; then
+    owns_command "$PRINT_COMMAND" || die "Refusing to remove another command: $PRINT_COMMAND"
   fi
   if [ -e "$INSTALL_DIR" ] || [ -L "$INSTALL_DIR" ]; then
     owns_install || die "Refusing to remove an unrecognized directory: $INSTALL_DIR"
@@ -109,6 +115,7 @@ if $UNINSTALL; then
     fi
   done
   [ ! -e "$COMMAND" ] || /bin/rm "$COMMAND"
+  [ ! -e "$PRINT_COMMAND" ] || /bin/rm "$PRINT_COMMAND"
   [ ! -e "$INSTALL_DIR" ] || /bin/rm -rf "$INSTALL_DIR"
   for rc in "${RC_FILES[@]}"; do
     [ -f "$rc" ] || continue
@@ -138,7 +145,10 @@ DEFAULTS=$(printf '%s' "$SERVER_URL" | /usr/bin/osascript -l JavaScript -e '
 ') || die 'Invalid server URL.'
 
 if [ -e "$COMMAND" ] || [ -L "$COMMAND" ]; then
-  owns_command || die "Another submit command already exists at $COMMAND. Move it before installing."
+  owns_command "$COMMAND" || die "Another submit command already exists at $COMMAND. Move it before installing."
+fi
+if [ -e "$PRINT_COMMAND" ] || [ -L "$PRINT_COMMAND" ]; then
+  owns_command "$PRINT_COMMAND" || die "Another printfile command already exists at $PRINT_COMMAND. Move it before installing."
 fi
 if [ -e "$INSTALL_DIR" ] || [ -L "$INSTALL_DIR" ]; then
   owns_install || die "Refusing to overwrite an unrecognized directory: $INSTALL_DIR"
@@ -177,12 +187,19 @@ COMMAND_TMP=$(/usr/bin/mktemp "$BIN_DIR/.submit.XXXXXX")
   printf 'exec %q "$@"\n' "$INSTALL_DIR/submit"
 } > "$COMMAND_TMP"
 /bin/chmod 755 "$COMMAND_TMP"
+PRINT_COMMAND_TMP=$(/usr/bin/mktemp "$BIN_DIR/.printfile.XXXXXX")
+{
+  printf '#!/bin/bash\n# %s\n' "$MARKER"
+  printf 'exec %q printfile "$@"\n' "$INSTALL_DIR/submit"
+} > "$PRINT_COMMAND_TMP"
+/bin/chmod 755 "$PRINT_COMMAND_TMP"
 if [ -d "$INSTALL_DIR" ]; then
   BACKUP="$STAGING.previous"
   /bin/mv "$INSTALL_DIR" "$BACKUP"
 fi
 /bin/mv "$STAGING" "$INSTALL_DIR"; STAGING=''
 /bin/mv -f "$COMMAND_TMP" "$COMMAND"; COMMAND_TMP=''
+/bin/mv -f "$PRINT_COMMAND_TMP" "$PRINT_COMMAND"; PRINT_COMMAND_TMP=''
 [ -z "$BACKUP" ] || /bin/rm -rf "$BACKUP"
 BACKUP=''
 
@@ -200,6 +217,7 @@ PROFILE
 done
 
 printf '\nInstalled: %s\nServer: %s\n' "$COMMAND" "$SERVER_URL"
+printf 'Installed: %s (monitoring login required)\n' "$PRINT_COMMAND"
 cat <<'DONE'
 
 Open a new terminal, or run this in your current terminal:

@@ -74,6 +74,10 @@ async function fixture(t, handler) {
       else send(response, { success: true });
     } else if (request.url === "/api/cli/device/submit") {
       send(response, { submission: { id: "submission-123", displayId: 9 }, statusUrl: "/contest/17/status/9" });
+    } else if (request.url === "/api/cli/device/print") {
+      send(response, request.method === "GET" ? proctoringReady : {
+        success: true, printJob: { id: "print-job-123", sourceFilename: payload.sourceFilename, status: "PENDING" }, contest,
+      });
     } else send(response, { error: "Unexpected endpoint" }, 404);
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -91,11 +95,13 @@ async function fixture(t, handler) {
       let stdout = "", stderr = "", prompted = false;
       const stop = () => { try { child.kill(); } catch { /* Already exited. */ } };
       const timeout = setTimeout(() => { stop(); reject(new Error(`Native CLI timed out: ${stdout}${stderr}`)); }, 30000);
+      child.stdout.setEncoding("utf8");
       child.stdout.on("data", (chunk) => {
         stdout += chunk.toString().replaceAll("\r\n", "\n");
-        if (onPrompt && !prompted && stdout.includes("Submit this file? [y/N]")) {
+        if (onPrompt && !prompted && /(?:Submit|Print) this file\? \[y\/N\]/.test(stdout)) {
           prompted = true;
-          try { onPrompt(child, stdout); } catch (error) { stop(); reject(error); }
+          try { Promise.resolve(onPrompt(child, stdout)).catch((error) => { stop(); reject(error); }); }
+          catch (error) { stop(); reject(error); }
         }
       });
       child.stderr.on("data", (chunk) => { stderr += chunk; });
@@ -577,4 +583,256 @@ test("HTTP redirects never forward device credentials or source to another endpo
     assert.deepEqual(leaked, [], "redirect destinations must receive no request, token, or source");
     assert.doesNotMatch(result.stdout + result.stderr, /njcli_monitor_device|private-source-marker/);
   }
+});
+
+test("printfile shows a Chinese spaced path without source and queues the original snapshot using monitored credentials", { skip: !windows }, async (t) => {
+  const f = await fixture(t);
+  await f.bindProctoring({ contest: { id: 99, title: "Stale local contest" } });
+  const directory = path.join(f.directory, "中文 代码");
+  await fs.mkdir(directory);
+  const filename = "测试 文件.cpp";
+  const fullpath = path.join(directory, filename);
+  const code = '#include <iostream>\n// 中文 & "quoted" \\ code\nint main() {\n\tstd::cout << "ok";\n}\n';
+  await fs.writeFile(fullpath, code);
+  const result = await f.run(["printfile", fullpath], { async onPrompt(child, output) {
+    assert.deepEqual(f.requests.map((r) => [r.method, r.path]), [["GET", "/api/cli/device/print"]]);
+    assert.match(output, /Contest: #17 Current Contest/);
+    assert.match(output, /Team: Test Team \(team001\)/);
+    assert.ok(output.includes(`File: ${filename}\nSize: ${Buffer.byteLength(code)} bytes\nLanguage: C++`));
+    assert.doesNotMatch(output, /#include|std::cout|Begin file content/);
+    // A file edited during confirmation must not silently change the upload.
+    await fs.writeFile(fullpath, "int changed_after_preview;\n");
+    child.stdin.end("y\n");
+  } });
+  success(result);
+  assert.match(result.stdout, /Print request print-job-123 entered the NovaJudge print queue/);
+  assert.doesNotMatch(result.stdout, /Stale local contest|njcli_|Pairing code|browser authorization|#include|std::cout|changed_after_preview/);
+  assert.deepEqual(f.requests.map((r) => [r.method, r.path]), [
+    ["GET", "/api/cli/device/print"], ["POST", "/api/cli/device/print"],
+  ]);
+  assert.deepEqual(f.requests[1].payload, { sourceFilename: filename, code });
+  assert.equal(f.requests[1].headers.authorization, "Bearer njcli_monitor_device");
+});
+
+test("printfile accepts only the six source suffixes and displays inferred language before positional confirmation", { skip: !windows }, async (t) => {
+  const f = await fixture(t);
+  await f.bindProctoring();
+  for (const [extension, language] of [["c", "C"], ["cc", "C++"], ["cpp", "C++"], ["cxx", "C++"], ["java", "Java"], ["py", "Python"]]) {
+    const filename = `source.${extension}`;
+    const code = `// source ${extension}\n`;
+    await fs.writeFile(path.join(f.directory, filename), code);
+    const result = await f.run(["printfile", filename, "Y"]);
+    success(result);
+    assert.ok(result.stdout.includes(`Language: ${language}\n`));
+    assert.ok(result.stdout.indexOf(`File: ${filename}`) < result.stdout.indexOf("Print this file? [y/N] Y"));
+    assert.ok(!result.stdout.includes(code.trimEnd()), "source contents must not be printed to the terminal");
+    assert.deepEqual(f.requests.at(-1).payload, { sourceFilename: filename, code });
+  }
+  assert.equal(f.requests.filter((r) => r.method === "POST").length, 6);
+});
+
+test("printfile N, Enter, EOF and unterminated y cancel without uploading any source", { skip: !windows }, async (t) => {
+  const f = await fixture(t);
+  await f.bindProctoring();
+  await fs.writeFile(path.join(f.directory, "A.py"), "print('private source')\n");
+  for (const input of ["n\n", "N\n", "\n", "", "y", "yes\nn\n"]) {
+    const result = await f.run(["printfile", "A.py"], { input });
+    success(result);
+    assert.doesNotMatch(result.stdout, /private source/);
+    assert.match(result.stdout, /Cancelled. Nothing was sent for printing/);
+  }
+  const positionalCancel = await f.run(["printfile", "A.py", "N"], { input: "y\n" });
+  success(positionalCancel);
+  assert.match(positionalCancel.stdout, /Print this file\? \[y\/N\] N/);
+  assert.equal(f.requests.filter((r) => r.method !== "GET").length, 0);
+  const confirmed = await f.run(["printfile", "A.py"], { input: "maybe\n是\nY\n" });
+  success(confirmed);
+  assert.equal(confirmed.stdout.match(/Please enter y or n/g).length, 2);
+  assert.equal(f.requests.filter((r) => r.method === "POST").length, 1);
+});
+
+test("printfile never pairs an unbound or browser-authorized device", { skip: !windows }, async (t) => {
+  const f = await fixture(t);
+  await fs.writeFile(path.join(f.directory, "A.cpp"), "int main(){}\n");
+  for (const setup of [async () => {}, () => f.bind(), () => f.bindProctoring({ deviceToken: "" })]) {
+    await setup();
+    const result = await f.run(["printfile", "A.cpp", "y"]);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Reconnect through the monitoring client/);
+    assert.doesNotMatch(result.stdout, /Pairing code|Print this file|int main/);
+    assert.deepEqual(f.requests, []);
+  }
+  // Old monitor installs without a local loginSource still require server proof.
+  await f.bindProctoring({ loginSource: undefined });
+  success(await f.run(["printfile", "A.cpp", "y"]));
+  assert.deepEqual(f.requests.map((r) => [r.method, r.path]), [
+    ["GET", "/api/cli/device/print"], ["POST", "/api/cli/device/print"],
+  ]);
+});
+
+test("printfile rejects forged local monitor markers, expired authorization and malformed server context", { skip: !windows }, async (t) => {
+  const scenarios = [
+    { status: 403, body: { code: "PROCTORING_REQUIRED", error: "Monitoring-client login required" } },
+    { status: 401, body: { code: "INVALID_DEVICE_TOKEN", error: "Expired token" } },
+    { status: 410, body: { code: "DEVICE_EXPIRED", error: "Expired token" } },
+    { status: 409, body: { code: "CLI_DISABLED", error: "Intranet printing is disabled" } },
+    { status: 200, body: { ...proctoringReady, loginSource: "BROWSER" } },
+    { status: 200, body: { ...proctoringReady, contest: undefined } },
+    { status: 200, body: { ...proctoringReady, user: {} } },
+  ];
+  let scenario = scenarios[0];
+  const f = await fixture(t, (_request, response) => send(response, scenario.body, scenario.status));
+  await f.bindProctoring();
+  await fs.writeFile(path.join(f.directory, "A.cpp"), "int private_source;\n");
+  for (const current of scenarios) {
+    scenario = current;
+    const start = f.requests.length;
+    const result = await f.run(["printfile", "A.cpp", "y"]);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Reconnect through the monitoring client/);
+    assert.doesNotMatch(result.stdout, /Pairing code|Print this file|private_source/);
+    assert.deepEqual(f.requests.slice(start).map((r) => [r.method, r.path]), [["GET", "/api/cli/device/print"]]);
+  }
+});
+
+test("printfile rejects invalid local files, UTF-8, byte/character limits, controls and extra arguments before network access", { skip: !windows }, async (t) => {
+  const f = await fixture(t);
+  await f.bindProctoring();
+  const cases = [
+    { file: "wrong.txt", code: "text", error: /accepts only/ },
+    { file: "wrong.py3", code: "print(1)", error: /accepts only/ },
+    { file: "wrong.cpp.exe", code: "text", error: /accepts only/ },
+    { file: "empty.cpp", code: " \r\n\t", error: /empty/ },
+    { file: "large.cpp", code: "中".repeat(40001), error: /120000 byte/ },
+    { file: "long.cpp", code: "x".repeat(100001), error: /100000 character/ },
+    { file: "utf8.cpp", code: Buffer.from([0xc3, 0x28]), error: /Cannot read UTF-8/ },
+    { file: "contains-nul.cpp", code: "int a;\0", error: /control characters/ },
+    { file: "esc.cpp", code: "// \x1b[2J int a;", error: /control characters/ },
+    { file: "bell.cpp", code: "// \x07 int a;", error: /control characters/ },
+    { file: "c1.cpp", code: "// \u009b2J int a;", error: /control characters/ },
+    { file: "del.cpp", code: "// \x7f int a;", error: /control characters/ },
+  ];
+  for (const entry of cases) {
+    await fs.writeFile(path.join(f.directory, entry.file), entry.code);
+    const result = await f.run(["printfile", entry.file, "y"]);
+    assert.equal(result.code, 1, entry.file);
+    assert.match(result.stderr, entry.error);
+    assert.doesNotMatch(result.stdout + result.stderr, /\x1b|\u009b|\x07/);
+  }
+  await fs.writeFile(path.join(f.directory, "A.cpp"), "int main(){}\n");
+  for (const args of [[], ["A.cpp", "yes"], ["A.cpp", "y", "extra"], ["--unknown", "A.cpp"], ["missing.cpp"]]) {
+    assert.equal((await f.run(["printfile", ...args])).code, 1);
+  }
+  assert.deepEqual(f.requests, []);
+});
+
+test("printfile accepts the exact UTF-8 byte and character limits", { skip: !windows }, async (t) => {
+  const f = await fixture(t);
+  await f.bindProctoring();
+  for (const code of ["中".repeat(40000), "x".repeat(100000)]) {
+    await fs.writeFile(path.join(f.directory, "limit.cpp"), code);
+    const result = await f.run(["printfile", "limit.cpp", "y"]);
+    success(result);
+    assert.equal(f.requests.at(-1).payload.code, code);
+    assert.ok(result.stdout.includes(`Size: ${Buffer.byteLength(code)} bytes`));
+  }
+});
+
+test("printfile preserves BOM-stripped source and CR line endings without displaying code and sanitizes server labels", { skip: !windows }, async (t) => {
+  const f = await fixture(t, (request, response) => {
+    if (request.url.endsWith("/print") && request.method === "GET") {
+      send(response, { ...proctoringReady, contest: { ...contest, title: "Contest\x1b[2J" }, user: { ...user, displayName: "Team\u009b2J" } });
+      return;
+    }
+    return false;
+  });
+  await f.bindProctoring();
+  const code = "// first\r\n// second\rint main(){}\n\t// end\n";
+  const bytes = Buffer.from("\ufeff" + code);
+  await fs.writeFile(path.join(f.directory, "A.cpp"), bytes);
+  const result = await f.run(["printfile", "A.cpp", "y"]);
+  success(result);
+  assert.ok(result.stdout.includes(`Size: ${bytes.length} bytes`));
+  assert.doesNotMatch(result.stdout, /\/\/ first|\/\/ second|int main|\/\/ end/);
+  assert.match(result.stdout, /Contest\?\[2J/);
+  assert.match(result.stdout, /Team\?2J/);
+  assert.doesNotMatch(result.stdout, /\x1b|\u009b|\ufeff/);
+  assert.equal(f.requests.at(-1).payload.code, code);
+});
+
+test("printfile never retries a failed POST or starts browser pairing, including ambiguous network failures", { skip: !windows }, async (t) => {
+  const scenarios = [
+    { status: 401, code: "INVALID_DEVICE_TOKEN", auth: true },
+    { status: 403, code: "PROCTORING_REQUIRED", auth: true },
+    { status: 409, code: "CONTEST_CHANGED", auth: true },
+    { status: 410, code: "DEVICE_EXPIRED", auth: true },
+    { status: 503, code: "UNAVAILABLE" },
+    { status: 307, code: "REDIRECT" },
+    { disconnect: true },
+    { invalidSuccess: true },
+  ];
+  let scenario = scenarios[0];
+  const f = await fixture(t, (request, response) => {
+    if (request.method !== "POST") return false;
+    if (scenario.disconnect) { request.socket.destroy(); return; }
+    if (scenario.invalidSuccess) { send(response, { success: true }); return; }
+    if (scenario.status === 307) response.setHeader("Location", "/redirect-trap");
+    send(response, { code: scenario.code, error: "Request failed\x1b[2J" }, scenario.status);
+  });
+  await f.bindProctoring();
+  await fs.writeFile(path.join(f.directory, "A.cpp"), "int main(){}\n");
+  for (const current of scenarios) {
+    scenario = current;
+    const start = f.requests.length;
+    const result = await f.run(["printfile", "A.cpp", "y"], { input: "y\ny\n" });
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Check the NovaJudge print queue before trying again/);
+    if (current.auth) assert.match(result.stderr, /Reconnect through the monitoring client/);
+    assert.doesNotMatch(result.stdout + result.stderr, /Pairing code|\x1b|njcli_/);
+    assert.deepEqual(f.requests.slice(start).map((r) => [r.method, r.path]), [
+      ["GET", "/api/cli/device/print"], ["POST", "/api/cli/device/print"],
+    ]);
+  }
+});
+
+test("printfile rejects a false success response even when it contains a print job ID", { skip: !windows }, async (t) => {
+  let successValue = false;
+  const f = await fixture(t, (request, response) => {
+    if (request.method !== "POST") return false;
+    send(response, { success: successValue, printJob: { id: "not-accepted-print-job" }, contest });
+  });
+  await f.bindProctoring();
+  await fs.writeFile(path.join(f.directory, "A.cpp"), "int main(){}\n");
+  for (const value of [false, "true"]) {
+    successValue = value;
+    const start = f.requests.length;
+    const result = await f.run(["printfile", "A.cpp", "y"]);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /no valid print confirmation/);
+    assert.match(result.stderr, /Check the NovaJudge print queue before trying again/);
+    assert.doesNotMatch(result.stdout, /entered the NovaJudge print queue|not-accepted-print-job|int main/);
+    assert.deepEqual(f.requests.slice(start).map((r) => [r.method, r.path]), [
+      ["GET", "/api/cli/device/print"], ["POST", "/api/cli/device/print"],
+    ]);
+  }
+});
+
+test("printfile renders bidirectional filename and server labels without terminal formatting controls", { skip: !windows }, async (t) => {
+  const f = await fixture(t, (request, response) => {
+    if (request.method === "GET") {
+      send(response, { ...proctoringReady, contest: { ...contest, title: "Contest\u202eSafe" }, user: { ...user, displayName: "Team\u2066Safe\u2069" } });
+      return;
+    }
+    return false;
+  });
+  await f.bindProctoring();
+  const filename = "name\u202etest.cpp";
+  await fs.writeFile(path.join(f.directory, filename), "int main(){}\n");
+  const result = await f.run(["printfile", filename, "y"]);
+  success(result);
+  assert.match(result.stdout, /File: name\?test.cpp/);
+  assert.match(result.stdout, /Contest\?Safe/);
+  assert.match(result.stdout, /Team\?Safe\?/);
+  assert.doesNotMatch(result.stdout, /[\u202a-\u202e\u2066-\u2069]|int main/);
+  assert.equal(f.requests.at(-1).payload.sourceFilename, filename);
 });

@@ -23,7 +23,7 @@
     "test:submit-windows": "node --test scripts/submit-windows-install.test.mjs tools/contestant-cli/submit-windows.test.mjs",
     "test:submit-legacy": "node --test scripts/submit-legacy.test.mjs",
     "test:submit-windows:integration": "tsx scripts/test-submit-windows-integration.ts",
-    "test:cli-device": "tsx --test lib/cli-devices.test.ts",
+    "test:cli-device": "tsx --test lib/cli-devices.test.ts lib/print-file-policy.test.ts",
     "test:submit-macos:integration": "tsx scripts/test-submit-macos-integration.ts",
     "test:judge-cache": "tsx --test lib/judge/program-cache.test.ts",
     "test:judge-cache:integration": "tsx -r dotenv/config scripts/test-judge-program-cache.ts",

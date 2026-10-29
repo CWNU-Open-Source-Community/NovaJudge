@@ -1,7 +1,8 @@
 # NovaJudge native Windows submit
+#Requires -Version 5.1
 # Windows PowerShell 5.1+. Credentials and source never enter process arguments.
 $ErrorActionPreference = "Stop"
-$ClientVersion = "2026.10.29.1"
+$ClientVersion = "2026.10.29.2"
 $ConfigPath = Join-Path $env:USERPROFILE ".novajudge-submit.json"
 $DefaultsPath = Join-Path $PSScriptRoot "submit-defaults.json"
 $Utf8 = New-Object System.Text.UTF8Encoding($false, $true)
@@ -360,6 +361,127 @@ function Send-Submission($Arguments) {
   Write-Host ((Normalize-Url $Config.baseUrl) + "/contest/$($Config.contest.id)/status/$DisplayId")
 }
 
+function Format-PrintLabel($Value) {
+  return ([string]$Value -replace '[\x00-\x1F\x7F-\x9F\u202A-\u202E\u2066-\u2069]', '?')
+}
+
+function Read-PrintSource($FileName) {
+  if ($FileName -match '[\x00-\x1F\x7F-\x9F]') { throw "Source file path contains control characters." }
+  $Name = [IO.Path]::GetFileName($FileName)
+  $Extension = [IO.Path]::GetExtension($Name).ToLowerInvariant()
+  $Languages = @{ ".c" = "C"; ".cc" = "C++"; ".cpp" = "C++"; ".cxx" = "C++"; ".java" = "Java"; ".py" = "Python" }
+  if (!$Languages.ContainsKey($Extension)) { throw "Printing accepts only .cpp, .c, .cc, .cxx, .java or .py files." }
+  if ($Name.Length -gt 255) { throw "Source filename must not exceed 255 characters." }
+  if (!(Test-Path -LiteralPath $FileName -PathType Leaf)) { throw "Source file not found: $FileName" }
+  # Bound the read even if a file grows while opening it. This one snapshot
+  # supplies the displayed size and upload; confirmation never reopens the source.
+  $Bytes = New-Object byte[] 120001
+  $Length = 0
+  $Stream = [IO.File]::Open($FileName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  try {
+    while ($Length -lt $Bytes.Length) {
+      $Read = $Stream.Read($Bytes, $Length, $Bytes.Length - $Length)
+      if ($Read -eq 0) { break }
+      $Length += $Read
+    }
+  } finally { $Stream.Dispose() }
+  if ($Length -gt 120000) { throw "Source file exceeds the 120000 byte printing limit." }
+  try { $Code = $Utf8.GetString($Bytes, 0, $Length) }
+  catch { throw "Cannot read UTF-8 text from: $FileName" }
+  if ($Code.Length -gt 0 -and $Code[0] -eq [char]0xfeff) { $Code = $Code.Substring(1) }
+  if ($Code.Length -gt 100000) { throw "Source file exceeds the 100000 character printing limit." }
+  if (!$Code.Trim()) { throw "Source file is empty: $FileName" }
+  if ($Code -match '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]') {
+    throw "Source file contains unsupported control characters. Only tab and line endings are allowed."
+  }
+  return @{ name = $Name; bytes = $Length; language = $Languages[$Extension]; code = $Code }
+}
+
+function Get-PrintContext {
+  $Guidance = "Printing requires monitoring-client authorization. Reconnect through the monitoring client and try again."
+  $Config = Read-JsonFile $ConfigPath
+  if (!$Config.baseUrl -or $Config.deviceToken -isnot [string] -or
+      $Config.deviceToken -cnotmatch '^njcli_[A-Za-z0-9_-]+$' -or
+      ($Config.loginSource -and $Config.loginSource -cne "PROCTORING")) { throw $Guidance }
+  try { $Result = Invoke-Api $Config.baseUrl "GET" "/api/cli/device/print" $null $Config }
+  catch { throw ($_.Exception.Message + " " + $Guidance) }
+  if (!$Result.ok) { throw ((Get-ResponseError $Result "Cannot authorize printing") + " " + $Guidance) }
+  $State = $Result.data
+  # The server is authoritative: a local PROCTORING marker is never sufficient.
+  if ($State.loginSource -cne "PROCTORING" -or !$State.contest -or
+      !(Test-PositiveInteger $State.contest.id) -or $State.contest.title -isnot [string] -or
+      !$State.user -or $State.user.username -isnot [string] -or !$State.user.username) { throw $Guidance }
+  return @{ config = $Config; contest = $State.contest; user = $State.user }
+}
+
+function Confirm-Print($Context, $Source, $Confirmation) {
+  Write-Host "`nPrint information:"
+  Write-Host ("Server: " + (Format-PrintLabel $Context.config.baseUrl))
+  Write-Host ("Contest: #$($Context.contest.id) " + (Format-PrintLabel $Context.contest.title))
+  $TeamName = if ($Context.user.displayName) { $Context.user.displayName } else { $Context.user.username }
+  Write-Host ("Team: " + (Format-PrintLabel $TeamName) + " (" + (Format-PrintLabel $Context.user.username) + ")")
+  Write-Host ("File: " + (Format-PrintLabel $Source.name))
+  Write-Host "Size: $($Source.bytes) bytes"
+  Write-Host "Language: $($Source.language)"
+  while ($true) {
+    [Console]::Write("Print this file? [y/N] ")
+    if ($null -ne $Confirmation) {
+      $Answer = [string]$Confirmation
+      Write-Host $Answer
+    } else {
+      $Line = New-Object Text.StringBuilder
+      while ($true) {
+        $Character = [Console]::Read()
+        if ($Character -eq -1) {
+          Write-Host "Cancelled. Nothing was sent for printing."
+          return $false
+        }
+        if ($Character -eq 10) { break }
+        [void]$Line.Append([char]$Character)
+      }
+      $Answer = $Line.ToString().Trim()
+    }
+    if ($Answer -eq "" -or $Answer -ieq "n") {
+      Write-Host "Cancelled. Nothing was sent for printing."
+      return $false
+    }
+    if ($Answer -ieq "y") { return $true }
+    Write-Host "Please enter y or n."
+  }
+}
+
+function Send-PrintFile($Arguments) {
+  $Parsed = Parse-Options $Arguments @()
+  if ($Parsed.rest.Count -lt 1 -or $Parsed.rest.Count -gt 2) {
+    throw "Usage: printfile <source-file> [y/N]"
+  }
+  $Confirmation = if ($Parsed.rest.Count -eq 2) { $Parsed.rest[1] } else { $null }
+  if ($null -ne $Confirmation -and $Confirmation -cnotmatch '^[yYnN]?$') {
+    throw "The optional print confirmation must be y or N."
+  }
+  $Source = Read-PrintSource $Parsed.rest[0]
+  $Context = Get-PrintContext
+  if (!(Confirm-Print $Context $Source $Confirmation)) { return }
+  $Payload = @{ sourceFilename = $Source.name; code = $Source.code }
+  # Never retry a print POST automatically: an interrupted response can still
+  # mean that the server queued the request successfully.
+  try { $Result = Invoke-Api $Context.config.baseUrl "POST" "/api/cli/device/print" $Payload $Context.config }
+  catch { throw ($_.Exception.Message + " Check the NovaJudge print queue before trying again; the request was not retried.") }
+  if (!$Result.ok) {
+    $Message = Get-ResponseError $Result "Print request failed"
+    if ($Result.status -in @(401, 403, 410) -or $Result.data.code -in @("CONTEST_CHANGED", "REAUTH_REQUIRED", "DEVICE_EXPIRED", "INVALID_DEVICE_TOKEN", "PAIRING_REQUIRED", "CLI_DISABLED", "CLI_DEPLOYMENT_DISABLED", "PROCTORING_REQUIRED")) {
+      $Message += " Reconnect through the monitoring client to restore printing access."
+    }
+    throw ($Message + " Check the NovaJudge print queue before trying again; the request was not retried.")
+  }
+  if ($Result.data.success -isnot [bool] -or $Result.data.success -ne $true -or
+      !$Result.data.printJob -or $Result.data.printJob.id -isnot [string] -or !$Result.data.printJob.id -or
+      $Result.data.printJob.id -match '[\x00-\x1F\x7F-\x9F]') {
+    throw "Server returned no valid print confirmation. Check the NovaJudge print queue before trying again."
+  }
+  Write-Host "Print request $($Result.data.printJob.id) entered the NovaJudge print queue."
+}
+
 function Show-Status {
   $Config = Read-JsonFile $ConfigPath
   if (!$Config.deviceToken -or !$Config.baseUrl) {
@@ -396,11 +518,13 @@ function Disconnect-Device {
 function Show-Usage {
   Write-Host @"
 NovaJudge submit - native Windows client
+Requires Windows PowerShell 5.1. On Windows 7 SP1, install .NET Framework 4.5.2 or later and WMF 5.1 first.
 
 Usage:
   submit A.cpp
   submit --problem A main.cpp
   submit --language cpp A.txt
+  printfile <source-file> [y/N]
   submit login [--url <server>]
   submit status
   submit logout
@@ -410,6 +534,8 @@ Your first submission opens a browser to sign in to your team and connect this c
 The administrator selects the current contest. Later submissions reuse your browser authorization.
 When the monitoring client connects submit automatically, manage its authorization in that client.
 Review the submission information and enter y to submit; n or Enter cancels.
+Printing requires monitoring-client authorization and an enabled intranet deployment.
+printfile shows file details before confirmation. Only .cpp, .c, .cc, .cxx, .java and .py are accepted.
 No contest ID, username or password is entered in the terminal.
 NOVAJUDGE_URL overrides the installed default server for login; --url has priority.
 NOVAJUDGE_NO_BROWSER=1 prints the verification URL without opening the browser automatically.
@@ -421,6 +547,8 @@ try {
   $Arguments = @($args)
   if ($Arguments.Count -eq 0 -or $Arguments -contains "--help" -or $Arguments -contains "-h" -or $Arguments[0] -eq "help") {
     Show-Usage
+  } elseif ($Arguments[0] -eq "printfile") {
+    Send-PrintFile @($Arguments | Select-Object -Skip 1)
   } elseif ($Arguments[0] -eq "login") {
     $Parsed = Parse-Options @($Arguments | Select-Object -Skip 1) @("url")
     if ($Parsed.rest.Count) { throw "Unexpected login argument: $($Parsed.rest[0])" }
@@ -437,7 +565,9 @@ try {
     }
   } else { Send-Submission $Arguments }
 } catch {
-  [Console]::Error.WriteLine("submit: " + $_.Exception.Message)
+  if ($Arguments.Count -gt 0 -and $Arguments[0] -eq "printfile") {
+    [Console]::Error.WriteLine("printfile: " + (Format-PrintLabel $_.Exception.Message))
+  } else { [Console]::Error.WriteLine("submit: " + $_.Exception.Message) }
   exit 1
 } finally {
   if ($script:HttpClient) { $script:HttpClient.Dispose() }

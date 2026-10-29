@@ -12,6 +12,7 @@ $Utf8 = New-Object System.Text.UTF8Encoding($false)
 $Marker = 'NovaJudge Windows submit installation v1'
 $Files = @('submit.ps1', 'submit.cmd', 'submit.bat')
 $OwnedFiles = $Files + @('novajudge-submit.ps1', 'submit-defaults.json', '.install-marker')
+$PrintLaunchers = @('printfile.cmd', 'printfile.bat')
 $Stage = $null
 $Backup = $null
 
@@ -40,8 +41,9 @@ function Read-Installation {
   }
   $Info = [IO.File]::ReadAllText($MarkerFile, $Utf8) | ConvertFrom-Json
   if ($Info.marker -ne $Marker) { throw "Unrecognized installation marker: $InstallDir" }
+  $AllowedFiles = if ($Info.printfileInstalled) { $OwnedFiles + $PrintLaunchers } else { $OwnedFiles }
   foreach ($Entry in Get-ChildItem -LiteralPath $InstallDir -Force) {
-    if ($Entry.PSIsContainer -or ($Entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $Entry.Name -notin $OwnedFiles) {
+    if ($Entry.PSIsContainer -or ($Entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $Entry.Name -notin $AllowedFiles) {
       throw "Unexpected file in installation; preserve it before updating or removing: $($Entry.FullName)"
     }
   }
@@ -52,7 +54,7 @@ function Remove-InstallationDirectory([string]$Path) {
   Assert-SafePath $Path
   # Only known files are ever deleted, and only inside the validated installation parent.
   foreach ($Entry in Get-ChildItem -LiteralPath $Path -Force) {
-    if ($Entry.PSIsContainer -or ($Entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $Entry.Name -notin $OwnedFiles) {
+    if ($Entry.PSIsContainer -or ($Entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $Entry.Name -notin ($OwnedFiles + $PrintLaunchers)) {
       throw "Refusing to delete an unexpected installation entry: $($Entry.FullName)"
     }
   }
@@ -158,10 +160,14 @@ try {
   $InstalledClient = Join-Path $Stage 'novajudge-submit.ps1'
   Assert-SafePath $InstalledClient
   Move-Item -LiteralPath $Client -Destination $InstalledClient
+  foreach ($Name in $PrintLaunchers) {
+    $PrintLauncher = '@echo off' + "`r`n" + 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0novajudge-submit.ps1" printfile %*' + "`r`n"
+    [IO.File]::WriteAllText((Join-Path $Stage $Name), $PrintLauncher, $Utf8)
+  }
   $PathExists = @($UserPath -split ';' | Where-Object { Is-InstallPath $_ }).Count -gt 0
   $PathAdded = (!$NoPathUpdate -and !$PathExists) -or ($Previous -and $Previous.pathAdded)
   [IO.File]::WriteAllText((Join-Path $Stage 'submit-defaults.json'), (@{ baseUrl = $Url } | ConvertTo-Json), $Utf8)
-  [IO.File]::WriteAllText((Join-Path $Stage '.install-marker'), (@{ marker = $Marker; pathAdded = [bool]$PathAdded } | ConvertTo-Json), $Utf8)
+  [IO.File]::WriteAllText((Join-Path $Stage '.install-marker'), (@{ marker = $Marker; pathAdded = [bool]$PathAdded; printfileInstalled = $true } | ConvertTo-Json), $Utf8)
   if ($Previous) {
     $Backup = Join-Path $InstallParent ('.submit-previous-' + [Guid]::NewGuid().ToString('N'))
     Assert-SafePath $InstallDir; Assert-SafePath $Backup
@@ -187,6 +193,7 @@ try {
     Broadcast-Environment
   }
   Write-Host "Installed: $InstallDir\submit.cmd"
+  Write-Host "Installed: $InstallDir\printfile.cmd (monitoring login required)"
   Write-Host "Server: $Url"
   Write-Host 'Reopen your terminal application, then run: submit A.cpp'
   Write-Host 'Existing terminals: add the installation directory to PATH, or run submit.cmd by its full path.'

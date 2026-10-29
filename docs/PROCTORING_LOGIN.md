@@ -35,7 +35,7 @@
 - 其他未绑定的比赛账号保持原有登录方式；全局超级管理员登录与管理功能正常。
 - 绑定属于该场比赛的账号，客户端退出、注销或考试结束不会自动恢复普通浏览器登录。
 
-## 内网自动绑定 submit 协议
+## 内网自动绑定 submit / printfile 协议
 
 NovaJudge Web 服务默认关闭 submit。内网部署必须显式设置 `NOVAJUDGE_CLI_MODE=intranet`
 并重启服务，再由管理员选定当前 CLI 比赛。公网部署保持变量未设置或 `public`；
@@ -43,7 +43,7 @@ NovaJudge Web 服务默认关闭 submit。内网部署必须显式设置 `NOVAJU
 这个开关不关闭上文的监考登录接口，公网监考客户端仍可登录并使用网页提交。
 
 监考桌面客户端仅在运行时选择 **intranet 内网后台**、使用 Windows 或 macOS 且登录 NovaJudge 考试时，
-安装内置的原生 `submit` 并获取专用提交授权。公网模式不安装、不签发；从内网切换到公网时，
+安装内置的原生 `submit`、`printfile` 并获取专用设备授权。公网模式不安装、不签发；从内网切换到公网时，
 撤销并清理本客户端此前建立的提交授权。安装不需要访问互联网或安装额外运行时。
 
 监考登录成功后，桌面主进程调用 `POST /api/cli/device/proctoring`，请求体为 `{}`，请求头为：
@@ -64,9 +64,41 @@ NovaJudge Web 服务默认关闭 submit。内网部署必须显式设置 `NOVAJU
 `DELETE /api/cli/device` 携带提交令牌撤销授权，并仅移除自己创建且仍匹配的本地配置。
 失效的监考授权提示回到监考客户端恢复，不进入普通浏览器配对流程。
 
+### printfile 打印请求
+
+`printfile <文件名> [y/N]` 使用同一设备令牌，不新增登录流程或本地凭据文件。
+Windows 和 macOS 安装器均生成独立的 printfile 命令入口。监考应用只需同步随包安装器和
+原生客户端脚本；登录、切换账号、退出及撤销授权的主进程逻辑保持原协议。
+
+`GET /api/cli/device/print` 使用 `Authorization: Bearer <deviceToken>` 读取打印上下文：
+
+```json
+{
+  "loginSource": "PROCTORING",
+  "contest": { "id": 2, "title": "示例比赛" },
+  "user": { "username": "team0001", "displayName": "示例队伍" }
+}
+```
+
+客户端显示文件名、字节数和语言（不输出源码正文），经明确确认后向同一路径 `POST`：
+
+```json
+{ "sourceFilename": "A.cpp", "code": "int main() { return 0; }\n" }
+```
+
+服务端仅接受不带路径的文件名，独立检查 `.cpp/.c/.cc/.cxx/.java/.py` 白名单及文本大小，
+按后缀推断语言（C++ 为 `cpp`、C 为 `c`、Java 为 `java`、Python 为 `pypy3`）。
+队伍与比赛从有效授权获取，不能由请求体覆盖。GET 和 POST 都验证内网开关、当前比赛、
+有效的监考设备与最新监考绑定；创建打印记录前在事务中再次验证。
+普通网页绑定不能打印，即使修改本地 JSON 的 `loginSource` 也无效。
+
+成功返回 `success: true`、`printJob: { id, sourceFilename, language, status }` 和 `contest`；
+新记录进入现有 `PrintJob` 队列，初始状态 `PENDING`，交由原有打印管理页面处理。
+不新增数据库表，不调用评测服务或选手本机打印机。客户端不会自动重试 POST，避免网络故障造成重复排队。
+
 ### Windows 监考客户端接入
 
-Windows 使用同一设备授权协议，由内置 Windows PowerShell 5.1 运行 `submit.ps1`，
+Windows 使用同一设备授权协议，由 Windows PowerShell 5.1 运行 `submit.ps1`，
 `submit.cmd` / `submit.bat` 提供 CMD、PowerShell 和编辑器终端的统一入口。
 选手电脑不需要安装 Node.js、Python 或申请管理员权限。以下步骤是监考客户端的接入要求；
 仅部署 NovaJudge 服务端和选手脚本不会自动升级已安装的监考客户端。

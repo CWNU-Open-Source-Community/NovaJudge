@@ -7,6 +7,7 @@ import vm from "node:vm";
 import { NextResponse } from "next/server";
 import ts from "typescript";
 import * as policy from "./cli-device-policy";
+import * as printPolicy from "./print-file-policy";
 import * as grants from "./contest-access-token";
 import { decodeJwt } from "jose";
 import { lockCliSettings } from "./cli-settings-lock";
@@ -56,6 +57,7 @@ function harness(privateContest = false) {
     cliEnabled: true,
     activeContestId: 2 as number | null, device: device as TestDevice | null, grantsAllowed: false, loginUpdates: 0,
     submissions: [] as Record<string, unknown>[], persisted: [] as Record<string, unknown>[], locks: [] as string[],
+    printJobs: [] as Record<string, unknown>[],
     duringPasswordCheck: null as (() => void) | null, beforePersistence: null as (() => void) | null,
     beforeTransaction: null as (() => void) | null, authValid: true,
     authPayload: {
@@ -99,6 +101,12 @@ function harness(privateContest = false) {
         return { id: "submission", displayId: 1, ...data };
       },
     },
+    printJob: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        state.printJobs.push(data);
+        return { id: 11, sourceFilename: data.sourceFilename, language: data.language, status: "PENDING" };
+      },
+    },
     $executeRaw: async (sql: TemplateStringsArray, ...values: number[]) => {
       state.locks.push(sql.join("?"));
       assert.deepEqual(values, [73921, 1]);
@@ -127,6 +135,7 @@ function harness(privateContest = false) {
       return result;
     } },
     "@/lib/cli-device-policy": policy,
+    "@/lib/print-file-policy": printPolicy,
     "@/lib/cli-deployment": {
       isCliEnabled: () => state.cliEnabled,
       assertCliEnabled: () => { if (!state.cliEnabled) throw new policy.CliDeviceError("CLI is disabled on this deployment.", 403, "CLI_DISABLED"); },
@@ -141,6 +150,172 @@ const request = (token = validToken) => new Request(`${base}/api/cli/device`, { 
 const approvalBody = { code: "ABCD-EFGH", username: "team", password: "correct password" };
 const proctoringRequest = (headers: Record<string, string> = {}) => new Request(`${base}/api/cli/device/proctoring`, {
   method: "POST", headers: { "content-type": "application/json", authorization: "Bearer monitored-jwt", [proctoring.PROCTORING_HEADER]: proctoringProof, ...headers }, body: "{}",
+});
+
+async function monitoredPrintHarness(privateContest = false) {
+  const fixture = harness(privateContest);
+  fixture.user.proctoringKeyHash = proctoring.proctoringKeyHash(proctoringProof);
+  fixture.device.proctoringKeyHash = fixture.user.proctoringKeyHash;
+  fixture.device.userId = fixture.user.id;
+  fixture.device.approvedAt = new Date();
+  if (privateContest) fixture.device.contestAccessToken = await grants.signContestAccessToken(fixture.contest, secret);
+  return fixture;
+}
+
+const printBody = { sourceFilename: "answer.cpp", code: "int main() {}\n" };
+
+test("printfile context is read-only and exposes only the current monitored team and contest", async () => {
+  const { service, state } = await monitoredPrintHarness();
+  const result = await service.getCliPrintContext(request());
+  assert.equal(result.loginSource, "PROCTORING");
+  assert.equal(result.contest.id, 2);
+  assert.equal(result.contest.title, "Secret contest title");
+  assert.equal(result.user.username, "team");
+  assert.equal(result.user.displayName, "Test team");
+  assert.equal(state.printJobs.length, 0);
+  assert.equal(state.loginUpdates, 0);
+  assert.equal("proctoringKeyHash" in result, false);
+});
+
+test("printfile appends to the existing print queue using server identity and inferred language", async () => {
+  const { service, state } = await monitoredPrintHarness();
+  const result = await service.printCliDevice(request(), { ...printBody, language: "html", contestId: 99, userId: "other-team", status: "PRINTED" });
+  assert.equal(result.success, true);
+  assert.equal(result.printJob.id, 11);
+  assert.equal(result.printJob.status, "PENDING");
+  assert.equal(result.printJob.sourceFilename, "answer.cpp");
+  assert.equal(result.printJob.language, "cpp");
+  assert.equal(result.contest.id, 2);
+  assert.equal("statusUrl" in result, false);
+  assert.equal("previewUrl" in result, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(state.printJobs)), [{ contestId: 2, userId: "team-id", ...printBody, language: "cpp" }]);
+  assert.match(state.locks[0], /pg_advisory_xact_lock_shared/);
+});
+
+test("ordinary browser and pending devices cannot print or spoof a monitored login", async () => {
+  for (const approved of [false, true]) {
+    const { service, state } = harness();
+    if (approved) await service.approveCliDevice(request(), approvalBody);
+    const forged = new Request(`${base}/api/cli/device/print`, { headers: {
+      authorization: `Bearer ${validToken}`, [proctoring.PROCTORING_HEADER]: proctoringProof, "x-login-source": "PROCTORING",
+    } });
+    await assert.rejects(service.getCliPrintContext(forged), { status: 403, code: "PROCTORING_CLIENT_REQUIRED" });
+    await assert.rejects(service.printCliDevice(forged, { ...printBody, loginSource: "PROCTORING", proctoringKeyHash: proctoring.proctoringKeyHash(proctoringProof) }), { status: 403, code: "PROCTORING_CLIENT_REQUIRED" });
+    assert.equal(state.printJobs.length, 0);
+  }
+});
+
+test("printfile validates files on the server before creating a print job", async () => {
+  const { service, state } = await monitoredPrintHarness();
+  for (const [body, code] of [
+    [{ ...printBody, sourceFilename: "answer.txt" }, "INVALID_PRINT_EXTENSION"],
+    [{ ...printBody, sourceFilename: "../answer.cpp" }, "INVALID_PRINT_FILENAME"],
+    [{ ...printBody, code: "\t\r\n" }, "INVALID_PRINT_CONTENT"],
+    [{ ...printBody, code: "x\0y" }, "INVALID_PRINT_CONTENT"],
+    [{ ...printBody, code: "中".repeat(40_001) }, "PRINT_FILE_TOO_LARGE"],
+    [{ ...printBody, code: "a".repeat(100_001) }, "PRINT_FILE_TOO_LARGE"],
+  ] as const) {
+    await assert.rejects(service.printCliDevice(request(), body), { code });
+  }
+  assert.equal(state.printJobs.length, 0);
+  assert.equal(state.locks.length, 0);
+});
+
+test("private contest printfile requires a valid password-version grant", async () => {
+  const { service, state, contest, device } = await monitoredPrintHarness(true);
+  assert.equal((await service.getCliPrintContext(request())).contest.title, contest.title);
+  await service.printCliDevice(request(), printBody);
+  assert.equal(state.printJobs.length, 1);
+  device.contestAccessToken = null;
+  await assert.rejects(service.printCliDevice(request(), printBody), { status: 403, code: "REAUTH_REQUIRED" });
+  device.contestAccessToken = await grants.signContestAccessToken(contest, secret);
+  contest.password = "changed contest password";
+  await assert.rejects(service.getCliPrintContext(request()), { status: 403, code: "REAUTH_REQUIRED" });
+  await assert.rejects(service.printCliDevice(request(), printBody), { status: 403, code: "REAUTH_REQUIRED" });
+  assert.equal(state.printJobs.length, 1);
+});
+
+test("printfile rechecks deployment, contest, expiration, revocation and monitor identity inside its transaction", async () => {
+  type Fixture = Awaited<ReturnType<typeof monitoredPrintHarness>>;
+  const changes: [string, (fixture: Fixture) => void, string][] = [
+    ["public deployment", ({ state }) => { state.cliEnabled = false; }, "CLI_DISABLED"],
+    ["contest disabled", ({ state }) => { state.activeContestId = null; }, "CLI_DISABLED"],
+    ["contest switched", ({ state }) => { state.activeContestId = 3; }, "CONTEST_CHANGED"],
+    ["device revoked", ({ state }) => { state.device = null; }, "INVALID_DEVICE_TOKEN"],
+    ["device expired", ({ device }) => { device.expiresAt = new Date(0); }, "DEVICE_EXPIRED"],
+    ["role changed", ({ user }) => { user.role = "JUDGE"; }, "REAUTH_REQUIRED"],
+    ["team moved", ({ user }) => { user.contestId = 3; }, "REAUTH_REQUIRED"],
+    ["monitor logged in again", ({ user }) => { user.proctoringKeyHash = "new-hash"; }, "REAUTH_REQUIRED"],
+    ["monitor unbound", ({ user }) => { user.proctoringKeyHash = null; }, "REAUTH_REQUIRED"],
+    ["device downgraded", ({ device, user }) => { device.proctoringKeyHash = null; user.proctoringKeyHash = null; }, "PROCTORING_CLIENT_REQUIRED"],
+    ["binding replaced", ({ device, user }) => { device.proctoringKeyHash = user.proctoringKeyHash = "new-hash"; }, "REAUTH_REQUIRED"],
+    ["private contest password changed", ({ contest }) => { contest.password = "changed"; }, "REAUTH_REQUIRED"],
+  ];
+  for (const [label, mutate, code] of changes) {
+    const fixture = await monitoredPrintHarness(true);
+    fixture.state.beforeTransaction = () => mutate(fixture);
+    await assert.rejects(fixture.service.printCliDevice(request(), printBody), { code }, label);
+    assert.equal(fixture.state.printJobs.length, 0, label);
+    assert.match(fixture.state.locks[0], /pg_advisory_xact_lock_shared/, label);
+  }
+});
+
+test("printfile rejects missing, expired and stale monitored tokens on both preflight and send", async () => {
+  for (const change of ["missing", "expired", "changed", "revoked"] as const) {
+    const { service, device, user, state } = await monitoredPrintHarness();
+    if (change === "expired") device.expiresAt = new Date(0);
+    if (change === "changed") user.proctoringKeyHash = "new-monitor-login";
+    if (change === "revoked") state.device = null;
+    const authRequest = change === "missing" ? new Request(`${base}/api/cli/device/print`) : request();
+    const code = change === "expired" ? "DEVICE_EXPIRED" : change === "changed" ? "REAUTH_REQUIRED" : "INVALID_DEVICE_TOKEN";
+    await assert.rejects(service.getCliPrintContext(authRequest), { code });
+    await assert.rejects(service.printCliDevice(authRequest, printBody), { code });
+    assert.equal(state.printJobs.length, 0);
+  }
+});
+
+test("printfile route returns no-store responses and queues only bounded valid monitored requests", async () => {
+  const { service, state, user, device } = await monitoredPrintHarness();
+  const route = loadModule<typeof import("../app/api/cli/device/print/route")>("app/api/cli/device/print/route.ts", {
+    "@/lib/cli-devices": service,
+    "@/lib/print-file-policy": printPolicy,
+    "@/lib/cli-deployment": { assertCliEnabled: () => { if (!state.cliEnabled) throw new policy.CliDeviceError("Disabled", 403, "CLI_DISABLED"); } },
+  });
+  const preflight = await route.GET(request());
+  assert.equal(preflight.status, 200);
+  assert.equal((await preflight.json()).loginSource, "PROCTORING");
+  const postRequest = (body: string, headers: Record<string, string> = {}) => new Request(`${base}/api/cli/device/print`, {
+    method: "POST", headers: { authorization: `Bearer ${validToken}`, "content-type": "application/json", ...headers }, body,
+  });
+  const response = await route.POST(postRequest(JSON.stringify(printBody)));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
+  assert.equal((await response.json()).printJob.status, "PENDING");
+  const oversized = await route.POST(postRequest(" ".repeat(printPolicy.PRINT_FILE_MAX_JSON_BYTES + 1), { "content-length": "2" }));
+  assert.equal(oversized.status, 413);
+  assert.equal((await oversized.json()).code, "PRINT_FILE_TOO_LARGE");
+  assert.equal(oversized.headers.get("cache-control"), "private, no-store");
+  for (const body of ["{malformed", "[]", "null"]) {
+    const invalid = await route.POST(postRequest(body));
+    assert.equal(invalid.status, 400);
+    assert.equal((await invalid.json()).code, "INVALID_JSON");
+  }
+  const wrongType = await route.POST(postRequest(JSON.stringify(printBody), { "content-type": "text/plain" }));
+  assert.equal(wrongType.status, 415);
+  assert.equal((await wrongType.json()).code, "INVALID_CONTENT_TYPE");
+  const wrongExtension = await route.POST(postRequest(JSON.stringify({ ...printBody, sourceFilename: "secret.txt", language: "cpp" })));
+  assert.equal(wrongExtension.status, 400);
+  assert.equal((await wrongExtension.json()).code, "INVALID_PRINT_EXTENSION");
+  user.proctoringKeyHash = device.proctoringKeyHash = null;
+  const forged = await route.POST(postRequest(JSON.stringify({ ...printBody, loginSource: "PROCTORING" }), { [proctoring.PROCTORING_HEADER]: proctoringProof }));
+  assert.equal(forged.status, 403);
+  assert.equal((await forged.json()).code, "PROCTORING_CLIENT_REQUIRED");
+  state.cliEnabled = false;
+  const disabled = await route.POST(postRequest("{malformed"));
+  assert.equal(disabled.status, 403);
+  assert.equal((await disabled.json()).code, "CLI_DISABLED");
+  assert.equal((await route.GET(request())).status, 403);
+  assert.equal(state.printJobs.length, 1);
 });
 
 test("CLI deployment policy fails closed unless explicitly set to intranet", () => {
@@ -168,6 +343,8 @@ test("public deployments block new and existing CLI devices but still allow revo
     () => service.cliApprovalDetails(approvalBody.code),
     () => service.approveCliDevice(request(), approvalBody),
     () => service.submitCliDevice(request(), { problem: "A", language: "cpp", code: "int main(){}" }),
+    () => service.getCliPrintContext(request()),
+    () => service.printCliDevice(request(), { sourceFilename: "test.cpp", code: "int main(){}" }),
     () => service.assertActiveCliContest(2),
   ];
   for (const call of rejected) await assert.rejects(call(), { status: 403, code: "CLI_DISABLED" });
@@ -391,7 +568,7 @@ test("staff and monitored accounts cannot bind devices", async () => {
   }
 });
 
-test("a monitored login receives a preapproved submission-only device bounded by its JWT lifetime", async () => {
+test("a monitored login receives a preapproved CLI device bounded by its JWT lifetime", async () => {
   const { service, user, state } = harness();
   user.proctoringKeyHash = state.authPayload.proctoringKeyHash!;
   const issued = await service.createProctoringCliDevice(proctoringRequest());

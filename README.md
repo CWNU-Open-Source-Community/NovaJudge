@@ -69,18 +69,26 @@ Run access regression tests with `npm run test:contest-access`.
 The CLI is disabled by default. Only on an intranet deployment, set
 `NOVAJUDGE_CLI_MODE=intranet` and restart the Web service. Public deployments
 must leave it unset or set it to `public`; browser submissions and proctoring
-login remain available. The server rejects CLI installation, pairing and
-submissions when disabled, including previously issued device tokens and legacy clients.
+login remain available. The server rejects CLI installation, pairing, submissions and
+print requests when disabled, including previously issued device tokens and legacy clients.
 
 An administrator selects the site's active CLI contest in **System Settings**.
 Open `/cli` to install the global `submit` command, then run `submit A.cpp`.
 On first use, a browser page opens to sign in with the contest team account and
 bind your computer. Selecting a different contest prompts a new browser sign-in.
-It uses built-in macOS tools or Windows PowerShell 5.1 and needs no extra runtime.
+It uses built-in macOS tools or Windows PowerShell 5.1, without Node.js or Python.
+Windows 7 requires SP1, .NET Framework 4.5.2 or later, and WMF 5.1.
 Intranet monitoring clients can install the bundled script offline and bind the team
 using a dedicated submission grant. Every submission requires explicit confirmation.
-See the
-[installation and usage guide](./docs/CONTESTANT_CLI.md).
+
+After signing in through the monitoring client, run `printfile A.cpp` to send a
+request to the existing NovaJudge print queue. It shows the filename, size and
+language, without displaying the source; enter `y` to confirm or `n`/Enter to cancel.
+An optional final `y` or `n` argument is also supported. Only `.cpp`, `.c`, `.cc`,
+`.cxx`, `.java` and `.py` files are accepted. Ordinary browser pairing cannot use
+`printfile`. Update the monitoring client's bundled installers and scripts together
+with the server to enable the new command.
+See the [installation and usage guide](./docs/CONTESTANT_CLI.md).
 
 ## Tech Stack
 

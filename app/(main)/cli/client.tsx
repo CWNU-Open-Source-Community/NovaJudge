@@ -45,14 +45,14 @@ export default function CliInstructions() {
         <div className="flex items-center gap-3 mb-3">
           <CommandLineIcon className="w-7 h-7 text-blue-600" />
           <h1 className="text-2xl font-serif font-bold text-gray-800">
-            submit 命令行
+            submit / printfile 命令行
           </h1>
         </div>
         <p className="text-gray-600 leading-relaxed">
           在自己的 Windows 电脑或 Mac 上安装一次，就能在任意代码目录运行
           <code className="mx-1 text-gray-900">submit A.cpp</code>提交比赛代码。
-          Windows 使用系统自带的 PowerShell 5.1；macOS 支持 Apple Silicon 和 Intel Mac。
-          无需安装 Node.js、Python 或额外运行时。
+          Windows 需要 PowerShell 5.1；macOS 支持 Apple Silicon 和 Intel Mac。
+          无需安装 Node.js 或 Python。
         </p>
         <div className="mt-4 rounded-sm border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
           {loadingContest ? "正在读取当前命令行比赛…" : contestError ? contestError : contest
@@ -65,7 +65,7 @@ export default function CliInstructions() {
         <h2 className="text-lg font-bold text-gray-800">使用内网监考客户端</h2>
         <p className="text-sm text-gray-600 leading-relaxed">
           在支持此功能的 Windows 或 macOS 内网监考客户端登录 NovaJudge 后，客户端会自动安装
-          <code className="mx-1">submit</code>并绑定当前队伍，无需再执行下方安装和网页绑定步骤。
+          <code className="mx-1">submit</code>和 <code>printfile</code> 并绑定当前队伍，无需再执行下方安装和网页绑定步骤。
           打开新终端即可使用；每次提交仍需输入 <code>y</code> 确认。
           退出监考登录或授权失效后，请回到监考客户端重新登录。外网模式不启用自动安装和绑定。
         </p>
@@ -73,7 +73,11 @@ export default function CliInstructions() {
 
       <section className="bg-white border border-gray-200 shadow-sm rounded-sm p-6 space-y-4">
         <h2 className="text-lg font-bold text-gray-800">1. 安装到当前用户</h2>
-        <h3 className="font-semibold text-gray-800">Windows 10 / 11</h3>
+        <h3 className="font-semibold text-gray-800">Windows（PowerShell 5.1）</h3>
+        <p className="text-sm text-gray-600 leading-relaxed">
+          Windows 7 需先由机房管理员准备 SP1、.NET Framework 4.5.2 或更高版本，以及 WMF 5.1。
+          可运行 <code>$PSVersionTable.PSVersion</code> 确认 PowerShell 版本为 5.1，再执行安装命令。
+        </p>
         <p className="text-sm text-gray-600 leading-relaxed">
           打开 Windows PowerShell，以普通用户运行下方命令。安装器将命令放入
           <code className="mx-1">%LOCALAPPDATA%\NovaJudge\submit</code>，并加入当前用户 PATH。
@@ -86,7 +90,7 @@ export default function CliInstructions() {
         <h3 className="font-semibold text-gray-800">macOS</h3>
         <p className="text-sm text-gray-600 leading-relaxed">
           打开 macOS「终端」，复制并运行下方命令。安装器会从当前比赛网站下载脚本，
-          保存网站地址，并将命令安装到 <code>~/.local/bin/submit</code>。
+          保存网站地址，并将 <code>submit</code> 和 <code>printfile</code> 安装到 <code>~/.local/bin</code>。
           无需 sudo、克隆仓库或运行 npm。
         </p>
         {origin ? (
@@ -134,9 +138,24 @@ export default function CliInstructions() {
       </section>
 
       <section className="bg-white border border-gray-200 shadow-sm rounded-sm p-6 space-y-4">
+        <h2 className="text-lg font-bold text-gray-800">4. 通过监考登录发送打印请求</h2>
+        <p className="text-sm text-gray-600 leading-relaxed">
+          在内网监考客户端登录后，运行 <code>printfile 文件名</code>。终端会先显示比赛、队伍、
+          文件名、大小和语言；核对后输入 <code>y</code> 确认，输入 <code>n</code> 或直接回车取消。
+          不会输出源码正文。也可以在命令末尾指定 <code>y</code> 或 <code>n</code>，仍会先显示文件信息。
+        </p>
+        <CodeBlock code={'printfile A.cpp\nprintfile "source file.py" y\nprintfile Main.java n'} />
+        <p className="text-sm text-gray-600 leading-relaxed">
+          仅支持 UTF-8 编码的 .cpp、.c、.cc、.cxx、.java、.py 文件，最多 120,000 字节和 100,000 个字符。
+          成功后会显示打印请求编号，管理员可在当前比赛的打印队列处理。
+          普通网页绑定不能使用此命令；监考登录失效后，请返回监考客户端重新登录。
+        </p>
+      </section>
+
+      <section className="bg-white border border-gray-200 shadow-sm rounded-sm p-6 space-y-4">
         <h2 className="text-lg font-bold text-gray-800">更新与卸载</h2>
         <p className="text-sm text-gray-600 leading-relaxed">
-          更新时重新运行上方安装命令，已有设备绑定配置会保留。已安装旧版的用户也需更新，才能使用提交前确认功能。
+          更新时重新运行上方安装命令，已有设备绑定配置会保留。已安装旧版的用户也需更新，才能使用 printfile。
           卸载前可先运行 <code>submit logout</code> 清除本地登录凭据；
           下方卸载命令保留登录配置。
         </p>
@@ -145,7 +164,8 @@ export default function CliInstructions() {
         <p className="text-sm text-gray-600">macOS 终端：</p>
         {origin && <CodeBlock code={`${installer} --uninstall`} />}
         <p className="text-sm text-gray-500">
-          当前支持 Windows 10 / 11 与 macOS。Linux 安装入口尚未提供。
+          Windows 7 需先由管理员安装 SP1、.NET Framework 4.5.2 或更高版本，以及 WMF 5.1；自带 PowerShell 2.0 不能运行当前脚本。
+          Linux 安装入口尚未提供。
         </p>
       </section>
     </div>
