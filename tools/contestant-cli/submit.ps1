@@ -2,7 +2,7 @@
 #Requires -Version 5.1
 # Windows PowerShell 5.1+. Credentials and source never enter process arguments.
 $ErrorActionPreference = "Stop"
-$ClientVersion = "2026.10.29.2"
+$ClientVersion = "2026.11.05.2"
 $ConfigPath = Join-Path $env:USERPROFILE ".novajudge-submit.json"
 $DefaultsPath = Join-Path $PSScriptRoot "submit-defaults.json"
 $Utf8 = New-Object System.Text.UTF8Encoding($false, $true)
@@ -12,7 +12,10 @@ $OutputEncoding = [Console]::OutputEncoding
 $script:HttpClient = $null
 
 function Read-Text($Path) {
-  try { $Text = $Utf8.GetString([IO.File]::ReadAllBytes($Path)) }
+  try {
+    $ResolvedPath = (Get-Item -LiteralPath $Path -Force).FullName
+    $Text = $Utf8.GetString([IO.File]::ReadAllBytes($ResolvedPath))
+  }
   catch { throw "Cannot read UTF-8 text from: $Path" }
   return $Text.TrimStart([char]0xfeff)
 }
@@ -83,7 +86,7 @@ function Get-DefaultUrl($Flags, $Config) {
   throw "No server URL configured. Install submit from your intranet contest site's /cli page, or run submit login --url <server>."
 }
 
-function Parse-Options($Arguments, $Allowed) {
+function Parse-Options($Arguments, $Allowed, $Switches = @()) {
   $Flags = @{}
   $Rest = New-Object System.Collections.Generic.List[string]
   for ($i = 0; $i -lt $Arguments.Count; $i++) {
@@ -93,15 +96,22 @@ function Parse-Options($Arguments, $Allowed) {
       break
     }
     if (!$Argument.StartsWith("-")) { $Rest.Add($Argument); continue }
-    if ($Argument -cnotmatch '^--([^=]+)(?:=(.*))?$' -or $Matches[1] -cnotin $Allowed) {
+    if ($Argument -ceq "-y") { $Argument = "--yes" }
+    if ($Argument -cnotmatch '^--([^=]+)(?:=(.*))?$' -or
+        ($Matches[1] -cnotin $Allowed -and $Matches[1] -cnotin $Switches)) {
       throw "Unknown option: $Argument. Run submit --help."
     }
     $Key = $Matches[1]
     $InlineValue = $Matches.ContainsKey(2)
     $Value = $Matches[2]
     if ($Flags.ContainsKey($Key)) { throw "Repeated option: --$Key" }
+    if ($Key -cin $Switches) {
+      if ($InlineValue) { throw "--$Key does not take a value." }
+      $Flags[$Key] = $true
+      continue
+    }
     if (!$InlineValue) { $i++; $Value = $Arguments[$i] }
-    if (!$Value -or ([string]$Value).StartsWith("--")) { throw "Missing value for --$Key." }
+    if (!$Value -or ([string]$Value).StartsWith("-")) { throw "Missing value for --$Key." }
     $Flags[$Key] = [string]$Value
   }
   return @{ flags = $Flags; rest = $Rest.ToArray() }
@@ -290,13 +300,20 @@ function Get-BoundDevice {
   throw (Get-StateMessage $State $Config)
 }
 
-function Confirm-Submission($Config, $FileName, $Problem, $Language) {
+function Confirm-Submission($Config, $FileName, $Problem, $Language, $AssumeYes) {
   Write-Host "`nSubmission information:"
-  Write-Host "Server: $($Config.baseUrl)"
-  Show-Binding $Config
-  Write-Host "File: $FileName"
-  Write-Host "Problem: $Problem"
-  Write-Host "Language: $Language"
+  $TeamName = if ($Config.user.displayName) { $Config.user.displayName } else { $Config.user.username }
+  Write-Host ("  contest:     " + (Format-TerminalLabel $Config.contest.title))
+  Write-Host ("  filename:    " + (Format-TerminalLabel ([IO.Path]::GetFileName($FileName))))
+  Write-Host ("  team:        " + (Format-TerminalLabel $TeamName))
+  Write-Host ("  problem:     " + (Format-TerminalLabel $Problem))
+  Write-Host ("  language:    " + (Format-TerminalLabel $Language))
+  Write-Host ("  url:         " + (Format-TerminalLabel $Config.baseUrl))
+  Write-Host ""
+  if ($AssumeYes) {
+    Write-Host "Submit this file? [y/N] y (--yes)"
+    return $true
+  }
   while ($true) {
     [Console]::Write("Submit this file? [y/N] ")
     # ReadLine accepts a trailing "y" at EOF. Require Enter before accepting any
@@ -322,7 +339,7 @@ function Confirm-Submission($Config, $FileName, $Problem, $Language) {
 }
 
 function Send-Submission($Arguments) {
-  $Parsed = Parse-Options $Arguments @("problem", "language")
+  $Parsed = Parse-Options $Arguments @("problem", "language") @("yes")
   if ($Parsed.rest.Count -ne 1) { throw "Provide exactly one source file, for example: submit A.cpp" }
   $FileName = $Parsed.rest[0]
   if (!(Test-Path -LiteralPath $FileName -PathType Leaf)) { throw "Source file not found: $FileName" }
@@ -339,7 +356,7 @@ function Send-Submission($Arguments) {
   $Code = Read-Text $FileName
   if (!$Code.Trim()) { throw "Source file is empty: $FileName" }
   $Config = Get-BoundDevice
-  if (!(Confirm-Submission $Config $FileName $Problem $Language)) { return }
+  if (!(Confirm-Submission $Config $FileName $Problem $Language $Parsed.flags.yes)) { return }
   $Payload = @{ problem = $Problem; language = $Language; code = $Code }
   $Result = Invoke-Api $Config.baseUrl "POST" "/api/cli/device/submit" $Payload $Config
   if (!$Result.ok -and (Test-Proctoring $Config $null) -and ($Result.status -eq 401 -or
@@ -349,7 +366,7 @@ function Send-Submission($Arguments) {
   if ($Result.status -eq 401 -or $Result.data.code -in @("CONTEST_CHANGED", "REAUTH_REQUIRED")) {
     Write-Host "Browser authorization must be renewed before submitting."
     $Config = Connect-Device (Normalize-Url $Config.baseUrl)
-    if (!(Confirm-Submission $Config $FileName $Problem $Language)) { return }
+    if (!(Confirm-Submission $Config $FileName $Problem $Language $Parsed.flags.yes)) { return }
     $Result = Invoke-Api $Config.baseUrl "POST" "/api/cli/device/submit" $Payload $Config
   }
   if (!$Result.ok) { throw (Get-ResponseError $Result "Submit failed") }
@@ -361,7 +378,7 @@ function Send-Submission($Arguments) {
   Write-Host ((Normalize-Url $Config.baseUrl) + "/contest/$($Config.contest.id)/status/$DisplayId")
 }
 
-function Format-PrintLabel($Value) {
+function Format-TerminalLabel($Value) {
   return ([string]$Value -replace '[\x00-\x1F\x7F-\x9F\u202A-\u202E\u2066-\u2069]', '?')
 }
 
@@ -375,9 +392,12 @@ function Read-PrintSource($FileName) {
   if (!(Test-Path -LiteralPath $FileName -PathType Leaf)) { throw "Source file not found: $FileName" }
   # Bound the read even if a file grows while opening it. This one snapshot
   # supplies the displayed size and upload; confirmation never reopens the source.
-  $Bytes = New-Object byte[] 120001
+  # Allow an initial three-byte BOM plus one byte beyond the source limit.
+  $Bytes = New-Object byte[] 120004
   $Length = 0
-  $Stream = [IO.File]::Open($FileName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  # PowerShell's current location can differ from .NET's working directory.
+  $ResolvedPath = (Get-Item -LiteralPath $FileName -Force).FullName
+  $Stream = [IO.File]::Open($ResolvedPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
   try {
     while ($Length -lt $Bytes.Length) {
       $Read = $Stream.Read($Bytes, $Length, $Bytes.Length - $Length)
@@ -385,16 +405,18 @@ function Read-PrintSource($FileName) {
       $Length += $Read
     }
   } finally { $Stream.Dispose() }
-  if ($Length -gt 120000) { throw "Source file exceeds the 120000 byte printing limit." }
+  if ($Length -gt 120003) { throw "Source file exceeds the 120000 byte printing limit." }
   try { $Code = $Utf8.GetString($Bytes, 0, $Length) }
   catch { throw "Cannot read UTF-8 text from: $FileName" }
   if ($Code.Length -gt 0 -and $Code[0] -eq [char]0xfeff) { $Code = $Code.Substring(1) }
+  $CodeBytes = $Utf8.GetByteCount($Code)
+  if ($CodeBytes -gt 120000) { throw "Source file exceeds the 120000 byte printing limit." }
   if ($Code.Length -gt 100000) { throw "Source file exceeds the 100000 character printing limit." }
   if (!$Code.Trim()) { throw "Source file is empty: $FileName" }
   if ($Code -match '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]') {
     throw "Source file contains unsupported control characters. Only tab and line endings are allowed."
   }
-  return @{ name = $Name; bytes = $Length; language = $Languages[$Extension]; code = $Code }
+  return @{ name = $Name; bytes = $CodeBytes; language = $Languages[$Extension]; code = $Code }
 }
 
 function Get-PrintContext {
@@ -416,13 +438,13 @@ function Get-PrintContext {
 
 function Confirm-Print($Context, $Source, $Confirmation) {
   Write-Host "`nPrint information:"
-  Write-Host ("Server: " + (Format-PrintLabel $Context.config.baseUrl))
-  Write-Host ("Contest: #$($Context.contest.id) " + (Format-PrintLabel $Context.contest.title))
   $TeamName = if ($Context.user.displayName) { $Context.user.displayName } else { $Context.user.username }
-  Write-Host ("Team: " + (Format-PrintLabel $TeamName) + " (" + (Format-PrintLabel $Context.user.username) + ")")
-  Write-Host ("File: " + (Format-PrintLabel $Source.name))
-  Write-Host "Size: $($Source.bytes) bytes"
-  Write-Host "Language: $($Source.language)"
+  Write-Host ("  contest:     " + (Format-TerminalLabel $Context.contest.title))
+  Write-Host ("  filename:    " + (Format-TerminalLabel $Source.name))
+  Write-Host ("  team:        " + (Format-TerminalLabel $TeamName))
+  Write-Host "  language:    $($Source.language)"
+  Write-Host "  size:        $($Source.bytes) bytes"
+  Write-Host ""
   while ($true) {
     [Console]::Write("Print this file? [y/N] ")
     if ($null -ne $Confirmation) {
@@ -451,13 +473,17 @@ function Confirm-Print($Context, $Source, $Confirmation) {
 }
 
 function Send-PrintFile($Arguments) {
-  $Parsed = Parse-Options $Arguments @()
+  $Parsed = Parse-Options $Arguments @() @("yes")
   if ($Parsed.rest.Count -lt 1 -or $Parsed.rest.Count -gt 2) {
-    throw "Usage: printfile <source-file> [y/N]"
+    throw "Usage: printfile [-y|--yes] <source-file> [y/N]. Run printfile --help."
   }
   $Confirmation = if ($Parsed.rest.Count -eq 2) { $Parsed.rest[1] } else { $null }
   if ($null -ne $Confirmation -and $Confirmation -cnotmatch '^[yYnN]?$') {
     throw "The optional print confirmation must be y or N."
+  }
+  if ($Parsed.flags.yes) {
+    if ($null -ne $Confirmation -and $Confirmation -ine "y") { throw "Do not combine --yes with a cancelling confirmation." }
+    $Confirmation = "y"
   }
   $Source = Read-PrintSource $Parsed.rest[0]
   $Context = Get-PrintContext
@@ -474,9 +500,9 @@ function Send-PrintFile($Arguments) {
     }
     throw ($Message + " Check the NovaJudge print queue before trying again; the request was not retried.")
   }
+  # PrintJob.id is a Prisma Int, serialized by the API as a JSON number.
   if ($Result.data.success -isnot [bool] -or $Result.data.success -ne $true -or
-      !$Result.data.printJob -or $Result.data.printJob.id -isnot [string] -or !$Result.data.printJob.id -or
-      $Result.data.printJob.id -match '[\x00-\x1F\x7F-\x9F]') {
+      !$Result.data.printJob -or !(Test-PositiveInteger $Result.data.printJob.id)) {
     throw "Server returned no valid print confirmation. Check the NovaJudge print queue before trying again."
   }
   Write-Host "Print request $($Result.data.printJob.id) entered the NovaJudge print queue."
@@ -515,27 +541,75 @@ function Disconnect-Device {
   Write-Host "Logged out. Saved device authorization removed."
 }
 
-function Show-Usage {
+function Show-Usage($PrintOnly = $false) {
+  if ($PrintOnly) {
+    Write-Host @"
+NovaJudge printfile - native Windows client $ClientVersion
+Send one source file to the current contest's print queue for staff to print.
+
+Usage:
+  printfile [options] <source-file> [y/N]
+  submit printfile [options] <source-file> [y/N]
+
+Options:
+  -y, --yes    Assume yes and send without reading confirmation from stdin.
+  -h, --help   Show this printfile help without connecting to the server.
+  --           End options, for filenames starting with a hyphen.
+
+Examples:
+  printfile A.cpp
+  printfile -y "source file.cpp"
+  printfile "source file.py" --yes
+  printfile Main.java n
+
+Always displays contest, filename, team, language and UTF-8 source size; never displays source code.
+Without --yes or a final y/n, enter y or Y to send; n, Enter or EOF cancels.
+A final y/n supplies the confirmation. Do not combine --yes with n.
+Requires a current monitoring-client login and an enabled intranet CLI contest.
+If authorization expires, reconnect through the monitoring client. Browser pairing cannot print.
+Accepted UTF-8 files: .cpp, .c, .cc, .cxx, .java, .py (C++, C, Java, Python).
+Maximum source size: 120000 UTF-8 bytes and 100000 UTF-16 code units; an initial BOM is removed.
+Success shows a print request ID. View its status in the contest's print queue.
+Failed requests are never automatically resent. Check the queue before trying again.
+"@
+    return
+  }
   Write-Host @"
-NovaJudge submit - native Windows client
+NovaJudge submit - native Windows client $ClientVersion
+Submit one source file to the administrator-selected contest for judging.
 Requires Windows PowerShell 5.1. On Windows 7 SP1, install .NET Framework 4.5.2 or later and WMF 5.1 first.
 
 Usage:
-  submit A.cpp
-  submit --problem A main.cpp
-  submit --language cpp A.txt
-  printfile <source-file> [y/N]
-  submit login [--url <server>]
-  submit status
-  submit logout
-  submit version
+  submit [options] <source-file>
+  submit login [--url <server>]   Connect this computer through browser sign-in.
+  submit status                 Show server, authorization, contest and team.
+  submit logout                 Revoke and remove saved device authorization.
+  submit version                Show the installed client version.
+  printfile --help               Show printing options and requirements.
 
+Options:
+  --problem <id>       Contest problem label, inferred from the filename by default (A.cpp -> A).
+  --language <lang>    Judge language: c, cpp, java, pypy3; defaults to the file extension.
+  -y, --yes            Assume yes and submit without reading confirmation from stdin.
+  -h, --help           Show this help without connecting to the server.
+  --                  End options, for filenames starting with a hyphen.
+  --url <server>      Login only: set the http(s) contest server address.
+
+Examples:
+  submit A.cpp
+  submit -y A.cpp
+  submit --problem A "source file.cpp" --yes
+  submit --problem A --language cpp A.txt
+
+Language inference: .c -> c; .cc/.cpp/.cxx -> cpp; .java -> java; .py/.py3 -> pypy3.
+Source files must be non-empty UTF-8 text. Quote paths containing spaces.
 Your first submission opens a browser to sign in to your team and connect this computer.
 The administrator selects the current contest. Later submissions reuse your browser authorization.
 When the monitoring client connects submit automatically, manage its authorization in that client.
-Review the submission information and enter y to submit; n or Enter cancels.
-Printing requires monitoring-client authorization and an enabled intranet deployment.
-printfile shows file details before confirmation. Only .cpp, .c, .cc, .cxx, .java and .py are accepted.
+Always displays contest, filename, team, problem, language and URL, including with --yes.
+Without --yes, enter y or Y to submit; n, Enter or EOF cancels. Other answers repeat the prompt.
+--yes also applies after browser reauthorization; it does not bypass login or contest permissions.
+Success shows the contest submission number and a URL where you can view the verdict.
 No contest ID, username or password is entered in the terminal.
 NOVAJUDGE_URL overrides the installed default server for login; --url has priority.
 NOVAJUDGE_NO_BROWSER=1 prints the verification URL without opening the browser automatically.
@@ -545,8 +619,11 @@ Saved device authorization: $ConfigPath
 
 try {
   $Arguments = @($args)
-  if ($Arguments.Count -eq 0 -or $Arguments -contains "--help" -or $Arguments -contains "-h" -or $Arguments[0] -eq "help") {
-    Show-Usage
+  $OptionEnd = [Array]::IndexOf($Arguments, "--")
+  if ($OptionEnd -lt 0) { $OptionEnd = $Arguments.Count }
+  $OptionArguments = @($Arguments | Select-Object -First $OptionEnd)
+  if ($Arguments.Count -eq 0 -or $OptionArguments -contains "--help" -or $OptionArguments -contains "-h" -or $Arguments[0] -eq "help") {
+    Show-Usage ($Arguments.Count -gt 0 -and $Arguments[0] -eq "printfile")
   } elseif ($Arguments[0] -eq "printfile") {
     Send-PrintFile @($Arguments | Select-Object -Skip 1)
   } elseif ($Arguments[0] -eq "login") {
@@ -566,8 +643,8 @@ try {
   } else { Send-Submission $Arguments }
 } catch {
   if ($Arguments.Count -gt 0 -and $Arguments[0] -eq "printfile") {
-    [Console]::Error.WriteLine("printfile: " + (Format-PrintLabel $_.Exception.Message))
-  } else { [Console]::Error.WriteLine("submit: " + $_.Exception.Message) }
+    [Console]::Error.WriteLine("printfile: " + (Format-TerminalLabel $_.Exception.Message))
+  } else { [Console]::Error.WriteLine("submit: " + (Format-TerminalLabel $_.Exception.Message)) }
   exit 1
 } finally {
   if ($script:HttpClient) { $script:HttpClient.Dispose() }

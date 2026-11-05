@@ -25,6 +25,7 @@ function getenv(name) {
 const home = getenv("HOME") || ObjC.unwrap($.NSHomeDirectory());
 const configPath = home + "/.novajudge-submit.json";
 const defaultsPath = getenv("NOVAJUDGE_SUBMIT_SCRIPT_DIR") + "/submit-defaults.json";
+const clientVersion = "2026.11.05.2";
 
 function data(text) { return $(String(text)).dataUsingEncoding($.NSUTF8StringEncoding); }
 function decode(value) {
@@ -85,7 +86,7 @@ function defaultUrl(flags, config) {
 function parse(args, allowed) {
   const flags = {}, rest = [];
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+    const arg = args[i] === "-y" ? "--yes" : args[i];
     if (arg === "--") { rest.push.apply(rest, args.slice(i + 1)); break; }
     if (arg.charAt(0) !== "-") { rest.push(arg); continue; }
     const match = arg.match(/^--([^=]+)(?:=(.*))?$/);
@@ -99,7 +100,7 @@ function parse(args, allowed) {
       flags[key] = true;
     } else {
       const value = match[2] === undefined ? args[++i] : match[2];
-      if (value === undefined || value === "" || value.indexOf("--") === 0) {
+      if (value === undefined || value === "" || value.charAt(0) === "-") {
         throw new Error("Missing value for --" + key + ".");
       }
       flags[key] = value;
@@ -221,13 +222,19 @@ function showBinding(config) {
   print("Contest: #" + config.contest.id + " " + config.contest.title);
   print("Team: " + (config.user.displayName || config.user.username) + " (" + config.user.username + ")");
 }
-function confirmSubmission(config, filename, problem, language) {
+function confirmSubmission(config, filename, problem, language, assumeYes) {
   print("\nSubmission information:");
-  print("Server: " + config.baseUrl);
-  showBinding(config);
-  print("File: " + filename);
-  print("Problem: " + problem);
-  print("Language: " + language);
+  print("  contest:     " + terminalText(config.contest.title));
+  print("  filename:    " + terminalText(filename.split("/").pop()));
+  print("  team:        " + terminalText(config.user.displayName || config.user.username));
+  print("  problem:     " + terminalText(problem));
+  print("  language:    " + terminalText(language));
+  print("  url:         " + terminalText(config.baseUrl));
+  print("");
+  if (assumeYes) {
+    print("Submit this file? [y/N] y (--yes)");
+    return true;
+  }
   const input = $.NSFileHandle.alloc.initWithFileDescriptor(3);
   while (true) {
     $.NSFileHandle.fileHandleWithStandardOutput.writeData(data("Submit this file? [y/N] "));
@@ -302,7 +309,7 @@ function login(args) {
   showBinding(config);
 }
 function submit(args) {
-  const parsed = parse(args, { problem: "value", language: "value" });
+  const parsed = parse(args, { problem: "value", language: "value", yes: "boolean" });
   if (parsed.rest.length !== 1) throw new Error("Provide exactly one source file, for example: submit A.cpp");
   const filename = parsed.rest[0];
   const directory = Ref();
@@ -318,7 +325,7 @@ function submit(args) {
   const code = readText(filename);
   if (!code.trim()) throw new Error("Source file is empty: " + filename);
   let config = ensureBound();
-  if (!confirmSubmission(config, filename, problem, language)) return;
+  if (!confirmSubmission(config, filename, problem, language, parsed.flags.yes)) return;
   const payload = { problem: problem, language: language, code: code };
   let result = request(config.baseUrl, "POST", "/api/cli/device/submit", payload, config);
   if (!result.ok && isProctoring(config) && (result.status === 401 ||
@@ -328,7 +335,7 @@ function submit(args) {
   if (result.status === 401 || result.data.code === "CONTEST_CHANGED" || result.data.code === "REAUTH_REQUIRED") {
     print("Browser authorization must be renewed before submitting.");
     config = pair(normalizeUrl(config.baseUrl));
-    if (!confirmSubmission(config, filename, problem, language)) return;
+    if (!confirmSubmission(config, filename, problem, language, parsed.flags.yes)) return;
     result = request(config.baseUrl, "POST", "/api/cli/device/submit", payload, config);
   }
   if (!result.ok) {
@@ -378,15 +385,16 @@ function printSource(filename) {
     throw new Error("Source filename must be at most 255 characters and must not contain path separators, colons or control characters.");
   }
   // Keep this one snapshot for the displayed metadata and upload, even if the file changes while confirming.
-  // Read one byte beyond the limit to reject oversized files without loading them into memory.
+  // Allow an initial three-byte BOM plus one byte beyond the source limit.
   const input = $.NSFileHandle.fileHandleForReadingAtPath(filename);
   if (input.isNil()) throw new Error("Cannot read file: " + filename);
   let contents;
-  try { contents = input.readDataOfLength(120001); }
+  try { contents = input.readDataOfLength(120004); }
   finally { input.closeFile; }
-  const bytes = Number(contents.length);
-  if (bytes > 120000) throw new Error("Printfile source must not exceed 120000 UTF-8 bytes.");
+  if (Number(contents.length) > 120003) throw new Error("Printfile source must not exceed 120000 UTF-8 bytes.");
   const code = decode(contents).replace(/^\uFEFF/, "");
+  const bytes = Number(data(code).length);
+  if (bytes > 120000) throw new Error("Printfile source must not exceed 120000 UTF-8 bytes.");
   if (code.length > 100000) throw new Error("Printfile source must not exceed 100000 characters.");
   if (!code.trim()) throw new Error("Source file is empty: " + filename);
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(code)) {
@@ -395,14 +403,14 @@ function printSource(filename) {
   return { name: name, bytes: bytes, language: languages[extension], code: code };
 }
 function confirmPrint(config, source, suppliedAnswer) {
-  print("\nPrint request information:");
-  print("Server: " + terminalText(config.baseUrl));
-  print("Contest: #" + config.contest.id + " " + terminalText(config.contest.title));
-  print("Team: " + terminalText(config.user.displayName || config.user.username) + " (" + terminalText(config.user.username) + ")");
-  print("File: " + terminalText(source.name));
-  print("Size: " + source.bytes + " bytes");
+  print("\nPrint information:");
+  print("  contest:     " + terminalText(config.contest.title));
+  print("  filename:    " + terminalText(source.name));
+  print("  team:        " + terminalText(config.user.displayName || config.user.username));
   const label = { c: "C", cpp: "C++", java: "Java", pypy3: "Python" }[source.language];
-  print("Language: " + label + " (" + source.language + ")");
+  print("  language:    " + label);
+  print("  size:        " + source.bytes + " bytes");
+  print("");
   if (suppliedAnswer !== undefined) {
     print("Send this print request? [y/N] " + suppliedAnswer);
     if (suppliedAnswer === "y") return true;
@@ -426,13 +434,17 @@ function confirmPrint(config, source, suppliedAnswer) {
   }
 }
 function printfile(args) {
-  const parsed = parse(args, {});
+  const parsed = parse(args, { yes: "boolean" });
   if (parsed.rest.length < 1 || parsed.rest.length > 2) {
-    throw new Error("Usage: printfile <filename> [y/N]");
+    throw new Error("Usage: printfile [-y|--yes] <source-file> [y/N]. Run printfile --help.");
   }
-  const suppliedAnswer = parsed.rest.length === 2 ? parsed.rest[1].toLowerCase() : undefined;
+  let suppliedAnswer = parsed.rest.length === 2 ? parsed.rest[1].toLowerCase() : undefined;
   if (suppliedAnswer !== undefined && suppliedAnswer !== "y" && suppliedAnswer !== "n") {
     throw new Error("The optional printfile confirmation argument must be y or n.");
+  }
+  if (parsed.flags.yes) {
+    if (suppliedAnswer !== undefined && suppliedAnswer !== "y") throw new Error("Do not combine --yes with a cancelling confirmation.");
+    suppliedAnswer = "y";
   }
   const source = printSource(parsed.rest[0]);
   const config = printContext();
@@ -453,30 +465,70 @@ function printfile(args) {
     throw responseError(result, "Print request failed");
   }
   const job = result.data.printJob;
-  if (result.data.success !== true || !job || typeof job.id !== "string" || !job.id) {
+  // PrintJob.id is a Prisma Int, serialized by the API as a JSON number.
+  if (result.data.success !== true || !job || !Number.isSafeInteger(job.id) || job.id <= 0) {
     throw new Error("The server returned no print request number. Check NovaJudge's print queue before trying again.");
   }
   print("Print request received: " + terminalText(job.id));
   print("Status: " + terminalText(job.status || "PENDING"));
 }
-function usage() {
-  print("NovaJudge submit — native macOS client\n\n" +
+function usage(printOnly) {
+  if (printOnly) {
+    print("NovaJudge printfile — native macOS client " + clientVersion + "\n" +
+      "Send one source file to the current contest's print queue for staff to print.\n\n" +
+      "Usage:\n" +
+      "  printfile [options] <source-file> [y/N]\n" +
+      "  submit printfile [options] <source-file> [y/N]\n\n" +
+      "Options:\n" +
+      "  -y, --yes    Assume yes and send without reading confirmation from stdin.\n" +
+      "  -h, --help   Show this printfile help without connecting to the server.\n" +
+      "  --           End options, for filenames starting with a hyphen.\n\n" +
+      "Examples:\n" +
+      "  printfile A.cpp\n" +
+      "  printfile -y \"source file.cpp\"\n" +
+      "  printfile \"source file.py\" --yes\n" +
+      "  printfile Main.java n\n\n" +
+      "Always displays contest, filename, team, language and UTF-8 source size; never displays source code.\n" +
+      "Without --yes or a final y/n, enter y or Y to send; n, Enter or EOF cancels.\n" +
+      "A final y/n supplies the confirmation. Do not combine --yes with n.\n" +
+      "Requires a current monitoring-client login and an enabled intranet CLI contest.\n" +
+      "If authorization expires, reconnect through the monitoring client. Browser pairing cannot print.\n" +
+      "Accepted UTF-8 files: .cpp, .c, .cc, .cxx, .java, .py (C++, C, Java, Python).\n" +
+      "Maximum source size: 120000 UTF-8 bytes and 100000 UTF-16 code units; an initial BOM is removed.\n" +
+      "Success shows a print request ID. View its status in the contest's print queue.\n" +
+      "Failed requests are never automatically resent. Check the queue before trying again.");
+    return;
+  }
+  print("NovaJudge submit — native macOS client " + clientVersion + "\n" +
+    "Submit one source file to the administrator-selected contest for judging.\n\n" +
     "Usage:\n" +
+    "  submit [options] <source-file>\n" +
+    "  submit login [--url <server>]   Connect this computer through browser sign-in.\n" +
+    "  submit status                 Show server, authorization, contest and team.\n" +
+    "  submit logout                 Revoke and remove saved device authorization.\n" +
+    "  submit version                Show the installed client version.\n" +
+    "  printfile --help               Show printing options and requirements.\n\n" +
+    "Options:\n" +
+    "  --problem <id>       Contest problem label, inferred from the filename by default (A.cpp -> A).\n" +
+    "  --language <lang>    Judge language: c, cpp, java, pypy3; defaults to the file extension.\n" +
+    "  -y, --yes            Assume yes and submit without reading confirmation from stdin.\n" +
+    "  -h, --help           Show this help without connecting to the server.\n" +
+    "  --                  End options, for filenames starting with a hyphen.\n" +
+    "  --url <server>      Login only: set the http(s) contest server address.\n\n" +
+    "Examples:\n" +
     "  submit A.cpp\n" +
-    "  submit --problem A main.cpp\n" +
-    "  submit --language cpp A.txt\n" +
-    "  submit login [--url <server>]\n" +
-    "  submit status\n" +
-    "  submit logout\n\n" +
-    "  printfile <filename> [y/N]\n" +
-    "  submit printfile <filename> [y/N]\n\n" +
-    "Printfile is available only for monitoring-client accounts in an enabled intranet contest.\n" +
-    "Review the file name, size, language, server, contest and team before confirmation.\n" +
-    "Accepted files: .cpp, .c, .cc, .cxx, .java, .py. Source content is not displayed.\n" +
+    "  submit -y A.cpp\n" +
+    "  submit --problem A \"source file.cpp\" --yes\n" +
+    "  submit --problem A --language cpp A.txt\n\n" +
+    "Language inference: .c -> c; .cc/.cpp/.cxx -> cpp; .java -> java; .py/.py3 -> pypy3.\n" +
+    "Source files must be non-empty UTF-8 text. Quote paths containing spaces.\n" +
     "Your first submission opens a browser to sign in to your team and connect this computer.\n" +
     "The administrator selects the current contest. Later submissions reuse your browser authorization.\n" +
     "When the monitoring client connects submit automatically, manage its authorization in that client.\n" +
-    "Review the submission information and enter y to submit; n or Enter cancels.\n" +
+    "Always displays contest, filename, team, problem, language and URL, including with --yes.\n" +
+    "Without --yes, enter y or Y to submit; n, Enter or EOF cancels. Other answers repeat the prompt.\n" +
+    "--yes also applies after browser reauthorization; it does not bypass login or contest permissions.\n" +
+    "Success shows the contest submission number and a URL where you can view the verdict.\n" +
     "No contest ID, username or password is entered in the terminal.\n" +
     "NOVAJUDGE_URL overrides the installed default server for login; --url has priority.\n" +
     "NOVAJUDGE_NO_BROWSER=1 prints the verification URL without opening the browser automatically.\n" +
@@ -513,13 +565,17 @@ function status() {
 }
 function run(args) {
   try {
-    if (!args.length || args.indexOf("--help") !== -1 || args.indexOf("-h") !== -1 || args[0] === "help") { usage(); return; }
+    const optionArgs = args.indexOf("--") === -1 ? args : args.slice(0, args.indexOf("--"));
+    if (!args.length || optionArgs.indexOf("--help") !== -1 || optionArgs.indexOf("-h") !== -1 || args[0] === "help") {
+      usage(args[0] === "printfile"); return;
+    }
     if (args[0] === "login") { login(args.slice(1)); return; }
     if (args[0] === "printfile") { printfile(args.slice(1)); return; }
-    if (args[0] === "status" || args[0] === "logout") {
+    if (args[0] === "status" || args[0] === "logout" || args[0] === "version") {
       if (args.length !== 1) throw new Error("Unexpected argument: " + args[1]);
       if (args[0] === "logout") logout();
-      else status();
+      else if (args[0] === "status") status();
+      else print("NovaJudge submit client " + clientVersion + " (native macOS)");
       return;
     }
     submit(args);

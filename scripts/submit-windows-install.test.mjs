@@ -153,7 +153,7 @@ test("installed printfile command uses the real Windows runtime and queues only 
       res.writeHead(403).end(JSON.stringify({ error: "unexpected request" })); return;
     }
     res.end(JSON.stringify(req.method === "GET" ? context : {
-      success: true, printJob: { id: "print-test-1", sourceFilename: "source file.cpp", language: "cpp", status: "PENDING" }, contest: context.contest,
+      success: true, printJob: { id: 1, sourceFilename: "source file.cpp", language: "cpp", status: "PENDING" }, contest: context.contest,
     }));
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -172,9 +172,14 @@ test("installed printfile command uses the real Windows runtime and queues only 
     assert.equal(cancelled.code, 0, cancelled.stderr);
     assert.doesNotMatch(cancelled.stdout, /int main\(\)/);
     assert.equal(calls.filter(call => call.method === "POST").length, 0);
-    const sent = await invoke("y");
+    const help = await command('$env:Path = "$env:LOCALAPPDATA\\NovaJudge\\submit;$env:Path"; printfile --help; exit $LASTEXITCODE', env);
+    assert.equal(help.code, 0, help.stderr);
+    assert.match(help.stdout, /NovaJudge printfile/);
+    assert.match(help.stdout, /-y, --yes/);
+    const sent = await invoke("-y");
     assert.equal(sent.code, 0, sent.stderr);
-    assert.match(sent.stdout, /print-test-1/);
+    assert.match(sent.stdout, /Print request 1 entered the NovaJudge print queue/);
+    assert.match(sent.stdout, /Print information:/);
     assert.doesNotMatch(sent.stdout, /int main\(\)/);
     assert.deepEqual(calls.filter(call => call.method === "POST").map(call => call.body), [{ sourceFilename: "source file.cpp", code: source }]);
     assert.equal(await read(config), credentials);

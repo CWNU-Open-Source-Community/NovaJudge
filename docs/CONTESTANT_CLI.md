@@ -132,11 +132,33 @@ submit A.cpp
 
 # 文件名不对应题号时，明确指定比赛题号
 submit --problem A main.cpp
+
+# 自动回答 yes，显示提交信息后直接发送
+submit -y A.cpp
+submit --problem A "source file.cpp" --yes
+
+# 查看参数、语言推断和授权说明
+submit --help
 ```
 
-每次提交前，终端都会显示文件、网站、比赛、队伍、题号和语言。核对后输入 `y`（或 `Y`）
-才会上传代码；输入 `n`、直接回车或结束输入会取消，其他输入会再次提示确认。
-命令不提供跳过确认的 `-y` 选项。
+每次提交前（包括使用 `-y` 时），终端按以下格式显示信息：
+
+```text
+Submission information:
+  contest:     {contest_name}
+  filename:    {file_name}
+  team:        {team_name}
+  problem:     {problem}
+  language:    {lang}
+  url:         {url}
+```
+
+`-y` / `--yes` 自动回答 yes，不读取终端确认；可放在文件名前或后。不加该参数时，
+核对信息后输入 `y`（或 `Y`）才会上传代码；输入 `n`、直接回车或结束输入会取消，
+其他输入会再次提示确认。自动确认不会跳过账号授权、比赛权限或文件检查。
+`--problem <题号>` 覆盖从文件名推断的题号；`--language <语言>` 可指定 `c`、`cpp`、
+`java`、`pypy3`。默认 `.c` 对应 `c`，`.cc/.cpp/.cxx` 对应 `cpp`，`.java` 对应 `java`，
+`.py/.py3` 对应 `pypy3`。路径含空格时需加引号；文件名以 `-` 开头时，在文件名前加 `--`。
 
 提交成功后显示比赛内的提交编号和对应提交记录链接，在网页中查看评测结果。
 命令行遵循比赛的账号权限、时间和提交限制。全局账号、虚拟参赛和已绑定监考客户端的账号
@@ -151,7 +173,7 @@ submit logout
 ```
 
 普通网页绑定的队伍在管理员切换比赛后，下次运行时会自动打开网页，要求重新绑定新比赛的队伍账号。
-重新绑定完成后会再次展示提交信息，仍需输入 `y` 才会提交。
+重新绑定完成后会再次展示提交信息；指定了 `-y` 时自动确认，否则仍需输入 `y` 才会提交。
 如果比赛在绑定过程中变化，或验证码已过期，请回到终端重新运行命令，使用新的绑定页面。
 在公用电脑上完成比赛后，应运行 `submit logout`。
 
@@ -166,14 +188,29 @@ submit logout
 
 ```text
 printfile A.cpp
-printfile "source file.py" y
+printfile -y "source file.py"
+printfile Main.java --yes
 printfile Main.java n
+printfile --help
 ```
 
-格式为 `printfile <文件名> [y/N]`。未提供末尾参数时，终端先显示网站、比赛、队伍、文件名、
-大小和语言，再提示是否发送打印请求，不输出源码正文。只有输入 `y` 或 `Y` 才发送；
-`n`、`N`、回车或结束输入都会取消。末尾指定 `y` 或 `n` 时也会显示预览，再按该参数处理。
+格式为 `printfile [-y|--yes] <文件名> [y/N]`，也可使用 `submit printfile` 调用。
+终端先显示以下信息，不输出源码正文：
+
+```text
+Print information:
+  contest:     {contest_name}
+  filename:    {file_name}
+  team:        {team_name}
+  language:    {lang}
+  size:        {utf8_bytes} bytes
+```
+
+`size` 为实际发送源码的 UTF-8 字节数（去掉开头的 UTF-8 BOM），不是字符数。
+加 `-y` / `--yes` 时自动确认并发送；可放在文件名前或后。不加时，输入 `y` 或 `Y` 才发送；
+`n`、`N`、回车或结束输入都会取消。仍兼容末尾指定 `y` 或 `n`，不能同时使用 `-y` 和 `n`。
 每次调用都显示文件信息；确认与发送使用一次读取的文件快照，等待确认期间修改文件不会改变本次请求内容。
+`printfile --help` 单独说明打印用途、参数、支持格式、大小限制、授权条件和队列状态。
 
 只接受 `.cpp`、`.c`、`.cc`、`.cxx`、`.java`、`.py` 后缀（不区分大小写），
 自动识别 C++、C、Java、Python，不需要题号。文件必须是有效 UTF-8 文本，
@@ -194,6 +231,9 @@ printfile Main.java n
 更新时重新运行 `/cli` 页面上的安装命令，已有设备绑定配置会保留。
 已安装旧版的用户也需重新运行安装命令，才能使用 printfile。安装和卸载同时处理这两个命令。
 printfile 复用已有打印表，不需要新增数据库迁移；服务端 API 和选手脚本均需升级。
+仅更新 OJ 不会替换选手电脑上已安装的脚本。此次客户端版本为 `2026.11.05.2`，
+安装后可运行 `submit version` 核对；监考客户端离线安装时也需同步更新随包脚本。
+Windows 脚本按 PowerShell 当前目录解析相对路径，支持切换目录后直接调用脚本。
 
 卸载命令保留本地登录配置；如需清除凭据，请先运行 `submit logout`。
 将下方地址替换为实际比赛网站的地址，或直接使用 `/cli` 页面生成的命令：
