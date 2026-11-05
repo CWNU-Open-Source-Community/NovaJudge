@@ -51,7 +51,7 @@ async function fixture(t, handler) {
       send(response, { submission: { id: "submission-123", displayId: 9 }, statusUrl: "/contest/17/status/9" });
     } else if (request.url === "/api/cli/device/print") {
       if (request.method === "GET") send(response, { loginSource: "PROCTORING", contest, user });
-      else send(response, { success: true, printJob: { id: "print-job-123", sourceFilename: payload.sourceFilename, language: "cpp", status: "PENDING" }, contest });
+      else send(response, { success: true, printJob: { id: 123, sourceFilename: payload.sourceFilename, language: "cpp", status: "PENDING" }, contest });
     } else send(response, { error: "Unexpected endpoint" }, 404);
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -95,11 +95,158 @@ async function fixture(t, handler) {
 }
 function success(result) { assert.equal(result.code, 0, result.stderr); }
 
+test("submit and printfile accept -y/--yes on either side of the filename without stdin", { skip: !mac }, async (t) => {
+  const f = await fixture(t);
+  const filename = "source 中文 file.cpp";
+  const code = "// private automatic confirmation\nint main(){}\n";
+  await fs.writeFile(path.join(f.directory, filename), code);
+  for (const args of [["-y", filename], [filename, "-y"], ["--yes", filename], [filename, "--yes"]]) {
+    await f.bind();
+    const submission = await f.run(["--problem", "A", ...args]);
+    success(submission);
+    assert.match(submission.stdout, /Submission information:/);
+    assert.match(submission.stdout, /filename:    source 中文 file.cpp/);
+    assert.match(submission.stdout, /Submitted #9 A cpp/);
+    assert.ok(submission.stdout.indexOf("Submission information:") < submission.stdout.indexOf("Submitted #9"));
+    assert.equal(f.requests.at(-1).path, "/api/cli/device/submit");
+    assert.deepEqual(f.requests.at(-1).payload, { problem: "A", language: "cpp", code });
+
+    await f.bindProctoring();
+    const printing = await f.run(["printfile", ...args]);
+    success(printing);
+    assert.match(printing.stdout, /Print information:/);
+    assert.match(printing.stdout, /Print request received: 123/);
+    assert.ok(printing.stdout.indexOf("Print information:") < printing.stdout.indexOf("Print request received: 123"));
+    assert.equal(f.requests.at(-1).path, "/api/cli/device/print");
+    assert.deepEqual(f.requests.at(-1).payload, { sourceFilename: filename, code });
+    assert.doesNotMatch(submission.stdout + printing.stdout, /private automatic confirmation|njcli_|Cancelled/);
+  }
+  assert.equal(f.requests.filter(r => r.method === "POST").length, 8);
+});
+
+test("command-specific help describes options, inference, confirmation and print requirements without login", { skip: !mac }, async (t) => {
+  const f = await fixture(t);
+  await fs.writeFile(f.config, "invalid json");
+  const submission = await f.run(["--help"]);
+  success(submission);
+  for (const pattern of [/--problem <id>/, /--language <lang>/, /-y, --yes/, /pypy3/, /EOF cancels/, /submission number/]) {
+    assert.match(submission.stdout, pattern);
+  }
+  for (const flag of ["--help", "-h"]) {
+    const printing = await f.run(["printfile", flag]);
+    success(printing);
+    for (const pattern of [/NovaJudge printfile/, /-y, --yes/, /monitoring-client login/, /120000 UTF-8 bytes/, /print request ID/, /never automatically resent/]) {
+      assert.match(printing.stdout, pattern);
+    }
+    assert.doesNotMatch(printing.stdout, /--problem|--language/);
+  }
+  const version = await f.run(["version"]);
+  success(version);
+  assert.match(version.stdout, /2026\.11\.05\.2/);
+  assert.deepEqual(f.requests, []);
+});
+
+test("invalid yes flags and conflicting print confirmations fail before authorization or upload", { skip: !mac }, async (t) => {
+  const f = await fixture(t);
+  await fs.writeFile(path.join(f.directory, "A.cpp"), "int main(){}\n");
+  for (const args of [
+    ["--yes=true", "A.cpp"], ["-y", "--yes", "A.cpp"], ["--problem", "-y", "A.cpp"],
+    ["--language", "-y", "A.cpp"], ["login", "-y"],
+    ["printfile", "-y", "A.cpp", "n"], ["printfile", "A.cpp", "N", "--yes"],
+    ["printfile", "--yes=false", "A.cpp"], ["printfile", "--yes", "-y", "A.cpp"]
+  ]) {
+    const result = await f.run(args);
+    assert.equal(result.code, 1, args.join(" "));
+    assert.doesNotMatch(result.stdout, /Submission information|Print information|Pairing code/);
+  }
+  assert.deepEqual(f.requests, []);
+});
+
+test("--yes remains effective after browser reauthorization and displays the new contest", { skip: !mac }, async (t) => {
+  let switched = false;
+  const f = await fixture(t, (request, response) => {
+    if (request.url.endsWith("/submit") && !switched) {
+      switched = true;
+      send(response, { error: "Contest changed", code: "CONTEST_CHANGED" }, 409);
+      return;
+    }
+    if (switched && request.method === "GET") {
+      send(response, { ...ready, contest: { id: 18, title: "Next Contest" } });
+      return;
+    }
+    return false;
+  });
+  await f.bind();
+  await fs.writeFile(path.join(f.directory, "A.cpp"), "int main(){}\n");
+  const result = await f.run(["A.cpp", "-y"]);
+  success(result);
+  assert.match(result.stdout, /contest:     Current Contest/);
+  assert.match(result.stdout, /contest:     Next Contest/);
+  assert.match(result.stdout, /Submitted #9 A cpp/);
+  assert.equal(f.requests.filter(r => r.path.endsWith("/submit")).length, 2);
+});
+
 test("embedded native JXA program is valid JavaScript on every platform", async () => {
   const script = await fs.readFile(source, "utf8");
   const body = script.match(/<<'JXA'\r?\n([\s\S]*?)\r?\nJXA\s*$/)?.[1];
   assert.ok(body, "Missing JXA program delimiter");
   new vm.Script(body, { filename: "submit-macos.jxa" });
+});
+
+test("macOS argument parsing, automatic previews and command help work without native I/O", async () => {
+  const script = await fs.readFile(source, "utf8");
+  const body = script.match(/<<'JXA'\r?\n([\s\S]*?)\r?\nJXA\s*$/)[1];
+  const output = [];
+  const context = vm.createContext({
+    ObjC: { import() {}, unwrap: value => value },
+    $: {
+      NSProcessInfo: { processInfo: { environment: { objectForKey: () => ({ isNil: () => true }) } } },
+      NSFileManager: { defaultManager: {} },
+      NSHomeDirectory: () => "/Users/test",
+    },
+    capture: text => output.push(text),
+    config: { contest, user, baseUrl: "https://judge.test" },
+  });
+  vm.runInContext(body + "\nprint = capture;", context);
+  for (const args of [["-y", "A.cpp"], ["A.cpp", "--yes"], ["--yes", "--", "-y"]]) {
+    const parsed = vm.runInContext(`parse(${JSON.stringify(args)}, { yes: "boolean" })`, context);
+    assert.equal(parsed.flags.yes, true);
+    assert.equal(parsed.rest[0], args.at(-1) === "-y" ? "-y" : "A.cpp");
+  }
+  for (const args of [["--yes=false"], ["-y", "--yes"], ["--problem", "-y"]]) {
+    assert.throws(() => vm.runInContext(`parse(${JSON.stringify(args)}, { yes: "boolean", problem: "value" })`, context));
+  }
+  assert.equal(vm.runInContext('confirmSubmission(config, "/tmp/A.cpp", "A", "cpp", true)', context), true);
+  assert.equal(output.join("\n"), "\nSubmission information:\n  contest:     Current Contest\n  filename:    A.cpp\n  team:        Test Team\n  problem:     A\n  language:    cpp\n  url:         https://judge.test\n\nSubmit this file? [y/N] y (--yes)");
+  output.length = 0;
+  assert.equal(vm.runInContext('confirmPrint(config, {name: "A.cpp", language: "cpp", bytes: 17}, "y")', context), true);
+  assert.equal(output.join("\n"), "\nPrint information:\n  contest:     Current Contest\n  filename:    A.cpp\n  team:        Test Team\n  language:    C++\n  size:        17 bytes\n\nSend this print request? [y/N] y");
+  output.length = 0;
+  vm.runInContext('run(["printfile", "--help"])', context);
+  assert.match(output.join("\n"), /NovaJudge printfile/);
+  assert.match(output.join("\n"), /-y, --yes/);
+  assert.doesNotMatch(output.join("\n"), /--problem/);
+  output.length = 0;
+  vm.runInContext('run(["--help"])', context);
+  assert.match(output.join("\n"), /--problem <id>/);
+  assert.match(output.join("\n"), /--language <lang>/);
+
+  // Exercise the real printfile response check with the API's numeric Prisma ID.
+  context.reply = { success: true, printJob: { id: 123, status: "PENDING" } };
+  vm.runInContext(`
+    printSource = () => ({ name: "A.cpp", language: "cpp", bytes: 17, code: "int main(){}" });
+    printContext = () => config;
+    request = () => ({ ok: true, status: 200, data: reply });
+  `, context);
+  output.length = 0;
+  vm.runInContext('printfile(["-y", "A.cpp"])', context);
+  assert.ok(output.includes("Print request received: 123"));
+  for (const id of [undefined, null, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "123", true, [], {}]) {
+    context.reply = { success: true, printJob: { id } };
+    assert.throws(() => vm.runInContext('printfile(["-y", "A.cpp"])', context), /no print request number/);
+  }
+  context.reply = { success: false, printJob: { id: 123 } };
+  assert.throws(() => vm.runInContext('printfile(["-y", "A.cpp"])', context), /no print request number/);
 });
 
 test("missing server URL fails before pairing; local commands remain usable", { skip: !mac }, async (t) => {
@@ -137,13 +284,13 @@ test("first submit pairs in browser; later submits reuse authorization and serve
   await fs.writeFile(path.join(f.directory, "A.cpp"), code);
   const first = await f.run(["A.cpp"], { onPrompt(child, output) {
     assert.equal(f.requests.filter((r) => r.path.endsWith("/submit")).length, 0);
-    assert.match(output, /File: A.cpp\nProblem: A\nLanguage: cpp/);
+    assert.ok(output.includes(`Submission information:\n  contest:     Current Contest\n  filename:    A.cpp\n  team:        Test Team\n  problem:     A\n  language:    cpp\n  url:         ${f.url}\n\n`));
     child.stdin.end("y\n");
   } });
   success(first);
   assert.match(first.stdout, /Pairing code: ABCD-1234/);
-  assert.match(first.stdout, /Contest: #17 Current Contest/);
-  assert.match(first.stdout, /Team: Test Team \(team001\)/);
+  assert.match(first.stdout, /contest:     Current Contest/);
+  assert.match(first.stdout, /team:        Test Team/);
   assert.match(first.stdout, /Submitted #9 A cpp/);
   assert.match(first.stdout, /\/contest\/17\/status\/9/);
   assert.doesNotMatch(first.stdout, /submission-123/);
@@ -336,8 +483,8 @@ test("a new contest is displayed and must be confirmed again after rebinding", {
   await fs.writeFile(path.join(f.directory, "A.cpp"), "int main(){}\n");
   const result = await f.run(["A.cpp"], { input: "y\nn\n" });
   success(result);
-  assert.match(result.stdout, /Contest: #17 Current Contest/);
-  assert.match(result.stdout, /Contest: #18 Next Contest/);
+  assert.match(result.stdout, /contest:     Current Contest/);
+  assert.match(result.stdout, /contest:     Next Contest/);
   assert.equal(result.stdout.match(/Submit this file\? \[y\/N\]/g).length, 2);
   assert.match(result.stdout, /Cancelled/);
   assert.equal(f.requests.filter((r) => r.path.endsWith("/submit")).length, 1);
@@ -504,18 +651,14 @@ test("printfile displays only metadata and uploads the original monitored snapsh
   await fs.writeFile(filename, code);
   const result = await f.run(["printfile", filename], { onPrompt(child, output) {
     assert.deepEqual(f.requests.map((r) => [r.method, r.path]), [["GET", "/api/cli/device/print"]]);
-    assert.match(output, /Contest: #17 Current Contest/);
-    assert.match(output, /Team: Test Team \(team001\)/);
-    assert.match(output, /File: main source.cpp/);
-    assert.ok(output.includes(`Size: ${Buffer.byteLength(code)} bytes`));
-    assert.match(output, /Language: C\+\+ \(cpp\)/);
+    assert.ok(output.includes(`Print information:\n  contest:     Current Contest\n  filename:    main source.cpp\n  team:        Test Team\n  language:    C++\n  size:        ${Buffer.byteLength(code)} bytes\n\n`));
     assert.ok(output.includes(`Server: ${f.url}`));
     assert.doesNotMatch(output, /中文 source|int main|return 0|Source content/);
     writeFileSync(filename, "changed while confirming\n");
     child.stdin.end("y\n");
   } });
   success(result);
-  assert.match(result.stdout, /Print request received: print-job-123/);
+  assert.match(result.stdout, /Print request received: 123/);
   assert.doesNotMatch(result.stdout, /中文 source|int main|return 0|changed while confirming|Source content/);
   assert.doesNotMatch(result.stdout, /Pairing code|njcli_/);
   assert.deepEqual(f.requests.map((r) => [r.method, r.path]), [
@@ -534,7 +677,7 @@ test("printfile requires monitoring authorization and never pairs a missing or b
     const result = await f.run(["printfile", "main.cpp", "y"]);
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Reconnect through the monitoring client/);
-    assert.doesNotMatch(result.stdout, /Print request information|Pairing code|int main/);
+    assert.doesNotMatch(result.stdout, /Print information|Pairing code|int main/);
   }
   assert.deepEqual(f.requests, []);
 });
@@ -554,7 +697,7 @@ test("printfile rejects invalid, revoked and non-monitoring server contexts befo
     const result = await f.run(["printfile", "main.cpp", "y"]);
     assert.equal(result.code, 1);
     assert.match(result.stderr, /monitoring client/);
-    assert.doesNotMatch(result.stdout, /Print request information|Pairing code|int main/);
+    assert.doesNotMatch(result.stdout, /Print information|Pairing code|int main/);
   }
   assert.ok(f.requests.every((r) => r.method === "GET" && r.path === "/api/cli/device/print"));
 });
@@ -580,14 +723,14 @@ test("printfile cancels blank, n, EOF and unterminated confirmation without uplo
 test("printfile accepts exactly the allowed source extensions and shows metadata even with positional y", { skip: !mac }, async (t) => {
   const f = await fixture(t);
   await f.bindProctoring();
-  for (const [extension, label] of [["cpp", "C++ (cpp)"], ["C", "C (c)"], ["cc", "C++ (cpp)"],
-    ["cxx", "C++ (cpp)"], ["java", "Java (java)"], ["py", "Python (pypy3)"]]) {
+  for (const [extension, label] of [["cpp", "C++"], ["C", "C"], ["cc", "C++"],
+    ["cxx", "C++"], ["java", "Java"], ["py", "Python"]]) {
     const filename = `source.${extension}`;
     await fs.writeFile(path.join(f.directory, filename), "// source\n");
     const result = await f.run(["printfile", filename, "Y"]);
     success(result);
-    assert.ok(result.stdout.includes(`Language: ${label}`));
-    assert.ok(result.stdout.indexOf("Language:") < result.stdout.indexOf("Send this print request?"));
+    assert.ok(result.stdout.includes(`  language:    ${label}\n`));
+    assert.ok(result.stdout.indexOf("  language:") < result.stdout.indexOf("Send this print request?"));
     assert.doesNotMatch(result.stdout, /\/\/ source|Source content/);
     assert.equal(f.requests.at(-1).payload.sourceFilename, filename);
   }
@@ -604,7 +747,7 @@ test("printfile invalid arguments, UTF-8, extensions, content and limits fail be
     await fs.writeFile(path.join(f.directory, filename), contents);
     const result = await f.run(["printfile", filename, "y"]);
     assert.equal(result.code, 1, filename);
-    assert.doesNotMatch(result.stdout, /Print request information|Pairing code/);
+    assert.doesNotMatch(result.stdout, /Print information|Pairing code/);
   }
   await fs.writeFile(path.join(f.directory, "good.cpp"), "int main(){}\n");
   for (const args of [[], ["good.cpp", "yes"], ["good.cpp", "y", "extra"], ["--language", "cpp", "good.cpp"], ["missing.cpp"]]) {
@@ -625,7 +768,7 @@ test("printfile preserves source line endings, strips UTF-8 BOM, and safely disp
   await fs.writeFile(path.join(f.directory, "source.py"), "\uFEFF" + code);
   const result = await f.run(["printfile", "source.py", "y"]);
   success(result);
-  assert.ok(result.stdout.includes(`Size: ${Buffer.byteLength("\uFEFF" + code)} bytes`));
+  assert.ok(result.stdout.includes(`  size:        ${Buffer.byteLength(code)} bytes`));
   assert.doesNotMatch(result.stdout, /line1|line2|line3|\/\/ |Source content/);
   assert.ok(result.stdout.includes("Unsafe\\u001b[2J"));
   assert.doesNotMatch(result.stdout, /[\r\x1b\u202e]/);

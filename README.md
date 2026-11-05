@@ -79,12 +79,15 @@ bind your computer. Selecting a different contest prompts a new browser sign-in.
 It uses built-in macOS tools or Windows PowerShell 5.1, without Node.js or Python.
 Windows 7 requires SP1, .NET Framework 4.5.2 or later, and WMF 5.1.
 Intranet monitoring clients can install the bundled script offline and bind the team
-using a dedicated submission grant. Every submission requires explicit confirmation.
+using a dedicated submission grant. Add `-y` / `--yes` to submit or print without an
+interactive prompt; the information preview is always shown. Run `submit --help`
+or `printfile --help` for command-specific options and requirements.
 
 After signing in through the monitoring client, run `printfile A.cpp` to send a
 request to the existing NovaJudge print queue. It shows the filename, size and
 language, without displaying the source; enter `y` to confirm or `n`/Enter to cancel.
-An optional final `y` or `n` argument is also supported. Only `.cpp`, `.c`, `.cc`,
+Use `printfile -y A.cpp` to confirm automatically. An optional final `y` or `n`
+argument is also supported. Only `.cpp`, `.c`, `.cc`,
 `.cxx`, `.java` and `.py` files are accepted. Ordinary browser pairing cannot use
 `printfile`. Update the monitoring client's bundled installers and scripts together
 with the server to enable the new command.

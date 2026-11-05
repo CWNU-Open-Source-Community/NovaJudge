@@ -116,7 +116,7 @@ export default function CliInstructions() {
           也可以运行 <code>submit login</code> 提前打开网页绑定。
           网页绑定适用于普通比赛队伍账号；全局账号和虚拟参赛不适用，监考账号请使用上方内网客户端自动绑定。
           比赛由管理员统一指定；管理员切换比赛后，客户端会自动要求在网页重新绑定新比赛的队伍账号。
-          重新绑定后仍需在终端确认提交。
+          重新绑定后会再次显示提交信息；使用 <code>-y</code> 时自动确认，否则需在终端确认提交。
         </p>
       </section>
 
@@ -127,11 +127,13 @@ export default function CliInstructions() {
           文件名不含题号时，用 <code>--problem</code> 指定比赛中的题号。
           语言根据文件扩展名识别。
         </p>
-        <CodeBlock code={"submit A.cpp\nsubmit --problem A main.cpp"} />
+        <CodeBlock code={'submit A.cpp\nsubmit --problem A main.cpp\nsubmit -y A.cpp\nsubmit --problem A "source file.cpp" --yes\nsubmit --help'} />
         <p className="text-sm text-gray-600 leading-relaxed">
           每次提交前，终端都会显示文件、网站、比赛、队伍、题号和语言。
           核对后输入 <code>y</code>（或 <code>Y</code>）才会上传代码；输入 <code>n</code> 或直接回车取消，
-          其他输入会再次提示。提交成功后会显示比赛内的提交编号和对应提交记录链接。
+          其他输入会再次提示。加 <code>-y</code> 或 <code>--yes</code> 可自动确认，仍会显示提交信息。
+          用 <code>--language</code> 可指定 c、cpp、java、pypy3；路径含空格时需加引号。
+          提交成功后会显示比赛内的提交编号和对应提交记录链接。
         </p>
         <p className="text-sm text-gray-600">查看本地登录信息或退出登录：</p>
         <CodeBlock code={"submit status\nsubmit logout"} />
@@ -142,9 +144,10 @@ export default function CliInstructions() {
         <p className="text-sm text-gray-600 leading-relaxed">
           在内网监考客户端登录后，运行 <code>printfile 文件名</code>。终端会先显示比赛、队伍、
           文件名、大小和语言；核对后输入 <code>y</code> 确认，输入 <code>n</code> 或直接回车取消。
-          不会输出源码正文。也可以在命令末尾指定 <code>y</code> 或 <code>n</code>，仍会先显示文件信息。
+          不会输出源码正文。加 <code>-y</code> 或 <code>--yes</code> 可自动确认，仍会先显示文件信息。
+          大小按实际发送源码的 UTF-8 字节数计算。也兼容在命令末尾指定 <code>y</code> 或 <code>n</code>。
         </p>
-        <CodeBlock code={'printfile A.cpp\nprintfile "source file.py" y\nprintfile Main.java n'} />
+        <CodeBlock code={'printfile A.cpp\nprintfile -y "source file.py"\nprintfile Main.java --yes\nprintfile Main.java n\nprintfile --help'} />
         <p className="text-sm text-gray-600 leading-relaxed">
           仅支持 UTF-8 编码的 .cpp、.c、.cc、.cxx、.java、.py 文件，最多 120,000 字节和 100,000 个字符。
           成功后会显示打印请求编号，管理员可在当前比赛的打印队列处理。
@@ -156,6 +159,7 @@ export default function CliInstructions() {
         <h2 className="text-lg font-bold text-gray-800">更新与卸载</h2>
         <p className="text-sm text-gray-600 leading-relaxed">
           更新时重新运行上方安装命令，已有设备绑定配置会保留。已安装旧版的用户也需更新，才能使用 printfile。
+          仅更新网站不会替换本机脚本；安装后运行 <code>submit version</code>，此次版本为 <code>2026.11.05.2</code>。
           卸载前可先运行 <code>submit logout</code> 清除本地登录凭据；
           下方卸载命令保留登录配置。
         </p>
