@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import AdminLoginModal from "./AdminLoginModal";
 import PrintRequestModal from "./PrintRequestModal";
+import ClarificationNotifications from "./ClarificationNotifications";
 import { ContestRole } from "@/lib/generated/prisma/enums";
 import {
   HomeIcon,
@@ -542,6 +543,7 @@ export default function Navbar() {
 
             {/* 右侧：用户菜单与多语言 (始终在顶部显示) */}
             <div className="flex space-x-4 text-lg items-center gap-2 sm:gap-4 shrink-0">
+              <ClarificationNotifications />
               <button
                 onClick={toggleLanguage}
                 className="p-2 text-gray-500 hover:text-blue-600 transition-colors rounded-full hover:bg-gray-100 cursor-pointer"

@@ -24,9 +24,26 @@ NovaJudge 是一个轻量级在线评测（Online Judge）平台，面向 XCPC �
   多台判题机从共享队列领取任务互不冲突。
 - ACM/ICPC 风格排行榜，支持封榜（freeze）与解封（unfreeze）。
 - 面向选手与裁判的答疑、通知系统。
+- 比赛 STAFF 中的 `ADMIN` 和 `JUDGE` 可收到本场新提问及追问的站内弹窗提醒，
+  顶部铃铛显示待回复数量并可直接进入问题；超级管理员及其他角色不接收此提醒。
 - 现场赛的气球配送与打印队列工作流。
 - API Key 认证与 ICPC CCS 兼容接口，方便对接外部工具。
 - 面向登录用户的训练中心与虚拟参赛（VP）支持。
+
+### 比赛提问提醒
+
+使用比赛 STAFF 的 `ADMIN` 或 `JUDGE` 账号登录并保持网页打开后，每 10 秒检查一次本场待回复问题。
+关闭弹窗或查看问题不会清除待回复数量；任一 `ADMIN` / `JUDGE` 回复后，该问题自动移除，
+选手再次追问会重新提醒。弹窗记录按账号保存在当前浏览器，刷新页面不会反复提示同一条消息。
+
+更新已有部署时，可只执行以下索引迁移以加快提醒查询（不修改已有比赛或提问数据）：
+
+```bash
+npx prisma db execute --file prisma/migrations/20261111000000_clarification_notifications/migration.sql
+```
+
+权限测试：`npm run test:clarification-notifications`。
+本地 PostgreSQL 集成测试：`npm run test:clarification-notifications:integration`，测试数据在事务中自动回滚。
 
 ### 从压缩包更新单道题目
 
