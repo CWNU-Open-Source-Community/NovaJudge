@@ -55,6 +55,8 @@ next-env.d.ts
 !/prisma/migrations/20261028000000_cli_devices/migration.sql
 !/prisma/migrations/20261028010000_cli_proctoring_devices/
 !/prisma/migrations/20261028010000_cli_proctoring_devices/migration.sql
+!/prisma/migrations/20261111000000_clarification_notifications/
+!/prisma/migrations/20261111000000_clarification_notifications/migration.sql
 /uploads
 /public/monaco
 /.local/

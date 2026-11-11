@@ -399,6 +399,7 @@ model Clarification {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([contestId, category])
   @@map("clarifications")
 }
 
@@ -414,6 +415,7 @@ model Reply {
   content   String   @db.Text
   createdAt DateTime @default(now())
 
+  @@index([clarificationId, createdAt, id])
   @@map("replies")
 }
 
