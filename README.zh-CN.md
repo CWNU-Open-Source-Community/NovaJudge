@@ -45,6 +45,16 @@ npx prisma db execute --file prisma/migrations/20261111000000_clarification_noti
 权限测试：`npm run test:clarification-notifications`。
 本地 PostgreSQL 集成测试：`npm run test:clarification-notifications:integration`，测试数据在事务中自动回滚。
 
+### Polygon 单题与比赛题包导入
+
+后台 **Import Problems / Import Contests** 可选择 **Polygon** 格式，
+导入单题、多题或比赛包中的题面、图片、样例、完整测试数据和 C++ testlib checker/interactor。
+支持普通题、交互题和两轮通信题，包括首轮交互及两轮都交互的配置。
+Polygon 比赛导出的题包会批量新增题库题目；比赛由管理员自行创建，再添加这些题目。
+无需填写比赛名称和时间，不会自动创建比赛或关联题目。原有 NovaJudge ZIP 导入继续可用。
+支持范围、目录示例和 API 字段见 [Polygon 导入说明](./docs/POLYGON_IMPORT.md)。
+回归测试：`npm run test:polygon-import`。
+
 ### 从压缩包更新单道题目
 
 在后台题库列表点击目标题目的 **Update Problem**（上传图标），选择包含恰好一道题目的

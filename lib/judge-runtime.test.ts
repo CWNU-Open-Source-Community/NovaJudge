@@ -6,6 +6,8 @@ import vm from "node:vm";
 import ts from "typescript";
 import { Verdict } from "./generated/prisma/enums";
 import * as timing from "./judge/runtime-limits";
+import { runPolygonCase } from "./judge/polygon";
+import { getPolygonJudgeConfig, type PolygonJudgeConfig } from "./problem-judge-config";
 import type { DebugAllSamplesResult } from "./judge";
 
 const SECOND = 1_000_000_000;
@@ -22,6 +24,8 @@ interface Command {
   args: string[];
   cpuLimit: number;
   clockLimit: number;
+  files: ({ content?: string; name?: string; max?: number } | null)[];
+  copyIn?: Record<string, { content?: string; fileId?: string }>;
 }
 interface SubmissionUpdate {
   verdict: string;
@@ -44,22 +48,27 @@ const compiled = ts.transpileModule(readFileSync(path.resolve(filename), "utf8")
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
 }).outputText;
 
-function harness(type: "standard" | "spj" | "interactive", responses: SandboxResult[][], language = "pypy3") {
+function harness(
+  type: "standard" | "spj" | "interactive" | "communication", responses: SandboxResult[][],
+  language = "pypy3", polygon?: PolygonJudgeConfig, sample = { input: "input\n", output: "ok\n" },
+) {
   const requests: { cmd: Command[] }[] = [];
   const updates: SubmissionUpdate[] = [];
   const diagnostics: unknown[][] = [];
   const progress: Record<string, unknown>[] = [];
+  const compiledPrograms: string[] = [];
   const problem = {
     id: 42, type, defaultTimeLimit: 1000, defaultMemoryLimit: 128,
     judgeConfig: {
       cases: [{ input: "input.in", output: "answer.out" }],
       checker: "checker.cpp", interactor: "interactor.cpp",
+      ...(polygon ? { polygon } : {}),
     },
-    samples: [{ input: "input\n", output: "ok\n" }],
+    samples: [{ ...sample }],
   };
   const dependencies: Record<string, unknown> = {
     "path": path,
-    "fs": { promises: { readFile: async (name: string) => name.endsWith("answer.out") ? "ok\n" : "input\n" } },
+    "fs": { promises: { readFile: async (name: string) => name.endsWith("answer.out") ? sample.output : sample.input } },
     "@/lib/prisma": { prisma: { submission: {
       findUnique: async () => ({ id: "fixture", code: "print('ok')", language, problem }),
       update: async ({ data }: { data: SubmissionUpdate }) => { updates.push(structuredClone(data)); },
@@ -69,10 +78,14 @@ function harness(type: "standard" | "spj" | "interactive", responses: SandboxRes
       del: async () => 1,
     } },
     "@/lib/generated/prisma/enums": { Verdict },
-    "@/lib/problem-judge-config": { resolveJudgeDataPath: path.join },
-    "./judge/program-cache": { createJudgeProgramCompiler: () => async () => "judge-fixture-file" },
+    "@/lib/problem-judge-config": { resolveJudgeDataPath: path.join, getPolygonJudgeConfig },
+    "./judge/program-cache": { createJudgeProgramCompiler: () => async (_dir: string, name: string) => {
+      compiledPrograms.push(name);
+      return `judge-${name}`;
+    } },
     "./judge/runtime-limits": { ...timing, getRunTimeLimits: (cpu: number) => timing.getRunTimeLimits(cpu, 60_000) },
     "./judge/communication": {},
+    "./judge/polygon": { runPolygonCase },
   };
   const exports = {};
   vm.runInNewContext(compiled, {
@@ -97,7 +110,7 @@ function harness(type: "standard" | "spj" | "interactive", responses: SandboxRes
     debugProblemSamples(problem: unknown, code: string, language: string): Promise<DebugAllSamplesResult>;
   };
   return {
-    requests, updates, diagnostics, progress,
+    requests, updates, diagnostics, progress, compiledPrograms,
     run: async () => {
       await judge.judgeSubmission("fixture");
       assert.equal(responses.length, 0, "All expected sandbox responses must be used");
@@ -110,6 +123,70 @@ function harness(type: "standard" | "spj" | "interactive", responses: SandboxRes
     },
   };
 }
+
+for (const mode of ["run", "sample"] as const) {
+  for (const [name, input, expected] of [
+    ["Windows newlines", "p\r\n", "p\n"],
+    ["spaces and empty lines", "  p\t\r\n\r\nq \r\n", "  p\t\n\nq \n"],
+    ["LF input and standalone CR", "p\rq\n", "p\rq\n"],
+  ]) {
+    test(`${mode}: ${name} reach the solution with consistent text line endings`, async () => {
+      const h = harness("standard", [[accepted()]], "pypy3", undefined, { input, output: "ok\n" });
+      if (mode === "run") assert.equal((await h.run()).verdict, "ACCEPTED");
+      else {
+        const result = await h.sample();
+        assert.equal(result.results[0].verdict, "AC");
+        assert.equal(result.results[0].input, expected);
+      }
+      assert.deepEqual(h.requests[0].cmd[0].files[0], { content: expected });
+    });
+  }
+}
+
+test("SPJ receives the same normalized static input as the solution", async () => {
+  const h = harness("spj", [[accepted()], [accepted()]], "pypy3", undefined, { input: "p\r\n", output: "ok\n" });
+  assert.equal((await h.run()).verdict, "ACCEPTED");
+  assert.deepEqual(h.requests[0].cmd[0].files[0], { content: "p\n" });
+  assert.deepEqual(h.requests[1].cmd[0].copyIn!["input.in"], { content: "p\n" });
+});
+
+test("Polygon normalizes the static input but preserves interactor messages between runs", async () => {
+  const h = harness("communication", [[accepted(), accepted({ files: { "tout.txt": "next\r\n" } })], [accepted()], [accepted()]],
+    "pypy3", { run_count: 2, interactor_runs: [1] }, { input: "private\r\n", output: "ok\n" });
+  assert.equal((await h.run()).verdict, "ACCEPTED");
+  assert.deepEqual(h.requests[0].cmd[1].copyIn!["input.in"], { content: "private\n" });
+  assert.deepEqual(h.requests[1].cmd[0].files[0], { content: "next\r\n" });
+  assert.deepEqual(h.requests[2].cmd[0].copyIn!["input.in"], { content: "private\n" });
+});
+
+for (const interactiveSecondRun of [false, true]) {
+  test(`formal Polygon communication compiles both judges and runs final checker (second interactive: ${interactiveSecondRun})`, async () => {
+    const bridge = accepted({ files: { "tout.txt": "bridge" } });
+    const h = harness("communication", [[accepted(), bridge],
+      interactiveSecondRun ? [accepted(), bridge] : [accepted()], [accepted({ status: "Nonzero Exit Status", exitStatus: 1 })]],
+      "pypy3", { run_count: 2, interactor_runs: interactiveSecondRun ? [1, 2] : [1] });
+    const result = await h.run();
+    assert.equal(result.verdict, "WRONG_ANSWER");
+    assert.equal(result.passedTests, 0);
+    assert.deepEqual(h.compiledPrograms, ["checker.cpp", "interactor.cpp"]);
+    assert.equal(h.requests.length, 3);
+  });
+}
+
+test("Polygon interactive sample debugger uses marked judge tests and final checker", async () => {
+  const h = harness("interactive", [[accepted(), accepted({ files: { "tout.txt": "ok\n" } })], [accepted()]],
+    "pypy3", { run_count: 1, interactor_runs: [1], sample_cases: [1] });
+  const result = await h.sample();
+  assert.equal(result.summary.passed, 1);
+  assert.deepEqual(h.compiledPrograms, ["checker.cpp", "interactor.cpp"]);
+});
+
+test("Polygon packages without marked samples do not execute public statement dialogues as judge input", async () => {
+  const h = harness("communication", [], "pypy3", { run_count: 2, interactor_runs: [], sample_cases: [] });
+  const result = await h.sample();
+  assert.equal(result.summary.total, 0);
+  assert.match(result.message!, /no judge tests marked/);
+});
 
 for (const type of ["standard", "spj"] as const) {
   for (const scenario of [

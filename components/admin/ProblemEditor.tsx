@@ -242,7 +242,7 @@ export default function ProblemEditor({
           {type === "communication" && (
             <div className="md:col-span-2 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 space-y-2">
               <p>
-                The same solution runs twice using standard input and output.
+                The same solution runs twice, with input/output or interaction as defined by the problem.
                 Each run starts fresh, with separate time and memory limits;
                 memory and files are not shared between runs.
               </p>
@@ -252,9 +252,10 @@ export default function ProblemEditor({
                 the run, and the message restrictions in the statement.
               </p>
               <p>
-                Save the problem, then upload <code>communicator.cpp</code> and
+                For native communication problems, save the problem, then upload <code>communicator.cpp</code> and
                 the test data in Data Management to prepare the second input and
-                judge the result.
+                judge the result. Polygon imports include their own checker/interactor configuration;
+                keep that configuration in Data Management.
               </p>
             </div>
           )}

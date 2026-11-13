@@ -2,7 +2,7 @@
 
 NovaJudge 的 `communication` 题型用于两轮普通标准输入输出的通信题：第一次运行输出一条受限制的消息，裁判验证并转换消息，然后在全新的运行环境中第二次执行同一份选手程序。第二轮不能读取第一轮的变量、文件或原始输入，只能获得裁判生成的第二轮输入。
 
-Codeforces 的 [通信题公告](https://codeforces.com/blog/entry/147996)采用相同的 run-twice 定义，并说明两轮时间、内存限制分别计算。通信与实时交互是不同概念，也可以组合；本次实现支持普通两轮通信，不支持在任意一轮与裁判实时交互。
+Codeforces 的 [通信题公告](https://codeforces.com/blog/entry/147996)采用相同的 run-twice 定义，并说明两轮时间、内存限制分别计算。通信与实时交互可以组合；通过 [Polygon 题包导入](./POLYGON_IMPORT.md) 支持仅首轮交互或两轮都交互。本文下面介绍本平台原生 `communicator` 接口。
 
 ## 题包与配置
 
@@ -102,7 +102,7 @@ registerTestlibCmd(4, argv);
 
 以上额外文件只提供给裁判，不复制到第二轮选手的沙箱。裁判可以从 `inf` 重新读取原始数据，也可以使用 `state.txt` 保存的转换信息，最终通过 `quitf` 返回判定。
 
-本题型使用 `registerTestlibCmd` 的离线检查协议，使用 stdout 生成第二轮输入，不使用 `registerInteraction`、`tout` 或实时管道。此接口是 NovaJudge 的题包约定，**并不直接兼容 Polygon 通信题包**；导入其他平台的题目需要适配通信裁判。
+上述原生接口使用 `registerTestlibCmd` 的离线检查协议，通过 stdout 生成第二轮输入。Polygon 题包导入会自动使用独立的 Polygon 协议：保留 checker/interactor，按 `run-count` 和交互轮次连接 stdout 或 `tout`，最后调用 checker。无需把 Polygon interactor 改写成 `communicator.cpp`；导入后保留自动生成的 `polygon` 配置即可。
 
 ## 判定与限制
 

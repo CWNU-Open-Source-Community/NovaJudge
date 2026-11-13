@@ -4,8 +4,10 @@ import { verifyAuth } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { promises as fs } from "fs";
 import path from "path";
-import JSZip from "jszip";
 import { normalizeProblemSamples, type ProblemSample } from "@/lib/problem-samples";
+import { ProblemArchiveError } from "@/lib/problem-archive";
+import { parsePolygonContest, readImportZip, resolveImportFormat } from "@/lib/polygon-archive";
+import { savePolygonImport } from "@/lib/polygon-import";
 import {
   ClariCategory,
   ContestRole,
@@ -152,9 +154,9 @@ export async function POST(request: Request) {
 
     // 2. 解析表单数据
     const formData = await request.formData();
-    const file = formData.get("file") as File;
+    const file = formData.get("file");
 
-    if (!file || !file.name.toLowerCase().endsWith(".zip")) {
+    if (!(file instanceof File) || !file.name.toLowerCase().endsWith(".zip")) {
       return NextResponse.json(
         { error: "Invalid file format" },
         { status: 400 },
@@ -163,7 +165,14 @@ export async function POST(request: Request) {
 
     // 3. 读取ZIP文件
     const arrayBuffer = await file.arrayBuffer();
-    const zip = await JSZip.loadAsync(arrayBuffer);
+    const zip = await readImportZip(arrayBuffer);
+    if (resolveImportFormat(formData.get("format"), zip) === "polygon") {
+      const contest = await parsePolygonContest(zip, file.name);
+      const result = await savePolygonImport(prisma, contest.problems);
+      return NextResponse.json({
+        success: true, importedContests: [], ...result, errors: [],
+      });
+    }
 
     const importedContests: { id: number; title: string }[] = [];
     const errors: string[] = [];
@@ -174,14 +183,11 @@ export async function POST(request: Request) {
 
     // 4.1 收集所有比赛目录（包含contest.json的目录）
     for (const entry of zipEntries) {
-      if (entry.endsWith("/")) {
-        const possibleContestDir = entry;
-        const contestJsonEntry = zip.files[`${possibleContestDir}contest.json`];
-        if (contestJsonEntry) {
-          contestDirs.add(possibleContestDir);
-        }
+      if (!zip.files[entry].dir && (entry === "contest.json" || entry.endsWith("/contest.json"))) {
+        contestDirs.add(entry.slice(0, -"contest.json".length));
       }
     }
+    if (!contestDirs.size) throw new ProblemArchiveError("No contest.json found. Select Polygon for a Polygon package.");
 
     // 4.2 处理每个比赛目录
     for (const contestDir of contestDirs) {
@@ -559,6 +565,9 @@ export async function POST(request: Request) {
       errors,
     });
   } catch (error) {
+    if (error instanceof ProblemArchiveError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error("Import error:", error);
     return NextResponse.json(
       { error: "Internal server error" },

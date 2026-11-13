@@ -6,10 +6,49 @@ import {
   DEFAULT_COMMUNICATION_OUTPUT_LIMIT,
   MAX_COMMUNICATION_OUTPUT_LIMIT,
   getCommunicationOutputLimit,
+  getPolygonJudgeConfig,
   isProblemType,
   normalizeProblemJudgeConfig,
   resolveJudgeDataPath,
 } from "./problem-judge-config";
+
+test("Polygon protocols survive YAML normalization without requiring a native communicator", () => {
+  for (const polygon of [
+    { run_count: 1, interactor_runs: [1] },
+    { run_count: 2, interactor_runs: [] },
+    { run_count: 2, interactor_runs: [1] },
+    { run_count: 2, interactor_runs: [1, 2] },
+  ]) {
+    const type = polygon.run_count === 2 ? "communication" : "interactive";
+    const { config } = normalizeProblemJudgeConfig({ polygon, cases: [{ input: "1.in", output: "1.out" }] }, {
+      currentType: "default", files: ["1.in", "1.out", "checker.cpp", "interactor.cpp", "communicator.cpp"], autoDetect: true,
+    });
+    assert.equal(config.type, type);
+    assert.equal(config.checker, "checker.cpp");
+    assert.equal(config.communicator, undefined);
+    assert.equal(config.interactor, polygon.interactor_runs.length ? "interactor.cpp" : undefined);
+    assert.deepEqual(config.polygon, polygon);
+    assert.deepEqual(normalizeProblemJudgeConfig(yaml.load(yaml.dump(config)), {
+      currentType: type, files: ["1.in", "1.out", "checker.cpp", "interactor.cpp"],
+    }).config, config);
+  }
+});
+
+test("Polygon configuration rejects inconsistent types, missing judges and invalid runs/sample indices", () => {
+  for (const value of [null, [], { run_count: 3 }, { run_count: 1, interactor_runs: [1, 2] },
+    { run_count: 2, interactor_runs: [2] }, { run_count: 2, interactor_runs: [1, 1] },
+    { run_count: 2, interactor_runs: [1], sample_cases: [0] },
+    { run_count: 2, interactor_runs: [1], sample_cases: [1, 1] }]) {
+    assert.throws(() => getPolygonJudgeConfig(value), /polygon/);
+  }
+  const base = { polygon: { run_count: 2, interactor_runs: [1], sample_cases: [1] }, cases: [{ input: "1.in" }] };
+  const options = { currentType: "communication", files: ["checker.cpp", "interactor.cpp", "communicator.cpp", "1.in"], autoDetect: true };
+  assert.throws(() => normalizeProblemJudgeConfig({ ...base, type: "interactive" }, options), /requires type/);
+  assert.throws(() => normalizeProblemJudgeConfig({ ...base, communicator: "communicator.cpp" }, options), /native communicator/);
+  assert.throws(() => normalizeProblemJudgeConfig(base, { ...options, files: ["1.in", "interactor.cpp"] }), /checker file/);
+  assert.throws(() => normalizeProblemJudgeConfig(base, { ...options, files: ["1.in", "checker.cpp"] }), /interactor file/);
+  assert.throws(() => normalizeProblemJudgeConfig({ ...base, polygon: { ...base.polygon, sample_cases: [2] } }, options), /sample test index/);
+});
 
 test("communication is independent and auto-detected before interactor/checker", () => {
   assert.equal(isProblemType("communication"), true);

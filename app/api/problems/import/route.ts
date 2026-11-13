@@ -4,8 +4,10 @@ import { verifyAuth } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import { promises as fs } from 'fs';
 import path from 'path';
-import JSZip from 'jszip';
 import { normalizeProblemSamples, type ProblemSample } from '@/lib/problem-samples';
+import { ProblemArchiveError } from '@/lib/problem-archive';
+import { parsePolygonProblems, readImportZip, resolveImportFormat } from '@/lib/polygon-archive';
+import { savePolygonImport } from '@/lib/polygon-import';
 
 const UPLOAD_ROOT = path.join(process.cwd(), 'uploads', 'problems');
 
@@ -44,15 +46,20 @@ export async function POST(request: Request) {
 
     // 2. 解析表单数据
     const formData = await request.formData();
-    const file = formData.get('file') as File;
+    const file = formData.get('file');
 
-    if (!file || !file.name.toLowerCase().endsWith('.zip')) {
+    if (!(file instanceof File) || !file.name.toLowerCase().endsWith('.zip')) {
       return NextResponse.json({ error: 'Invalid file format' }, { status: 400 });
     }
 
     // 3. 读取ZIP文件
     const arrayBuffer = await file.arrayBuffer();
-    const zip = await JSZip.loadAsync(arrayBuffer);
+    const zip = await readImportZip(arrayBuffer);
+    if (resolveImportFormat(formData.get('format'), zip) === 'polygon') {
+      const problems = await parsePolygonProblems(zip);
+      const result = await savePolygonImport(prisma, problems);
+      return NextResponse.json({ success: true, ...result, errors: [] });
+    }
 
     const importedProblems: { id: number; title: string }[] = [];
     const errors: string[] = [];
@@ -63,14 +70,11 @@ export async function POST(request: Request) {
 
     // 4.1 收集所有题目目录（只包含problem.json的目录）
     for (const entry of zipEntries) {
-      if (entry.endsWith('/')) {
-        const possibleProblemDir = entry;
-        const problemJsonEntry = zip.files[`${possibleProblemDir}problem.json`];
-        if (problemJsonEntry) {
-          problemDirs.add(possibleProblemDir);
-        }
+      if (!zip.files[entry].dir && (entry === 'problem.json' || entry.endsWith('/problem.json'))) {
+        problemDirs.add(entry.slice(0, -'problem.json'.length));
       }
     }
+    if (!problemDirs.size) throw new ProblemArchiveError('No problem.json found. Select Polygon for a Polygon package.');
 
     // 修复：对题目目录进行排序，确保按 ID 顺序导入
     const sortedProblemDirs = Array.from(problemDirs).sort((a, b) => {
@@ -206,6 +210,9 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
+    if (error instanceof ProblemArchiveError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error('Import error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

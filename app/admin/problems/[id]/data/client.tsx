@@ -43,6 +43,7 @@ interface FileStat {
 interface PageProps {
   problemId: number;
   problemType: string;
+  isPolygon?: boolean;
   initialFiles: FileStat[];
   initialYaml: string;
 }
@@ -50,6 +51,7 @@ interface PageProps {
 export default function DataManagementClient({
   problemId,
   problemType,
+  isPolygon = false,
   initialFiles,
   initialYaml,
 }: PageProps) {
@@ -199,7 +201,22 @@ export default function DataManagementClient({
         </div>
       </div>
 
-      {isCommunication && (
+      {isPolygon && (
+        <div className="mb-4 shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 space-y-2">
+          <p className="font-semibold">Polygon judge configuration</p>
+          <p>
+            Keep the imported <code>polygon</code> configuration, <code>checker.cpp</code>,
+            and <code>interactor.cpp</code> when present. The configured runs pass stdout
+            or the interactor&apos;s output to the next run, then execute the final checker.
+          </p>
+          <p>
+            Public examples are in the statement. Sample debugging uses the judge tests
+            selected by <code>polygon.sample_cases</code> (one-based case indices).
+          </p>
+        </div>
+      )}
+
+      {isCommunication && !isPolygon && (
         <details open className="mb-4 shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           <summary className="cursor-pointer font-semibold">
             Communication (Run twice) — Configuration
@@ -256,7 +273,7 @@ cases:
             <h3 className="font-bold text-gray-700 text-sm mb-3">
               Test Data Files
             </h3>
-            {isCommunication && (
+            {isCommunication && !isPolygon && (
               <p className="mb-3 text-xs text-gray-500">
                 Upload communicator.cpp and all test data together, or as a ZIP.
                 Each upload replaces the existing data files.

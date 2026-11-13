@@ -102,6 +102,9 @@ function communicatorVerdict(result: CommunicationSandboxResult): CommunicationV
   }
 }
 
+// Polygon uses the same solution limits and testlib exit codes with a different transport.
+export { programVerdict, communicatorVerdict as testlibVerdict };
+
 /** Run-twice: never carry a solution's working files or memory into run two. */
 export async function runCommunicationCase(options: CommunicationOptions): Promise<CommunicationResult> {
   if (!options.communicatorFileId) throw new Error("Communication judge is not configured.");

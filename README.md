@@ -31,6 +31,18 @@ CCS-compatible data feeds are built into one Next.js application.
 - API key authentication and ICPC CCS-compatible endpoints for external tools.
 - Training center and virtual participation support for logged-in global users.
 
+### Import Polygon problem and contest packages
+
+Choose the **Polygon** format in **Import Problems / Import Contests** to
+import statements, images, samples, generated tests, answers, and C++ testlib checkers/interactors.
+Supports ordinary, interactive, and two-run communication problems, including interaction in both runs.
+Single problems, multiple problem packages, and contest packages are supported.
+Contest exports add their problems to the problem bank without creating a contest or linking problems.
+Administrators create contests and select the imported problems separately; no schedule is needed during import.
+NovaJudge ZIP imports remain available.
+See the [Polygon import guide](./docs/POLYGON_IMPORT.md) for supported formats and limitations.
+Run regression tests with `npm run test:polygon-import`.
+
 ### Update one problem from a ZIP
 
 In the admin problem bank, click the target row's **Update Problem** upload icon,

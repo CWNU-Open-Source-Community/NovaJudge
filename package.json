@@ -27,7 +27,7 @@
     "test:submit-macos:integration": "tsx scripts/test-submit-macos-integration.ts",
     "test:judge-cache": "tsx --test lib/judge/program-cache.test.ts",
     "test:judge-cache:integration": "tsx -r dotenv/config scripts/test-judge-program-cache.ts",
-    "test:judge-runtime": "tsx --test lib/judge/runtime-limits.test.ts lib/judge-runtime.test.ts lib/judge/communication.test.ts",
+    "test:judge-runtime": "tsx --test lib/judge/runtime-limits.test.ts lib/judge-runtime.test.ts lib/judge/communication.test.ts lib/judge/polygon.test.ts",
     "test:judge-runtime:integration": "tsx -r dotenv/config scripts/test-judge-runtime.ts",
     "test:communication": "tsx --test lib/judge/communication.test.ts lib/problem-judge-config.test.ts lib/problem-samples.test.ts",
     "test:contest-access": "tsx --test lib/contest-access-token.test.ts lib/contest-access.test.ts lib/contest-api-access.test.ts lib/admin-auth.test.ts",
@@ -35,6 +35,8 @@
     "test:clarification-notifications": "tsx --test lib/clarification-notifications.test.ts",
     "test:clarification-notifications:integration": "tsx scripts/test-clarification-notifications.ts",
     "test:problem-update": "tsx --test lib/problem-archive.test.ts lib/problem-update.test.ts lib/problem-update-route.test.ts",
+    "test:polygon-import": "tsx --test lib/polygon-archive.test.ts lib/polygon-import.test.ts lib/polygon-import-route.test.ts",
+    "test:polygon:integration": "tsx scripts/test-polygon-protocol.ts",
     "test:problem-update:integration": "tsx -r dotenv/config scripts/test-problem-update.ts",
     "test:communication:integration": "tsx -r dotenv/config scripts/test-communication.ts",
     "postinstall": "npx prisma db push && npx prisma generate && npx tsx scripts/copy-monaco.ts"
@@ -54,6 +56,7 @@
     "cookie": "^1.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
+    "fast-xml-parser": "^5.12.0",
     "framer-motion": "^12.26.2",
     "ioredis": "^5.9.1",
     "jose": "^6.1.3",
@@ -74,7 +77,9 @@
     "rehype-raw": "7.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "sonner": "^2.0.7"
+    "sonner": "^2.0.7",
+    "turndown": "^7.2.5",
+    "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -88,6 +93,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/turndown": "^5.0.6",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "prisma": "^7.2.0",

@@ -151,7 +151,7 @@ function ResultCard({
         {result.message && (
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-              {isCommunication ? "Communicator Verdict / Diagnostics" : "Message"}
+              {isCommunication ? "Judge Verdict / Diagnostics" : "Message"}
             </p>
             <CodeBlock code={result.message} />
           </div>
@@ -275,9 +275,9 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
                 the permitted message and each run&apos;s input and output.
               </p>
               <p>
-                下方每个样例成对展示两次运行，输入中的 first / second 是题目约定的运行标识。
-                调试使用第一轮输入，由上传的通信裁判根据程序实际输出生成第二轮输入。
-                题面示例只展示一种合法通信方案，不作为固定输出进行比对。
+                每轮的输入输出与交互方式以题面为准。调试按题目的裁判配置执行两轮程序，
+                使用实际输出生成下一轮输入，并检查最终结果。Polygon 导入题使用包内标记的样例测试；
+                公开对话和两轮示例保留在题面中。
               </p>
             </div>
           )}

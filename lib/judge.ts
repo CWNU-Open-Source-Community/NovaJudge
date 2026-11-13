@@ -3,8 +3,9 @@ import { redis } from "@/lib/redis";
 import path from "path";
 import { promises as fs } from "fs";
 import { Verdict } from "@/lib/generated/prisma/enums";
-import { resolveJudgeDataPath } from "@/lib/problem-judge-config";
+import { getPolygonJudgeConfig, resolveJudgeDataPath, type PolygonJudgeConfig } from "@/lib/problem-judge-config";
 import { runCommunicationCase, type CommunicationTrace } from "./judge/communication";
+import { runPolygonCase } from "./judge/polygon";
 import { createJudgeProgramCompiler } from "./judge/program-cache";
 import { getRunTimeLimits, getTimeLimitFailure } from "./judge/runtime-limits";
 import type { ProblemSample } from "./problem-samples";
@@ -38,6 +39,7 @@ interface JudgeConfig {
   interactor?: string;
   communicator?: string;
   communication?: { output_limit?: number };
+  polygon?: PolygonJudgeConfig;
   time_limit_rate?: LanguageJudgeConfig;
   memory_limit_rate?: LanguageJudgeConfig;
 }
@@ -185,6 +187,12 @@ function cleanOutput(str: string) {
     .map((line) => line.replace(/[ \t]+$/g, ""))
     .join("\n")
     .trim();
+}
+
+/** Static test inputs run on Linux; CRLF must not become an extra character in input()/getline(). */
+function normalizeTestInput(input: string) {
+  // Preserve spaces, blank lines and standalone carriage returns. Runtime dialogue is not normalized.
+  return input.replace(/\r\n/g, "\n");
 }
 
 function getProblemDataDir(problemId: number) {
@@ -342,7 +350,7 @@ async function loadJudgeTestCases(problem: {
       }
 
       testCases.push({
-        in: inputContent,
+        in: normalizeTestInput(inputContent),
         out: outputContent,
       });
     } catch (err) {
@@ -490,24 +498,22 @@ async function runNonInteractiveSample(params: {
   } satisfies SampleDebugResult;
 }
 
-async function runProblemCommunicationCase(params: {
+async function runProblemProtocolCase(params: {
   problem: ProblemForDebug;
   language: string;
   code: string;
   sample: SampleData;
   langConfig: LanguageConfig;
   executableFileId: string;
-  communicatorFileId: string;
+  communicatorFileId?: string;
+  checkerFileId?: string;
+  interactorFileId?: string;
   captureTrace?: boolean;
 }) {
   const { problem, language, code, sample, langConfig, executableFileId, communicatorFileId } = params;
   const { timeLimit, memoryLimit } = getLanguageLimits(problem, language);
   const judgeConfig = problem.judgeConfig as JudgeConfig | null;
-  return runCommunicationCase({
-    execute: (request) => callGoJudge(
-      request,
-      Math.ceil(Math.max(...request.cmd.map((cmd) => cmd.clockLimit)) / 1000000) + 60000,
-    ),
+  const options = {
     args: langConfig.runCmd,
     env: [
       "PATH=/usr/bin:/bin:/usr/lib/jvm/java-21-openjdk-amd64/bin",
@@ -515,16 +521,23 @@ async function runProblemCommunicationCase(params: {
       "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64",
     ],
     program: buildProgramCopyIn({ executableFileId, langConfig, code }),
-    communicatorFileId,
     input: sample.input,
     // 题面的 communication 示例仅用于展示；裁判只读取独立的参考答案。
     answer: sample.output,
     timeLimit,
     memoryLimit,
     stackLimit: STACK_SIZE_KB * 1024,
-    config: judgeConfig?.communication,
     captureTrace: params.captureTrace,
+  };
+  const execute = (request: { cmd: { clockLimit: number }[] }) => callGoJudge(
+    request, Math.ceil(Math.max(...request.cmd.map((cmd) => cmd.clockLimit)) / 1000000) + 60000,
+  );
+  const polygon = getPolygonJudgeConfig(judgeConfig?.polygon);
+  if (polygon) return runPolygonCase({
+    ...options, execute, polygon, communication: judgeConfig?.communication,
+    checkerFileId: params.checkerFileId || "", interactorFileId: params.interactorFileId,
   });
+  return runCommunicationCase({ ...options, execute, communicatorFileId: communicatorFileId || "", config: judgeConfig?.communication });
 }
 
 export async function debugProblemSamples(
@@ -532,7 +545,9 @@ export async function debugProblemSamples(
   code: string,
   language: string,
 ): Promise<DebugAllSamplesResult> {
-  if (problem.type === "interactive") {
+  const judgeConfig = problem.judgeConfig as JudgeConfig | null;
+  const polygon = getPolygonJudgeConfig(judgeConfig?.polygon);
+  if (problem.type === "interactive" && !polygon) {
     return {
       compile: {
         ok: false,
@@ -546,24 +561,32 @@ export async function debugProblemSamples(
     };
   }
 
-  const samples = Array.isArray(problem.samples) ? problem.samples : [];
-  if (samples.length === 0) {
-    return {
-      compile: { ok: true },
-      results: [],
-      summary: {
-        total: 0,
-        passed: 0,
-      },
-      message: "No samples available for this problem.",
-    };
-  }
+  let samples = Array.isArray(problem.samples)
+    ? problem.samples.map((sample) => ({ ...sample, input: normalizeTestInput(sample.input) }))
+    : [];
 
   let executableFileId = "";
   let checkerFileId = "";
   let communicatorFileId = "";
+  let interactorFileId = "";
 
   try {
+    if (polygon?.sample_cases !== undefined) {
+      const cases = polygon.sample_cases.map((index) => {
+        const item = judgeConfig?.cases?.[index - 1];
+        if (!item) throw new Error(`Polygon sample test ${index} is missing.`);
+        return item;
+      });
+      samples = cases.length ? (await loadJudgeTestCases({ ...problem, judgeConfig: { ...judgeConfig, cases } }))
+        .map((item) => ({ input: item.in, output: item.out })) : [];
+    }
+    if (samples.length === 0) {
+      return {
+        compile: { ok: true }, results: [], summary: { total: 0, passed: 0 },
+        message: polygon ? "The Polygon package has no judge tests marked as samples. Use a full test submission."
+          : "No samples available for this problem.",
+      };
+    }
     const compileResult = await compileUserCode(language, code);
     if (!compileResult.ok) {
       return {
@@ -581,19 +604,17 @@ export async function debugProblemSamples(
 
     executableFileId = compileResult.executableFileId;
 
-    if (problem.type === "communication") {
-      const judgeConfig = problem.judgeConfig as JudgeConfig | null;
+    if (problem.type === "communication" && !polygon) {
       if (!judgeConfig?.communicator) throw new Error("Communication judge is not configured for this problem.");
       communicatorFileId = await compileJudgeProgram(getProblemDataDir(problem.id), judgeConfig.communicator, "communicator");
     }
 
-    if (problem.type === "spj") {
-      const judgeConfig = problem.judgeConfig as JudgeConfig | null;
+    if (problem.type === "spj" || polygon) {
       if (!judgeConfig?.checker) {
         return {
           compile: {
             ok: false,
-            message: "SPJ checker is not configured for this problem.",
+            message: "Checker is not configured for this problem.",
           },
           results: [],
           summary: {
@@ -608,14 +629,18 @@ export async function debugProblemSamples(
         judgeConfig.checker,
       );
     }
+    if (polygon?.interactor_runs.length) {
+      if (!judgeConfig?.interactor) throw new Error("Polygon interactor is not configured for this problem.");
+      interactorFileId = await compileJudgeProgram(getProblemDataDir(problem.id), judgeConfig.interactor, "interactor");
+    }
 
     const results: SampleDebugResult[] = [];
     for (let i = 0; i < samples.length; i++) {
-      if (problem.type === "communication") {
-        const result = await runProblemCommunicationCase({
+      if (problem.type === "communication" || polygon) {
+        const result = await runProblemProtocolCase({
           problem, language, code, sample: samples[i],
           langConfig: compileResult.langConfig,
-          executableFileId, communicatorFileId, captureTrace: true,
+          executableFileId, communicatorFileId, checkerFileId, interactorFileId, captureTrace: true,
         });
         const verdicts = {
           ACCEPTED: "AC", WRONG_ANSWER: "WA", PRESENTATION_ERROR: "PE",
@@ -671,7 +696,7 @@ export async function debugProblemSamples(
       },
     };
   } finally {
-    await Promise.all([executableFileId, checkerFileId, communicatorFileId].filter(Boolean).map(deleteTmpFile));
+    await Promise.all([executableFileId, checkerFileId, communicatorFileId, interactorFileId].filter(Boolean).map(deleteTmpFile));
   }
 }
 
@@ -698,6 +723,7 @@ export async function judgeSubmission(submissionId: string) {
     if (!langConfig) throw new Error(`Unsupported Language: ${language}`);
 
     const judgeConfig = problem.judgeConfig as JudgeConfig;
+    const polygon = getPolygonJudgeConfig(judgeConfig?.polygon);
     const testCases = await loadJudgeTestCases(problem);
     const dataDir = getProblemDataDir(problem.id);
 
@@ -731,15 +757,18 @@ export async function judgeSubmission(submissionId: string) {
     const isInteractive = problem.type === "interactive";
     const isCommunication = problem.type === "communication";
 
-    if (isCommunication) {
+    if (isCommunication && !polygon) {
       if (!judgeConfig.communicator) throw new Error("Communication judge is not configured for this problem.");
       communicatorFileId = await compileJudgeProgram(dataDir, judgeConfig.communicator, "communicator");
     }
 
-    if (isSpj && judgeConfig.checker) {
+    if (polygon && !judgeConfig.checker) throw new Error("Polygon checker is not configured for this problem.");
+    if (polygon?.interactor_runs.length && !judgeConfig.interactor) throw new Error("Polygon interactor is not configured for this problem.");
+    if ((isSpj || polygon) && judgeConfig.checker) {
       try {
         checkerFileId = await compileJudgeProgram(dataDir, judgeConfig.checker);
       } catch (e) {
+        if (polygon) throw e;
         const err = e as Error;
         await prisma.submission.update({
           where: { id: submissionId },
@@ -748,10 +777,12 @@ export async function judgeSubmission(submissionId: string) {
         await redis.del(`submission:${submissionId}:progress`);
         return;
       }
-    } else if (isInteractive && judgeConfig.interactor) {
+    }
+    if ((isInteractive || polygon?.interactor_runs.length) && judgeConfig.interactor) {
       try {
         interactorFileId = await compileJudgeProgram(dataDir, judgeConfig.interactor, "interactor");
       } catch (e) {
+        if (polygon) throw e;
         const err = e as Error;
         await prisma.submission.update({
           where: { id: submissionId },
@@ -776,11 +807,11 @@ export async function judgeSubmission(submissionId: string) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let res: any;
 
-      if (isCommunication) {
-        const result = await runProblemCommunicationCase({
+      if (isCommunication || polygon) {
+        const result = await runProblemProtocolCase({
           problem: { ...problem, samples: [] }, language, code,
           sample: { input: testCase.in, output: testCase.out },
-          langConfig, executableFileId, communicatorFileId,
+          langConfig, executableFileId, communicatorFileId, checkerFileId, interactorFileId,
         });
         finalVerdict = result.verdict;
         error = result.message;
@@ -993,8 +1024,8 @@ export async function judgeSubmission(submissionId: string) {
       where: { id: submissionId },
       data: {
         verdict: Verdict.SYSTEM_ERROR,
-        errorMessage: submission.problem.type === "communication"
-          ? "Communication judge failed. Please contact the problem setter."
+        errorMessage: submission.problem.type === "communication" || (submission.problem.judgeConfig as JudgeConfig | null)?.polygon
+          ? "Problem judge failed. Please contact the problem setter."
           : err.message || "Unknown System Error",
       },
     });

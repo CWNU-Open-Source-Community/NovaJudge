@@ -5,6 +5,13 @@ export type ProblemType = (typeof PROBLEM_TYPES)[number];
 export const DEFAULT_COMMUNICATION_OUTPUT_LIMIT = 1048576;
 export const MAX_COMMUNICATION_OUTPUT_LIMIT = 16777216;
 
+export interface PolygonJudgeConfig {
+  run_count: 1 | 2;
+  interactor_runs: (1 | 2)[];
+  /** One-based indices of judge tests marked sample=true; never public statement data. */
+  sample_cases?: number[];
+}
+
 export interface ProblemJudgeConfig {
   [key: string]: unknown;
   type: ProblemType;
@@ -13,6 +20,7 @@ export interface ProblemJudgeConfig {
   interactor?: string;
   communicator?: string;
   communication?: { output_limit: number; [key: string]: unknown };
+  polygon?: PolygonJudgeConfig;
 }
 
 export function isProblemType(value: unknown): value is ProblemType {
@@ -22,6 +30,30 @@ export function isProblemType(value: unknown): value is ProblemType {
 function isMapping(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value) &&
     (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+}
+
+export function getPolygonJudgeConfig(value: unknown): PolygonJudgeConfig | undefined {
+  if (value === undefined) return undefined;
+  if (!isMapping(value) || (value.run_count !== 1 && value.run_count !== 2)) {
+    throw new Error("polygon.run_count must be 1 or 2.");
+  }
+  const runCount = value.run_count;
+  const runs = value.interactor_runs;
+  if (!Array.isArray(runs) || new Set(runs).size !== runs.length ||
+      runs.some((run) => (run !== 1 && run !== 2) || run > runCount) ||
+      (runs.length > 0 && !runs.includes(1))) {
+    throw new Error("polygon.interactor_runs must be [], [1], or [1, 2], within run_count.");
+  }
+  if (value.sample_cases !== undefined && (!Array.isArray(value.sample_cases) ||
+      new Set(value.sample_cases).size !== value.sample_cases.length ||
+      value.sample_cases.some((index) => !Number.isSafeInteger(index) || index < 1))) {
+    throw new Error("polygon.sample_cases must contain unique positive test indices.");
+  }
+  return {
+    run_count: value.run_count,
+    interactor_runs: [...runs].sort() as (1 | 2)[],
+    ...(value.sample_cases === undefined ? {} : { sample_cases: [...value.sample_cases as number[]] }),
+  };
 }
 
 export function getCommunicationOutputLimit(value: unknown): number {
@@ -78,6 +110,7 @@ export function normalizeProblemJudgeConfig(
 ): { type: ProblemType; config: ProblemJudgeConfig } {
   if (value != null && !isMapping(value)) throw new Error("problem.yml must contain a YAML mapping.");
   const parsed = { ...(value as Record<string, unknown> | null | undefined) };
+  const polygon = getPolygonJudgeConfig(parsed.polygon);
   const files = new Set(Array.from(inputFiles, normalizeJudgeDataFileName));
 
   function existingFile(value: unknown, label: string, allowNull = false): string {
@@ -104,6 +137,7 @@ export function normalizeProblemJudgeConfig(
 
   // Existing communication/interactive problems never silently downgrade when their program is missing.
   const selectedType = parsed.type !== undefined ? parsed.type
+    : polygon ? (polygon.run_count === 2 ? "communication" : polygon.interactor_runs.length ? "interactive" : "spj")
     : communicator ? "communication"
     : currentType === "communication" ? currentType
     : interactor ? "interactive"
@@ -112,7 +146,14 @@ export function normalizeProblemJudgeConfig(
   if (!isProblemType(selectedType)) {
     throw new Error("Problem type must be default, spj, interactive, or communication.");
   }
-  if (selectedType === "communication" && !communicator) {
+  if (polygon) {
+    const polygonType = polygon.run_count === 2 ? "communication" : polygon.interactor_runs.length ? "interactive" : "spj";
+    if (selectedType !== polygonType) throw new Error(`Polygon configuration requires type: ${polygonType}.`);
+    if (!checker) throw new Error("Polygon problems require an existing checker file.");
+    if (polygon.interactor_runs.length && !interactor) throw new Error("Polygon interactive runs require an existing interactor file.");
+    if (parsed.communicator !== undefined) throw new Error("Polygon problems use checker/interactor, not a native communicator.");
+  }
+  if (selectedType === "communication" && !polygon && !communicator) {
     throw new Error("Communication problems require an existing communicator file.");
   }
   if (selectedType === "interactive" && !interactor) {
@@ -146,9 +187,13 @@ export function normalizeProblemJudgeConfig(
   });
 
   const config: ProblemJudgeConfig = { ...parsed, type: selectedType, cases };
-  if (checker && (parsed.checker !== undefined || selectedType === "spj")) config.checker = checker;
-  if (interactor && (parsed.interactor !== undefined || selectedType === "interactive")) config.interactor = interactor;
-  if (communicator && (parsed.communicator !== undefined || selectedType === "communication")) config.communicator = communicator;
+  if (polygon) {
+    if (polygon.sample_cases?.some((index) => index > cases.length)) throw new Error("Polygon sample test index exceeds the number of cases.");
+    config.polygon = polygon;
+  }
+  if (checker && (parsed.checker !== undefined || selectedType === "spj" || polygon)) config.checker = checker;
+  if (interactor && (parsed.interactor !== undefined || selectedType === "interactive" || polygon?.interactor_runs.length)) config.interactor = interactor;
+  if (communicator && !polygon && (parsed.communicator !== undefined || selectedType === "communication")) config.communicator = communicator;
   if (selectedType === "communication" || parsed.communication !== undefined) {
     config.communication = {
       ...(isMapping(parsed.communication) ? parsed.communication : {}),

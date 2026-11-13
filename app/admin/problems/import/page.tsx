@@ -10,11 +10,13 @@ import { toast } from "sonner";
 
 export default function ImportProblemsPage() {
   const [file, setFile] = useState<File | null>(null);
+  const [format, setFormat] = useState('native');
   const [isLoading, setIsLoading] = useState(false);
   const [importResult, setImportResult] = useState<{
     success: boolean;
-    importedProblems: { id: number; title: string }[];
+    importedProblems: { id: number; title: string; displayId?: string }[];
     errors: string[];
+    warnings?: string[];
   } | null>(null);
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -40,6 +42,7 @@ export default function ImportProblemsPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('format', format);
 
       const response = await fetch('/api/problems/import', {
         method: 'POST',
@@ -47,7 +50,8 @@ export default function ImportProblemsPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Import failed');
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || 'Import failed');
       }
 
       const result = await response.json();
@@ -63,8 +67,8 @@ export default function ImportProblemsPage() {
         });
       }
 
-    } catch {
-      toast.error('Import failed. Please try again.');
+    } catch (error) {
+      toast.error((error as Error).message || 'Import failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -86,6 +90,15 @@ export default function ImportProblemsPage() {
 
       <div className="bg-white shadow rounded-lg p-8 max-w-2xl">
         <div className="space-y-6">
+          <div>
+            <label htmlFor="import-format" className="block text-sm font-medium text-gray-700 mb-2">Import Format</label>
+            <select id="import-format" value={format} disabled={isLoading}
+              onChange={(event) => { setFormat(event.target.value); setImportResult(null); }}
+              className="w-full rounded-md border border-gray-300 px-3 py-2">
+              <option value="native">NovaJudge ZIP</option>
+              <option value="polygon">Polygon ZIP (Linux / Windows)</option>
+            </select>
+          </div>
           {/* File Upload Section */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -96,6 +109,7 @@ export default function ImportProblemsPage() {
                 type="file"
                 accept=".zip"
                 onChange={handleFileChange}
+                disabled={isLoading}
                 className="block w-full text-sm text-gray-500
                   file:mr-4 file:py-2 file:px-4
                   file:rounded file:border-0
@@ -148,7 +162,7 @@ export default function ImportProblemsPage() {
                   <ul className="bg-green-50 border border-green-200 rounded-md p-4 space-y-2">
                     {importResult.importedProblems.map((problem) => (
                       <li key={problem.id} className="text-sm text-green-800">
-                        #{problem.id} - {problem.title}
+                        {problem.displayId && `${problem.displayId} → `}#{problem.id} - {problem.title}
                       </li>
                     ))}
                   </ul>
@@ -169,6 +183,12 @@ export default function ImportProblemsPage() {
                   </ul>
                 </div>
               )}
+              {!!importResult.warnings?.length && (
+                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  <h3 className="font-medium mb-2">Review before publishing</h3>
+                  <ul className="list-disc pl-5 space-y-1">{importResult.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
+                </div>
+              )}
             </div>
           )}
 
@@ -176,7 +196,18 @@ export default function ImportProblemsPage() {
           <div className="mt-8">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">Instructions</h2>
             <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
-              <ul className="text-sm text-gray-600 space-y-2 list-disc pl-5">
+              {format === 'polygon' ? (
+                <ul className="text-sm text-gray-600 space-y-2 list-disc pl-5">
+                  <li>Upload a Polygon Linux or Windows package containing <code>problem.xml</code>, generated tests, answers, and C++ checker source.</li>
+                  <li>A single problem ZIP, a Polygon contest export, multiple problem directories, or an outer ZIP containing problem ZIPs is supported.</li>
+                  <li>Contest exports import their problems into the problem bank. Administrators create contests and add the imported problems separately.</li>
+                  <li>Imports the title, limits, examples, HTML statement, images, tests, and testlib checker. Chinese statements are preferred, then English.</li>
+                  <li>Statement sections become separate editable Blocks, including Problem Description, Input, Output, Interaction, and Note.</li>
+                  <li>PDF or LaTeX-only statements are imported as attachments. Review any warnings after import.</li>
+                  <li>Interactive and two-run communication problems are supported, including interaction in either the first run or both runs. Include the C++ interactor source when used.</li>
+                  <li>File I/O and partial-score packages require manual conversion. Incomplete standard packages are rejected.</li>
+                </ul>
+              ) : <ul className="text-sm text-gray-600 space-y-2 list-disc pl-5">
                 <li>Create a ZIP file containing one or more problem directories</li>
                 <li>Each problem directory should contain:</li>
                 <ul className="pl-5 mt-1 space-y-1">
@@ -185,7 +216,7 @@ export default function ImportProblemsPage() {
                   <li><code>assets/</code> - Problem attachments</li>
                 </ul>
                 <li>The ZIP file structure should match the export format</li>
-              </ul>
+              </ul>}
             </div>
           </div>
         </div>
