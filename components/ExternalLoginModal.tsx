@@ -3,9 +3,13 @@
 import { useState } from "react";
 
 export default function ExternalLoginModal({
+  providerLabel = "",
+  providerUrl = "",
   onClose,
   onSuccess,
 }: {
+  providerLabel?: string;
+  providerUrl?: string;
   onClose: () => void;
   onSuccess?: () => void;
 }) {
@@ -49,15 +53,28 @@ export default function ExternalLoginModal({
         <div className="mb-4">
           <h3 className="text-xl font-bold text-gray-900">外部登录</h3>
           <p className="text-xs text-gray-500">
-            使用
-            <a
-              className=" text-blue-600"
-              href="https://www.cwnupaa.com/"
-              target="_black"
-            >
-              程序设计算法协会官网
-            </a>
-            的账号密码登录
+            {providerLabel ? (
+              <>
+                使用{" "}
+                {providerUrl ? (
+                  <a
+                    className="text-blue-600 hover:underline"
+                    href={providerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {providerLabel}
+                  </a>
+                ) : (
+                  <span className="font-medium text-gray-700">
+                    {providerLabel}
+                  </span>
+                )}{" "}
+                的账号密码登录
+              </>
+            ) : (
+              "使用外部统一认证服务的账号密码登录"
+            )}
           </p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
