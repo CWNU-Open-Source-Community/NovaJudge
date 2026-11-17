@@ -10,6 +10,7 @@ import * as tokens from "./contest-access-token";
 import * as crypto from "node:crypto";
 import * as proctoring from "./proctoring-access";
 import * as cliPolicy from "./cli-device-policy";
+import { Verdict } from "./generated/prisma/enums";
 
 const secret = new TextEncoder().encode("contest-api-access-regression-secret");
 const privateContest = { id: 1001, title: "Private contest", status: "RUNNING", type: "PRIVATE", password: "private password" };
@@ -45,9 +46,61 @@ function baseDependencies() {
     "@/lib/proctoring-access": proctoring,
     "node:crypto": crypto,
     "@/lib/auth": { getJwtSecretKey: () => secret },
-    "@/lib/generated/prisma/client": { ContestStatus: { RUNNING: "RUNNING" }, ContestRole: { ADMIN: "ADMIN", TEAM: "TEAM" } },
+    "@/lib/generated/prisma/client": { Verdict, ContestStatus: { RUNNING: "RUNNING" }, ContestRole: { ADMIN: "ADMIN", TEAM: "TEAM" } },
   };
 }
+
+test("submission source export requires an enabled API key owned by a current, non-banned super administrator", async () => {
+  const cases = [
+    { key: "", role: "SUPER_ADMIN", enabled: true, banned: false, allowed: false },
+    { key: "invalid", role: "SUPER_ADMIN", enabled: true, banned: false, allowed: false },
+    { key: "existing-key", role: "GLOBAL_USER", enabled: true, banned: false, allowed: false },
+    { key: "existing-key", role: "SUPER_ADMIN", enabled: false, banned: false, allowed: false },
+    { key: "existing-key", role: "SUPER_ADMIN", enabled: true, banned: true, allowed: false },
+    { key: "existing-key", role: "SUPER_ADMIN", enabled: true, banned: false, allowed: true },
+  ];
+  // Knowing a private contest's password must not grant source-export access either.
+  for (const contestGate of [200, 403, 404]) {
+    for (const scenario of cases) {
+      let sourceReads = 0;
+      const db = {
+        apiKey: {
+          findUnique: async ({ where }: { where: { key: string } }) => where.key === "existing-key" ? {
+            id: "key-id", isEnabled: scenario.enabled,
+            user: { id: "key-owner", role: scenario.role, isBanned: scenario.banned },
+          } : null,
+          update: async () => {},
+        },
+        submission: { findMany: async () => {
+          sourceReads++;
+          return [{ id: "live-submission", verdict: Verdict.ACCEPTED, code: "private source", language: "cpp", submittedAt: new Date() }];
+        } },
+      };
+      const auth = loadModule<typeof import("./auth")>("lib/auth.ts", {
+        "@/lib/prisma": { prisma: db },
+      });
+      const route = loadModule<Route>("app/api/contests/[contestId]/submissions/route.ts", {
+        ...baseDependencies(),
+        "@/lib/auth": auth,
+        "@/lib/prisma": { prisma: db },
+        "@/lib/contest-access": { contestAccessResponse: async () => contestGate === 200 ? null : NextResponse.json({ error: "Denied" }, { status: contestGate }) },
+      });
+      const response = await route.GET(new NextRequest("https://example.test/api/contests/1001/submissions", {
+        headers: scenario.key ? { "x-api-key": scenario.key } : {},
+      }), { params: Promise.resolve({ contestId: "1001" }) });
+      const expectedStatus = scenario.allowed ? (contestGate === 404 ? 404 : 200) : 403;
+      assert.equal(response.status, expectedStatus, JSON.stringify({ ...scenario, contestGate }));
+      assert.equal(sourceReads, expectedStatus === 200 ? 1 : 0);
+      const body = await response.json();
+      if (expectedStatus === 200) {
+        assert.equal(body[0].code, "private source");
+        assert.equal(response.headers.get("Cache-Control"), "private, no-store");
+      } else {
+        assert.equal(JSON.stringify(body).includes("private source"), false);
+      }
+    }
+  }
+});
 
 test("logout expires both login cookies and every contest grant in real response headers", async () => {
   const route = loadModule<Route>("app/api/auth/logout/route.ts", {
