@@ -1,249 +1,338 @@
 # NovaJudge
 
-与监考系统集成时可启用[监考专用登录](docs/PROCTORING_LOGIN.md)：监考登录后，该比赛账号只能通过携带专用凭据的监考客户端访问。
+**轻量、现代的新一代 XCPC 在线评测与赛事运营平台**
+
+[![CI](https://github.com/CWNU-Open-Source-Community/NovaJudge/actions/workflows/ci.yml/badge.svg)](https://github.com/CWNU-Open-Source-Community/NovaJudge/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16.4-black)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-149eca)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6)](https://www.typescriptlang.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-7-2d3748)](https://www.prisma.io/)
+[![go-judge](https://img.shields.io/badge/Sandbox-go--judge-00add8)](https://github.com/criyle/go-judge)
 
 [简体中文](./README.zh-CN.md) · [English](./README.md)
 
-NovaJudge 是一个轻量级在线评测（Online Judge）平台，面向 XCPC 风格训练与现场赛。
-它不只支持独立提交，更聚焦于比赛运营：题目管理、队伍账号、实时判题、排行榜、
-答疑（Clarification）、气球配送、打印队列、API Key 以及兼容 ICPC CCS 的数据接口，
-全部集成在一个 Next.js 应用中。
+NovaJudge 是专为 **ICPC / CCPC（XCPC）现场赛、线上赛与日常集训**打造的一体化在线评测（Online Judge）平台。它不仅提供高精度沙箱评测，还将完整的赛事运营工作流集中在单个 Next.js 应用内：题库管理与 Polygon 题包导入、队伍/工作人员权限体系、多实例并发实时判题、支持封榜与滚榜（Resolver）奖项导出的 ACM 排行榜、带实时弹窗提醒的答疑系统、现场赛气球配送与代码打印队列、内网选手命令行（`submit` / `printfile`）、监考客户端专用绑定登录、可选外部统一身份认证，以及兼容 ICPC CCS 的外部数据接口。
 
-## 功能特性
+---
 
-- 公开赛 / 私有赛的完整生命周期管理。
-- 队伍账号批量导入、登录、角色、座位、队员、学校、教练与分组。
-- 题库支持 Markdown/LaTeX 题面、样例、资源文件、测试数据与 YAML 判题配置。
-- 基于 Redis、BullMQ、Worker 进程和 [go-judge](https://github.com/criyle/go-judge)
-  的实时提交评测。
-- checker、interactor 和 communicator 首次使用时编译，后续提交和样例调试复用编译结果；
-  更换源码、修改 `testlib.h` 或编译参数后自动重新编译。
-- 支持两轮普通输入输出的通信题：独立运行同一程序两次，通过通信裁判校验和转换消息。
-  参见[通信题配置与示例](./docs/COMMUNICATION_PROBLEMS.md)。
-- 支持多开判题机：每台判题机拥有唯一 ID，后台首页实时展示状态，
-  多台判题机从共享队列领取任务互不冲突。
-- ACM/ICPC 风格排行榜，支持封榜（freeze）与解封（unfreeze）。
-- 面向选手与裁判的答疑、通知系统。
-- 比赛 STAFF 中的 `ADMIN` 和 `JUDGE` 可收到本场新提问及追问的站内弹窗提醒，
-  顶部铃铛显示待回复数量并可直接进入问题；超级管理员及其他角色不接收此提醒。
-- 现场赛的气球配送与打印队列工作流。
-- API Key 认证与 ICPC CCS 兼容接口，方便对接外部工具。
-- 面向登录用户的训练中心与虚拟参赛（VP）支持。
+## 目录
 
-### 比赛提问提醒
+- [系统架构](#系统架构)
+- [核心特性](#核心特性)
+- [技术栈](#技术栈)
+- [快速开始](#快速开始)
+- [环境变量说明](#环境变量说明)
+- [多开判题机与评测调度](#多开判题机与评测调度)
+- [重点工作流与安全机制](#重点工作流与安全机制)
+- [常用脚本与测试套件](#常用脚本与测试套件)
+- [文档导航](#文档导航)
+- [项目结构](#项目结构)
+- [开源协议](#开源协议)
 
-使用比赛 STAFF 的 `ADMIN` 或 `JUDGE` 账号登录并保持网页打开后，每 10 秒检查一次本场待回复问题。
-关闭弹窗或查看问题不会清除待回复数量；任一 `ADMIN` / `JUDGE` 回复后，该问题自动移除，
-选手再次追问会重新提醒。弹窗记录按账号保存在当前浏览器，刷新页面不会反复提示同一条消息。
+---
 
-更新已有部署时，可只执行以下索引迁移以加快提醒查询（不修改已有比赛或提问数据）：
+## 系统架构
 
-```bash
-npx prisma db execute --file prisma/migrations/20261111000000_clarification_notifications/migration.sql
+```mermaid
+flowchart LR
+    subgraph Clients["客户端与外部集成"]
+        Web["选手 / 裁判 / 管理员浏览器"]
+        CLI["内网选手命令行 (submit / printfile)"]
+        Proctor["监考桌面客户端"]
+        CCS["ICPC Tools 滚榜 / 外榜 / API 集成"]
+    end
+
+    subgraph App["NovaJudge Web 服务 (Next.js 16)"]
+        Pages["App Router 页面与 Server Actions"]
+        API["REST / SSE / CCS 接口"]
+    end
+
+    subgraph Infra["存储与协调队列"]
+        PG[("PostgreSQL 16\n(Prisma 7)")]
+        Redis[("Redis 7\n(BullMQ 队列 + 心跳 + 分布式租约)")]
+        FS[("uploads/\n(测试数据 + .judge-cache 编译缓存)")]
+    end
+
+    subgraph Judging["评测集群"]
+        Workers["Judge Workers (1..N)"]
+        Sandbox["go-judge 安全沙箱\n(GCC 15.2 / OpenJDK 21 / PyPy3)"]
+    end
+
+    Clients --> App
+    Pages --> PG
+    API --> PG
+    Pages --> Redis
+    API --> Redis
+    App --> FS
+    Redis <--> Workers
+    Workers --> PG
+    Workers <--> FS
+    Workers --> Sandbox
 ```
 
-权限测试：`npm run test:clarification-notifications`。
-本地 PostgreSQL 集成测试：`npm run test:clarification-notifications:integration`，测试数据在事务中自动回滚。
+---
 
-### Polygon 单题与比赛题包导入
+## 核心特性
 
-后台 **Import Problems / Import Contests** 可选择 **Polygon** 格式，
-导入单题、多题或比赛包中的题面、图片、样例、完整测试数据和 C++ testlib checker/interactor。
-支持普通题、交互题和两轮通信题，包括首轮交互及两轮都交互的配置。
-Polygon 比赛导出的题包会批量新增题库题目；比赛由管理员自行创建，再添加这些题目。
-无需填写比赛名称和时间，不会自动创建比赛或关联题目。原有 NovaJudge ZIP 导入继续可用。
-支持范围、目录示例和 API 字段见 [Polygon 导入说明](./docs/POLYGON_IMPORT.md)。
-回归测试：`npm run test:polygon-import`。
+### 赛事全流程运营与现场赛支持
+- **比赛全生命周期管理**：支持公开赛与密码保护私有赛，由 Worker 唯一调度器自动完成 `PENDING → RUNNING → ENDED` 状态流转。
+- **队伍、工作人员与外部账号体系**：支持 TSV 批量导入账号、多角色权限隔离（`TEAM`、`ADMIN`、`JUDGE`、`BALLOON`、`PRINT`、`OBSERVER`）、学校/教练/队员/座位号/打星分组管理、现场赛**座位 IP 自动登录**，以及可选的**外部统一账号密码登录**与账号封禁管理（`/admin/accounts`）。
+- **ACM/ICPC 排行榜与奖项滚榜**：实时解题榜单，支持**封榜（Freeze）与解榜（Unfreeze）**、虚拟参赛同榜切换、PDF/CSV 导出，内置**奖项配置工作台**（按比例或固定数量设置金/银/铜牌、最快解题奖 First-to-Solve、按学校去重的冠/亚/季军、优秀奖及自定义奖项），一键导出兼容 **ICPC Tools Resolver** 的事件流。
+- **答疑公告与工作人员实时提醒**：支持队伍私有提问与全站公告；比赛 `ADMIN` 与 `JUDGE` 账号在网页保持登录时自动接收新提问与追问的站内弹窗提醒及顶部铃铛待处理计数。
+- **气球配送与打印队列**：队伍首通某题自动去重生成气球任务并支持指派配送员；内置代码打印申请队列与工作人员打印面板。
+- **训练中心、赛后补题与虚拟参赛（VP）**：支持树状目录编排训练题单，登录全局账号即可进行赛后补题与任意历史比赛的虚拟参赛。
+- **公网/校内同源统一部署**：公网、校内机房及其他高校共用同一套主分支代码，通过部署环境变量配置站点名称、学校页脚与外部组织映射，无需维护学校私有分支。
 
-### 从压缩包更新单道题目
+### 题库管理与高精度评测引擎
+- **丰富题型支持**：原生支持**传统题（`default`）**、**Special Judge（`spj`）**、**交互题（`interactive`）**与**两轮运行通信题（`communication`）**，提供分章节 Markdown + KaTeX 题面编辑器、成对通信样例展示与后台在线样例调试。
+- **现代编译工具链镜像**：仓库内置定制沙箱 `Dockerfile`，预装 **C11** 与 **C++23**（固定 **GCC 15.2**，`-O2 -static`）、**Java 21**（OpenJDK 21，兼容 amd64 / Apple Silicon arm64）和 **Python 3**（PyPy3）。
+- **Polygon 题包导入与单题热更新**：支持直接导入 **Codeforces Polygon** 导出的单题、多题或整场比赛 ZIP（自动转换 HTML 题面、公式与图片资源，保留 `testlib.h` checker/interactor，完整支持单轮交互及首轮/双轮交互通信协议），同时保留原生 NovaJudge ZIP 备份导入与**单道题目 ZIP 原地热更新**。
+- **裁判程序磁盘编译缓存**：`checker`、`interactor`、`communicator` 首次编译后持久化至 `uploads/problems/<题目 ID>/.judge-cache/`，通过 Redis 租约协调多进程并发编译，源码、`testlib.h` 或编译参数变更时自动增量重编。
+- **精确 CPU 时限与实际耗时看门狗**：选手 `TLE` 严格依据沙箱实测 CPU 时间判定，不受宿主机调度或 I/O 等待干扰；同时配备独立实际耗时看门狗（`max(JUDGE_WALL_WATCHDOG_MS, 20 × CPU 时限)`），进程卡死但未超 CPU 时限时记为 `SYSTEM_ERROR` 并附带诊断信息，避免误扣选手罚时。
+- **安全分级重判**：支持比赛内多维筛选重判（按队名、账号、学校、座位、Run ID、题目、结果、语言、时间段）及全局后台批量条件重测（单批上限 5000 条，带预览确认与实时进度）。
 
-在后台题库列表点击目标题目的 **Update Problem**（上传图标），选择包含恰好一道题目的
-导出 ZIP，再点击 **Update Problem**。每次只能上传一个 ZIP；空题包或多题包会被拒绝。
-更新保留目标题目的 ID、比赛关联及提交记录，替换题面、样例、限制、判题配置、测试数据和附件，
-并删除压缩包中没有的旧文件。历史提交不会自动重判。普通 **Import** 仍用于新增题目。
+### 监考集成、内网选手 CLI 与开放接口
+- **监考专用绑定登录**：对接桌面监考客户端（`loginSource: "PROCTORING"`）；一旦建立监考绑定，该比赛账号仅限携带专用凭据的监考客户端访问，阻断普通浏览器密码登录、Cookie 复制与 IP 自动登录。
+- **零依赖内网选手命令行**：面向内网现场赛提供原生 **Windows**（PowerShell 5.1）与 **macOS**（Bash/curl）的 `submit` 提交与 `printfile` 打印命令，选手机无需安装 Node.js、Python 或管理员权限。
+- **ICPC CCS 与开放平台 API**：提供 `x-api-key` 认证与兼容 ICPC CCS 规范的数据接口（`/api/ccs/contests/:id/...`），无缝对接滚榜工具、外榜与直播大屏。
 
-回归测试：`npm run test:problem-update`。
-启动本地服务后可运行真实上传测试：`npm run test:problem-update:integration`。脚本创建并清理临时题目、
-比赛和管理员，保留验证报告及 ZIP 到 `.local/problem-update-qa/`；可用 `PROBLEM_UPDATE_TEST_URL` 指定服务地址。
-
-### 私有赛访问
-
-私有赛必须配置比赛密码。除超级管理员外，所有访问者（包括已登录的比赛账号和
-全局账号）都必须先验证比赛密码，才能查看比赛介绍、题目、榜单、提交记录、公告、
-题解及附件；比赛结束后仍然生效。首页和训练中心在验证前仅显示私有赛编号和验证入口。
-验证不会授予提交、查看他人代码或管理比赛的额外权限。
-
-浏览器访问凭证有效期为 24 小时，退出登录会清除凭证，修改比赛密码会使旧凭证失效。
-未配置密码的历史私有赛默认拒绝访问，需要管理员先设置密码。CLI 登录私有赛时还需
-提供 `contestPassword`，后续请求携带返回的 `contestAccessToken`（`x-contest-access-token` 请求头）；
-macOS 和 Windows 原生客户端在网页绑定时填写比赛密码；原有 Node.js 客户端在终端提示输入。
-CCS Basic 认证仅允许超级管理员。
-
-权限回归测试：`npm run test:contest-access`。
-
-### macOS 与 Windows 选手命令行
-
-此功能默认关闭，仅用于内网部署。在内网服务器设置 `NOVAJUDGE_CLI_MODE=intranet`
-并重启 Web 服务后，再指定命令行比赛。公网服务器不设置此变量或保持 `public`，
-安装下载、设备绑定和命令行提交接口均关闭，旧设备令牌与旧版客户端也不能绕过。
-普通网页提交和公网监考登录继续可用。
-
-管理员在后台系统设置中指定全站命令行的当前比赛。选手打开 `/cli` 页面安装全局
-`submit` 命令，首次运行 `submit A.cpp` 时自动打开网页，用比赛队伍账号登录并绑定电脑。
-管理员切换比赛后，客户端会自动要求在网页重新绑定新比赛的队伍账号。
-仅使用 macOS 内置工具或 Windows PowerShell 5.1，无需额外运行时。
-内网监考客户端可离线安装脚本并用专用提交授权自动绑定队伍；每次提交均需明确确认。
-参见[安装与使用说明](./docs/CONTESTANT_CLI.md)。
+---
 
 ## 技术栈
 
-- Next.js 16、React 19、TypeScript
-- Tailwind CSS、Heroicons、Sonner、Monaco Editor
-- PostgreSQL、Prisma 7
-- Redis、BullMQ
-- go-judge
-- Docker Compose（本地基础设施）
+| 层级 | 技术选型 |
+| :--- | :--- |
+| **前端与服务端** | Next.js 16 (App Router)、React 19、TypeScript 5、Tailwind CSS 4、Headless UI、Framer Motion、Monaco Editor、KaTeX |
+| **数据库与 ORM** | PostgreSQL 16、Prisma 7 (`@prisma/adapter-pg`) |
+| **队列与分布式协调** | Redis 7、BullMQ 5（原子任务锁、Worker 心跳注册、状态调度与编译缓存租约） |
+| **评测沙箱** | [go-judge](https://github.com/criyle/go-judge) (`v1.11.2`)、Ubuntu 24.04、GCC/G++ 15.2、OpenJDK 21、PyPy3、`testlib.h` |
+| **基础设施与 CI** | Docker & Docker Compose、GitHub Actions |
+
+---
 
 ## 快速开始
 
-使用 Node.js 22。安装依赖只生成客户端和编辑器资源，不连接或修改业务数据库。
+### 环境要求
+- **Node.js** `22 LTS`（支持 `^20.19.0 || ^22.12.0 || >=24.0.0`）与 **npm**
+- **Docker** 与 **Docker Compose**（用于运行 PostgreSQL 16、Redis 7 以及特权模式的 `go-judge` 容器）
+
+### 全新安装
+
+安装依赖（`npm ci` / `npm install`）仅生成 Prisma Client 并复制 Monaco 编辑器静态资源，**不会连接或修改业务数据库**；数据库初始化与迁移统一通过 `npm run db:deploy` 显式执行。
 
 ```bash
 git clone https://github.com/CWNU-Open-Source-Community/NovaJudge.git
 cd NovaJudge
 cp .env.example .env
-# 填写数据库连接、JWT_SECRET、管理员账号密码等配置。
+# 编辑 .env：填写 POSTGRES_PASSWORD、与之匹配的 DATABASE_URL、
+# 独立的 JWT_SECRET、SUPER_ADMIN_USERNAME 和 SUPER_ADMIN_PASSWORD。
+
 npm ci
 docker compose up -d --build --wait
 npm run db:deploy
 npm run dev
 ```
 
-另开终端执行 `npm run worker`，网页默认运行在 `http://localhost:3001`。
-生产部署使用 `npm run build` 和 `npm run start`，并配置进程管理器。
-
-公开、校内部署现在使用同一套源码。旧系统升级请先阅读
-[统一版本部署与维护交接](docs/DEPLOYMENT.md)，包括备份、旧库识别、升级、回滚和交接步骤。
-外部登录作为可选功能保留：新安装默认关闭，已有私服保留原设置。
-学校名称、页脚和组织映射通过部署配置设置。考场推流控制台已移除，
-判题监控保留在 `/admin/judge-monitor`，监考专用登录和内网 CLI 继续可用。
-
-## 多开判题机
-
-所有判题机共享同一个基于 Redis 的 BullMQ 队列（`judge-queue`）。
-BullMQ 通过 Redis 原子操作领取任务，因此无论同时运行多少台判题机，
-同一份提交只会被其中一台判题机领取并评测 —— 它们之间绝不会冲突。
+另开一个终端启动判题 Worker：
 
 ```bash
-# 启动单台判题机（ID 自动分配，例如 MacBook-1）
+npm run worker
+```
+
+浏览器访问 `http://localhost:3001` 即可使用（管理后台入口：`http://localhost:3001/admin`）。
+
+### 生产运行与旧版本平滑升级
+
+生产环境建议使用进程管理器分别守护 `npm run build && npm run start` 与 `npm run worker:multi -- 2`。
+
+> **从旧公开版或旧校内私服升级？** 请务必先阅读 [统一版本部署与维护交接指南](./docs/DEPLOYMENT.md)，了解数据库与 `uploads/` 备份、旧库结构自动识别与无损迁移（`npm run db:deploy`）、回滚预案、外部登录配置及学校页脚/组织映射设置。
+
+---
+
+## 环境变量说明
+
+| 变量名 | 默认值 / 示例 | 说明 |
+| :--- | :--- | :--- |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `postgres` / *(必填)* / `xcpc_oj` | `docker-compose.yml` 中本地 PostgreSQL 容器初始化凭据 |
+| `DATABASE_URL` | `postgresql://postgres:...@localhost:5432/xcpc_oj?schema=public` | PostgreSQL 连接串（使用 Compose 时密码需与 `POSTGRES_PASSWORD` 一致） |
+| `REDIS_URL` | `redis://localhost:6379` | Redis 连接串（用于评测队列、心跳与分布式租约） |
+| `GO_JUDGE_API` | `http://localhost:5050` | `go-judge` 判题沙箱 HTTP 接口地址 |
+| `GO_JUDGE_REQUEST_TIMEOUT_MS` | *(自动计算)* | 可选 `go-judge` HTTP 请求超时（毫秒，默认自动覆盖看门狗时长） |
+| `PROBLEM_DATA_ROOT` | `uploads/problems` | 多主机 Worker 共享题目数据根目录（内容对应 Web 的 `uploads/problems`） |
+| `JWT_SECRET` | *(必填)* | 登录会话与私有赛访问令牌签名密钥 |
+| `SUPER_ADMIN_USERNAME` / `SUPER_ADMIN_PASSWORD` | *(必填)* | 初始超级管理员用户名与密码 |
+| `NOVAJUDGE_URL` | `http://localhost:3001` | 选手可访问的站点地址（供 CLI 自动绑定与链接生成使用） |
+| `NOVAJUDGE_CLI_MODE` | `public` | 公网部署保持 `public`（关闭 CLI）；仅在隔离内网环境设为 `intranet` 后启用 `/cli`、`submit` 与 `printfile` |
+| `EXTERNAL_AUTH_URL` / `APP_KEY` | *(空)* | 可选外部统一认证接口与服务端密钥（新安装默认关闭，旧私服保留原开关状态） |
+| `NOVAJUDGE_SITE_NAME` / `NOVAJUDGE_SITE_DESCRIPTION` | `NovaJudge` / `XCPC Online Judge` | 站点导航栏/标题名称与页面描述（修改后重新 build 并重启 Web） |
+| `NOVAJUDGE_FOOTER_TEXT` | *(空)* | 可选的学校或组织页脚说明文字 |
+| `NOVAJUDGE_ORG_MAP_PATH` | `config/org-map.json` | 可选外部组织映射 JSON 路径（如 `/etc/novajudge/org-map.json`） |
+| `JUDGE_CONCURRENCY` | `4` | 单台 Worker 进程同时评测的提交并发数 |
+| `JUDGE_ID` | *(自动分配)* | 指定当前判题机 ID |
+| `JUDGE_WORKER_COUNT` / `JUDGE_WORKER_IDS` | `2` / *(未设置)* | `npm run worker:multi` 启动的判题机数量或显式 ID 列表（如 `1,2,3`） |
+| `JUDGE_WALL_WATCHDOG_MS` | `60000` | 单次运行最小实际经过时间兜底阈值（毫秒），最终取 `max(此值, 20 × CPU 时限)` |
+
+---
+
+## 多开判题机与评测调度
+
+### 启动多台判题机
+
+所有 Worker 共享同一个基于 Redis 的 BullMQ 队列（`judge-queue`），系统总并发判题能力为 `在线判题机数 × JUDGE_CONCURRENCY`。
+
+```bash
+# 启动单台判题机（自动分配 ID）
 npm run worker
 
-# 指定 ID 启动
+# 指定显式 ID 启动
 npm run worker -- --id 1
-npm run worker -- --id 2
 
-# 一键多开：启动 4 台判题机，自动分配全局 ID
+# 一键启动 4 台判题机（自动分配全局 ID）
 npm run worker:multi -- 4
 
-# 或通过环境变量控制
+# 或通过环境变量控制多开数量与 ID
 JUDGE_WORKER_COUNT=4 npm run worker:multi
 JUDGE_WORKER_IDS=1,2,3 npm run worker:multi
 ```
 
-相关环境变量：
-
-```env
-JUDGE_CONCURRENCY=4   # 每台判题机同时判几题（总并发 = 判题机数 x 该值）
-JUDGE_ID=1            # 判题机 ID（可选，未设置时自动分配）
-JUDGE_WORKER_COUNT=4  # npm run worker:multi 多开数量
-JUDGE_WORKER_IDS=1,2  # npm run worker:multi 指定 ID 列表
-```
-
-### 多开如何避免任务冲突
-
-- **原子领取** —— BullMQ 在 Redis 中为每个任务加锁领取，同一时刻两台判题机
-  不可能拿到同一个任务。
-- **幂等入队** —— 所有入队路径都经由 `lib/queue.ts` 中的 `enqueueJudge()`，
-  每份提交使用固定 jobId：重复点击、并发重判都只会产生一个队列任务，
-  正在被评测的提交也不会重复入队。
-- **单一调度器** —— 比赛状态调度（`PENDING → RUNNING → ENDED`）通过 Redis
-  租约在多台判题机中选出唯一的 leader 执行，不会重复运行。
+### 多实例防冲突机制
+- **原子领取**：BullMQ 在 Redis 中对每个任务加锁领取，任意时刻同一份提交只会被唯一一台 Worker 执行。
+- **幂等入队**：所有提交通道与重判入口统一经过 `lib/queue.ts` 的 `enqueueJudge()`，每份提交绑定固定 `jobId`，重复点击或并发重判不会产生重复任务。
+- **唯一状态调度器**：比赛状态自动推进（`PENDING → RUNNING → ENDED`）通过 Redis 租约在多台 Worker 中选出唯一 Leader 执行。
 
 ### 裁判程序编译缓存
+`checker`、`interactor` 与 `communicator` 的编译产物保存在 `uploads/problems/<题目 ID>/.judge-cache/`（或 `<PROBLEM_DATA_ROOT>/<题目 ID>/.judge-cache/`）。共享该目录且连接同一 `GO_JUDGE_API` 的进程在 Web、Worker 与 `go-judge` 重启后仍可直接复用二进制缓存。每次运行前自动校验源码路径、源码内容、`testlib.h` 与编译参数，多进程并发缺失时通过 Redis 租约只编译一次；每份提交从缓存加载独立沙箱临时可执行文件并在判题后清理。*（升级编译器或沙箱镜像后，删除对应 `.judge-cache` 目录即可强制重编。）*
 
-checker、interactor 和 communicator 的编译结果保存在
-`uploads/problems/<题目 ID>/.judge-cache/`，共享该目录且使用相同 go-judge 地址的进程复用缓存。
-首次判题或样例调试时编译，之后按源码路径、源码内容、`testlib.h` 和编译参数校验，
-仅在这些输入变化或缓存损坏、丢失时重新编译。在线编辑、上传覆盖或更换 YAML 中的文件引用均会自动生效。
-多个进程同时遇到缓存缺失时通过 Redis 租约协调编译。
+### CPU 时限与看门狗兜底
+选手程序 `TLE` 严格依据实测 CPU 时间判定，系统调度和 I/O 等待不计入选手 CPU 预算。每次运行另有 `max(JUDGE_WALL_WATCHDOG_MS, 20 × CPU 时限)` 的实际经过时间兜底：若看门狗超时但实测 CPU 未超限，系统将其记为 `SYSTEM_ERROR` 并记录耗时诊断，不会误判选手罚时。
 
-每份提交从缓存恢复独立的 go-judge 临时文件，判题结束后照常清理；更新文件不会影响已开始判题的提交，
-Web、Worker 和 go-judge 重启后仍可使用磁盘上的编译结果。缓存目录位于测试数据目录之外，
-不会被测试数据上传替换，也不会包含在题目数据导出中。升级编译器或判题容器环境后，可删除对应缓存目录以强制重新编译。
+### 在线监控与压力测试
+- **实时监控面板**：在 **Admin → Dashboard → Judge Workers** 查看所有在线 Worker 心跳与队列统计（每 5 秒自动刷新，离线 15 秒自动移除），或在 **`/admin/judge-monitor`**（原 `/admin/monitor` 自动跳转至此）查看近 60 分钟每分钟提交曲线、队列深度与结果分布。
+- **队列吞吐压测**：使用 `stress-test.ts` 批量压入提交并统计各 Worker 吞吐表现：
+  ```bash
+  npm run stress -- --total=100 --batch=20 --lang=cpp
+  ```
+  支持参数：`--total`（总数）、`--batch`（每批并发）、`--lang`（`c` | `cpp` | `java` | `pypy3`）、`--problem`（题目 ID）、`--no-wait`、`--timeout`、`--mark`。
 
-运行 `npm run test:judge-cache` 验证缓存行为；已有 Redis 和 go-judge 服务时，
-运行 `npm run test:judge-cache:integration` 验证真实编译和多进程复用（不访问数据库）。
+---
 
-### 压力测试
+## 重点工作流与安全机制
 
-`stress-test.ts` 可以批量向判题队列压入提交，统计多台判题机协同判题的吞吐：
+### Polygon 题包导入与单题压缩包热更新
+- **Polygon 导入**：在后台 **Import Problems / Import Contests** 选择 **Polygon** 格式，支持导入单题、多题或包含 `contest.xml` 的比赛导出包（涵盖普通题、交互题及单轮/双轮交互通信题）。比赛包导入仅批量新增题库题目，不会自动创建或改动现有比赛，便于管理员按需创建比赛并勾选题目。详见 [docs/POLYGON_IMPORT.md](./docs/POLYGON_IMPORT.md)。
+- **单题原地更新**：在后台题库列表点击目标题目的 **Update Problem**（上传图标），上传仅含一道题目的导出 ZIP，即可在保留原题目 ID、比赛关联与历史提交记录的前提下替换题面、样例、限制、YAML 配置、测试数据与附件，并自动清理过期旧文件。
+
+### 私有赛密码访问控制
+私有赛强制要求配置比赛密码。除超级管理员外，所有访问者（含已登录的比赛账号与全局账号，在赛中及赛后均生效）必须先验证比赛密码，才能查看比赛介绍、题目、榜单、提交、公告、题解与私有附件。浏览器验证凭证有效期 24 小时（退出登录或管理员修改比赛密码立即失效），仅解锁浏览权限而不授予额外提交或管理权限。CLI 访问私有赛需携带 `x-contest-access-token`；CCS Basic 认证仅限超级管理员使用。
+
+### 内网选手命令行与监考专用登录
+- **服务端内网开关**：选手命令行默认关闭（`NOVAJUDGE_CLI_MODE=public`）。仅在隔离内网环境显式设置 `NOVAJUDGE_CLI_MODE=intranet` 并重启 Web 服务，再由管理员于 **System Settings** 指定当前 CLI 比赛后方可启用。
+- **普通网页配对（`submit`）**：选手访问 `/cli` 一键安装全局 `submit` 命令，运行 `submit A.cpp`（或 `submit -y --problem A main.cpp`）首次自动唤起浏览器完成队伍绑定。
+- **监考自动绑定（`submit` 与 `printfile`）**：通过监考桌面客户端登录后，比赛账号与该客户端专用凭据（`x-novajudge-proctor-key`）强绑定，并自动签发支持 `submit` 与 `printfile [-y] A.cpp`（支持 `.c`、`.cpp`、`.cc`、`.cxx`、`.java`、`.py`）的受管设备授权；普通网页配对不可调用 `printfile`。详见 [docs/CONTESTANT_CLI.md](./docs/CONTESTANT_CLI.md) 与 [docs/PROCTORING_LOGIN.md](./docs/PROCTORING_LOGIN.md)。
+
+### 比赛提问站内提醒
+比赛 STAFF 中的 `ADMIN` 与 `JUDGE` 保持页面打开时每 10 秒轮询待回复提问，新提问与选手追问会触发浏览器去重弹窗及导航栏铃铛计数，任一裁判/管理员回复后自动消警。相关数据库索引由 `npm run db:deploy` 自动部署。
+
+---
+
+## 常用脚本与测试套件
+
+### 开发、构建、数据库与判题机脚本
 
 ```bash
-npm run stress -- --total=100 --batch=20 --lang=cpp
+npm run dev            # 启动开发服务器（端口 3001）
+npm run build          # 构建生产版本
+npm run start          # 启动生产 Web 服务器（端口 3001）
+npm run lint           # 运行 ESLint 代码检查
+npm run prisma         # 重新生成 Prisma Client
+npm run db:deploy      # 部署数据库迁移（支持全新空库及旧版公网/私服库无损纳管）
+npm run db:status      # 查看 Prisma 迁移状态
+npm run upgrade        # Linux 生产环境升级辅助脚本（环境检查 + 迁移 + 构建）
+npm run worker         # 启动单台判题机（自动分配 ID）
+npm run worker:multi   # 多开判题机，例如 "npm run worker:multi -- 4"
+npm run worker:dev     # 以 watch 热重载模式启动判题机
+npm run stress         # 批量压入提交进行判题吞吐压测
 ```
 
-参数说明：`--total` 提交总数、`--batch` 每批并发数、`--lang` 语言
-（`c` | `cpp` | `java` | `pypy3`）、`--problem` 题目 ID、
-`--no-wait` 只入队不等待结果、`--timeout` 等待判题完成的秒数、
-`--mark` 标记（以注释形式写入每份提交的代码，便于事后定位）。
-脚本会输出入队吞吐、判题结果分布、判题总耗时以及每台判题机本次处理的数量。
-
-### 在后台首页监控判题机
-
-每台判题机都会向 Redis 上报心跳（ID、主机名、PID、并发数、已判数量、
-正在评测的提交）。后台首页（**Admin → Dashboard → Judge Workers**）会列出
-所有在线的判题机及其 ID，并展示队列统计（等待 / 评测中 / 已完成 / 失败），
-每 5 秒自动刷新。判题机停止后 15 秒内会从列表中消失。
-
-## 脚本命令
+### 单元测试与集成验收套件
 
 ```bash
-npm run dev          # 启动开发服务器
-npm run build        # 生产构建
-npm run start        # 启动生产服务器
-npm run lint         # 运行 ESLint
-npm run prisma       # 生成 Prisma Client
-npm run worker       # 启动判题机（ID 自动分配）
-npm run worker:multi # 多开判题机，例如 npm run worker:multi -- 4
-npm run worker:dev   # 以 watch 模式启动判题机
-npm run stress       # 判题压力测试（批量压入提交）
+# 一键运行全部应用单元与 CLI 回归测试
+npm test
+
+# 按模块运行单元与权限回归测试（无需外部数据库或沙箱服务）
+npm run test:polygon-import
+npm run test:problem-update
+npm run test:communication
+npm run test:judge-runtime
+npm run test:judge-cache
+npm run test:contest-access
+npm run test:rejudge
+npm run test:clarification-notifications
+npm run test:proctoring
+npm run test:cli-device
+npm run test:submit-macos
+npm run test:submit-windows
+npm run test:submit-legacy
+
+# 真实环境集成测试（需本地运行对应的 PostgreSQL / Redis / go-judge / Web 服务）
+npm run test:database-upgrade
+npm run test:judge-runtime:integration
+npm run test:judge-cache:integration
+npm run test:polygon:integration
+npm run test:communication:integration
+npm run test:problem-update:integration
+npm run test:clarification-notifications:integration
+npm run test:proctoring:integration
+npm run test:submit-macos:integration
+npm run test:submit-windows:integration
 ```
+
+---
+
+## 文档导航
+
+| 文档 | 内容说明 |
+| :--- | :--- |
+| [统一版本部署与维护交接](./docs/DEPLOYMENT.md) | 全新部署、旧公开版/私服无损升级、外部登录、站点品牌配置、备份与回滚指南 |
+| [API 与 CCS 接口文档](./docs/API_DOCS.md) | 平台 REST 接口说明、`x-api-key` 认证及 ICPC CCS 兼容数据流 |
+| [Polygon 题包导入说明](./docs/POLYGON_IMPORT.md) | Polygon 单题/多题/比赛包导入规范、题面转换与双轮交互通信协议 |
+| [两轮通信题配置指南](./docs/COMMUNICATION_PROBLEMS.md) | 原生 `communication` 题型配置、`communicator.cpp` 接口与[字母信使示例题包](./examples/communication/encode-decode/README.md) |
+| [选手命令行安装与使用](./docs/CONTESTANT_CLI.md) | Windows（PowerShell 5.1 / Win7 准备）与 macOS 下 `submit` / `printfile` 使用指南 |
+| [监考专用登录协议](./docs/PROCTORING_LOGIN.md) | 监考客户端会话独占绑定、内网 CLI 离线安装与设备令牌生命周期 |
+| [C++23 编译工具链说明](./docs/CPP23_COMPILER_FIX.md) | GCC 15.2 沙箱镜像构建方案、`constexpr` 内存回归测试与平滑升级流程 |
+| [Windows 全流程联调手册](./docs/WINDOWS_FULL_E2E.md) | NovaJudge + 监考桌面端 + WebRTC 媒体服务单机与局域网全流程验收指南 |
+| [更新日志 (Changelog)](./docs/CHANGELOG.md) | 版本演进记录与新增功能说明 |
+
+---
 
 ## 项目结构
 
 ```text
 NovaJudge/
-├─ app/              # Next.js App Router 页面与 API 路由
-├─ components/       # 共享 UI 组件
-├─ context/          # 前端 Providers
-├─ docs/             # API 文档与说明
-├─ lib/              # 认证、判题、队列、Redis、Prisma、CCS 等模块
-├─ prisma/           # 数据库 Schema 与迁移
-├─ public/           # 静态资源
-├─ scripts/          # CLI 与维护脚本
-├─ uploads/          # 题目数据与资源文件
-├─ worker.ts         # 判题机（支持多实例与心跳注册）
-└─ docker-compose.yml
+├─ .github/workflows/    # GitHub Actions CI（数据库升级测试、Lint、单元/集成回归与生产构建）
+├─ app/                  # Next.js App Router 页面、Server Actions 与 REST/CCS API 路由
+├─ components/           # 比赛前台、Monaco 代码编辑器、Markdown/KaTeX 渲染及管理后台组件
+├─ config/               # 默认学校/组织 ID 映射配置（用于 CCS 与滚榜导出）
+├─ context/              # 前端全局状态 Context Providers
+├─ docs/                 # 部署交接、专题功能文档、API 手册与运维联调指南
+├─ examples/             # 示例题目包（如两轮通信题完整示例）
+├─ lib/                  # 认证鉴权、判题引擎、Polygon 解析器、BullMQ 队列、Redis、Prisma 与 CCS 模块
+├─ prisma/               # Prisma 数据模型 Schema、统一基线迁移与旧库识别快照
+├─ public/               # 静态资源（Monaco Editor 资源在 postinstall 阶段自动同步至此）
+├─ scripts/              # 数据库无损升级、多判题机启动器、CLI 辅助工具与集成测试脚本
+├─ tests/                # 编译器与 Polygon 导入测试样例固件
+├─ tools/contestant-cli/ # Windows PowerShell 与 macOS 原生选手 CLI 安装器与脚本
+├─ uploads/              # 题目测试数据、题面图片附件与 .judge-cache 编译产物缓存
+├─ worker.ts             # BullMQ 判题机主程序（支持多实例、Redis 心跳上报与比赛状态调度）
+├─ stress-test.ts        # 多判题机队列并发吞吐压测工具
+├─ Dockerfile            # 定制 go-judge 判题镜像（Ubuntu 24.04 + GCC 15.2 + OpenJDK 21 + PyPy3）
+└─ docker-compose.yml    # 本地 PostgreSQL 16、Redis 7 与 go-judge 编排配置
 ```
 
-## API 与 CCS
-
-NovaJudge 提供面向比赛/题目/提交工作流的平台 API，以及兼容 ICPC CCS 的接口，
-可用于外部工具、滚榜（resolver）流程与现场大屏展示。可信集成方可以使用
-API Key 认证。
-
-详见 [docs/API_DOCS.md](docs/API_DOCS.md)。
+---
 
 ## 开源协议
 
-NovaJudge 基于 [MIT 协议](LICENSE) 开源。
+NovaJudge 基于 [MIT 协议](./LICENSE) 开源。

@@ -7,12 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-18
+
+### Security
+- Upgrade `next` from `16.1.1` to `16.4.6` to address critical upstream advisories (`GHSA-2464-fhr4-w9xw`, `GHSA-673q-mjm6-r5xr`, `GHSA-26hh-7cqf-hhc6`).
+
 ### Unified deployment
 - One public maintenance branch for all deployments; retain optional external accounts, account bans, upsolving, and private-edition reliability fixes.
 - Remove exam-streaming controls and settings; retain judge monitoring, proctoring login and intranet CLI.
 - Configure site branding and organization mapping without a school-specific fork.
 - Separate dependency installation from database deployment. Add data-preserving legacy schema adoption, a complete migration baseline and PostgreSQL upgrade regression tests.
 - Bring CI and the production upgrade script into the main repository. See [deployment and handover](DEPLOYMENT.md).
+- Overhaul and synchronize English (`README.md`) and Simplified Chinese (`README.zh-CN.md`) documentation.
 
 
 ### Added

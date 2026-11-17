@@ -28,7 +28,7 @@ Worker 服务；自动登录、下载、提交与判题没有使用 NovaJudge �
 - 手机摄像头持续采集要求手机页面使用 HTTPS，手机还需要能够访问监考服务与媒体服务的网络地址。
   当前本机 HTTP 演示不等于已完成手机 HTTPS 部署；此处结论为代码检查结果。
 - 桌面 `config.js` 的 `PROCTOR_MOBILE_WEB_URL` 和 `PROCTOR_PUBLIC_API_URL` 应指向手机可访问的
-  监考 HTTPS 入口。当前开发默认值为 `https://192.168.1.159:3443`，后续部署需按实际地址设置；
+  监考 HTTPS 入口。示例局域网开发地址如 `https://192.168.1.100:3443`，后续部署需按实际地址设置；
   第二机位连接监考系统，而不是 NovaJudge 域名。
 
 ## NovaJudge 验收范围
@@ -101,14 +101,14 @@ Worker 服务；自动登录、下载、提交与判题没有使用 NovaJudge �
 - 本机监考演示后台：[http://127.0.0.1:43218](http://127.0.0.1:43218)。
 - 两套后台和考生账号：本机私有文件 `.local/本机访问账号.md`。
 - NovaJudge 最终明细：`.local/reports/final-functional-tests.json`。
-- 监考客户端明细：`/Users/jiangys/Jiangys/Program/proctoring-platform/tmp/novajudge-live/reports/client-tests.json`。
+- 监考客户端明细：`/path/to/proctoring-platform/tmp/novajudge-live/reports/client-tests.json`。
 - 自动登录与提交截图：上述目录中的 `auto-login.png`、`submission.png`。
 - 本机监考演示服务可用以下独立工具启停，数据保留：
 
 ```sh
-node /Users/jiangys/Jiangys/Program/proctoring-platform/tmp/novajudge-live/service.mjs status
-node /Users/jiangys/Jiangys/Program/proctoring-platform/tmp/novajudge-live/service.mjs start
-node /Users/jiangys/Jiangys/Program/proctoring-platform/tmp/novajudge-live/service.mjs stop
+node /path/to/proctoring-platform/tmp/novajudge-live/service.mjs status
+node /path/to/proctoring-platform/tmp/novajudge-live/service.mjs start
+node /path/to/proctoring-platform/tmp/novajudge-live/service.mjs stop
 ```
 
 NovaJudge 启停和数据位置见 [本机部署说明](LOCAL_DEPLOYMENT.md)。
