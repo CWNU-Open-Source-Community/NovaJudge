@@ -1,5 +1,8 @@
 # 本机部署
 
+通用安装、旧系统升级和维护交接请使用 [统一版本部署文档](DEPLOYMENT.md)。
+下文记录历史 macOS 本机环境；路径、端口和服务管理方式仅适用于该环境。
+
 部署目录：`/Users/jiangys/Jiangys/Program/NovaJudge`。
 
 网页入口：[NovaJudge](http://localhost:3001)，后台入口：[管理后台](http://localhost:3001/admin)。

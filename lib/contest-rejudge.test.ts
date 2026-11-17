@@ -36,8 +36,7 @@ test("contest management uses the current database role, contest membership and 
     { role: "ADMIN", contestId: 7, allowed: false, expected: false },
   ]) {
     const auth = load<typeof Auth>("lib/contest-management-auth.ts", {
-      "next/headers": { cookies: async () => ({ get: () => ({ value: "token" }) }) },
-      "./auth": { getCurrentSuper: async () => null, verifyAuth: async () => ({ userId: "manager", role: "ADMIN", contestId: 7 }) },
+      "./auth": { getCurrentSuper: async () => null, getCurrentUser: async () => ({ userId: "manager", role: "ADMIN", contestId: 7 }) },
       "./contest-access": { hasContestAccess: async () => scenario.allowed },
       "./prisma": { prisma: { user: { findUnique: async () => ({ id: "manager", ...scenario }) } } },
     });
@@ -45,12 +44,38 @@ test("contest management uses the current database role, contest membership and 
     if (!scenario.expected) await assert.rejects(auth.requireContestManager(7));
   }
   const auth = load<typeof Auth>("lib/contest-management-auth.ts", {
-    "next/headers": { cookies: () => assert.fail("A verified global administrator needs no contest login") },
-    "./auth": { getCurrentSuper: async () => ({ userId: "super", isGlobalAdmin: true }) },
+    "./auth": {
+      getCurrentSuper: async () => ({ userId: "super", isGlobalAdmin: true }),
+      getCurrentUser: () => assert.fail("A verified global administrator needs no contest login"),
+    },
     "./contest-access": { hasContestAccess: async () => true },
     "./prisma": { prisma: {} },
   });
   assert.equal((await auth.requireContestManager(7)).key, "global-super");
+});
+
+test("a current ordinary global session cannot fall back to an old contest administrator cookie", async () => {
+  const auth = load<typeof Auth>("lib/contest-management-auth.ts", {
+    "./auth": {
+      getCurrentSuper: async () => ({ userId: "global-team", isGlobalAdmin: false }),
+      getCurrentUser: () => assert.fail("The current global identity must remain authoritative"),
+    },
+    "./contest-access": { hasContestAccess: async () => true },
+    "./prisma": { prisma: { user: { findUnique: () => assert.fail("No stale contest role lookup") } } },
+  });
+  assert.equal(await auth.getContestManager(7), null);
+  await assert.rejects(auth.requireContestManager(7));
+});
+
+test("contest managers require a verified current contest identity matching this contest", async () => {
+  for (const current of [null, { userId: "manager", role: "ADMIN", contestId: 8 }]) {
+    const auth = load<typeof Auth>("lib/contest-management-auth.ts", {
+      "./auth": { getCurrentSuper: async () => null, getCurrentUser: async () => current },
+      "./contest-access": { hasContestAccess: async () => true },
+      "./prisma": { prisma: { user: { findUnique: () => assert.fail("Invalid current identity cannot look up a manager") } } },
+    });
+    assert.equal(await auth.getContestManager(7), null);
+  }
 });
 
 type Row = {
@@ -104,6 +129,7 @@ function harness() {
   const state = {
     actor: "judge-a", authorized: true, failEnqueue: false, workerStartsBeforeFailure: false,
     workerFinishesBeforeFailure: false, finishesWhileReadingProgress: false,
+    enqueueBecomesActive: false, workerVerdictAtActive: "", redisUnavailable: false,
   };
   const prisma = {
     contestProblem: {
@@ -136,8 +162,9 @@ function harness() {
       return { key: state.actor };
     } },
     "./prisma": { prisma },
-    "./redis": { redis: {
+    "./queue": { judgeQueueConnection: {
       set: async (key: string, value: string, ...args: unknown[]) => {
+        if (state.redisUnavailable) throw new Error("Redis command timed out");
         if (args.includes("NX") && storage.has(key)) return null;
         storage.set(key, value);
         return "OK";
@@ -151,8 +178,7 @@ function harness() {
         storage.delete(key);
         return value ?? null;
       },
-    } },
-    "./queue": {
+    },
       judgeQueue: { getJob: async (key: string) => jobs.has(key) ? { getState: async () => {
         if (state.finishesWhileReadingProgress) {
           const submission = rows.find((value) => `judge-sub-${value.id}` === key);
@@ -162,6 +188,16 @@ function harness() {
         return jobs.get(key);
       } } : undefined },
       enqueueJudge: async (id: string) => {
+        if (state.enqueueBecomesActive) {
+          jobs.set(`judge-sub-${id}`, "active");
+          if (state.workerVerdictAtActive) {
+            Object.assign(rows.find((value) => value.id === id)!, {
+              verdict: state.workerVerdictAtActive, timeUsed: 31, memoryUsed: 2048,
+              errorMessage: "new worker result", passedTests: 8, totalTests: 8,
+            });
+          }
+          return { outcome: "already-active" };
+        }
         if (state.failEnqueue) {
           if (state.workerStartsBeforeFailure) rows.find((value) => value.id === id)!.verdict = Verdict.JUDGING;
           if (state.workerFinishesBeforeFailure) {
@@ -172,6 +208,7 @@ function harness() {
         }
         enqueued.push(id);
         jobs.set(`judge-sub-${id}`, "waiting");
+        return { outcome: "enqueued" };
       },
     },
   });
@@ -232,6 +269,38 @@ test("active jobs and concurrent rejudge requests cannot reset or duplicate a su
   const outcomes = await Promise.all([h.requeueSubmission("wa", { contestId: 7 }), h.requeueSubmission("wa", { contestId: 7 })]);
   assert.deepEqual(outcomes.sort(), ["queued", "skipped"]);
   assert.deepEqual(h.enqueued, ["wa"]);
+});
+
+test("an old job becoming active during enqueue restores only the still-pending reset", async () => {
+  const h = harness();
+  h.state.enqueueBecomesActive = true;
+  const original = { ...h.rows[0] };
+  assert.equal(await h.requeueSubmission("wa", { contestId: 7 }), "skipped");
+  assert.deepEqual(h.rows[0], original);
+  assert.deepEqual(h.enqueued, []);
+  assert.equal(h.storage.size, 0);
+});
+
+test("an enqueue-window active job cannot overwrite a worker's running or completed result", async () => {
+  for (const verdict of [Verdict.JUDGING, Verdict.ACCEPTED]) {
+    const h = harness();
+    h.state.enqueueBecomesActive = true;
+    h.state.workerVerdictAtActive = verdict;
+    assert.equal(await h.requeueSubmission("wa", { contestId: 7 }), "skipped");
+    assert.equal(h.rows[0].verdict, verdict);
+    assert.equal(h.rows[0].timeUsed, 31);
+    assert.equal(h.rows[0].errorMessage, "new worker result");
+    assert.equal(h.rows[0].passedTests, 8);
+    assert.deepEqual(h.writes, ["wa"], "Only the initial reset writes; recovery must not overwrite worker progress");
+  }
+});
+
+test("rejudge preview and locks use the bounded queue Redis connection and fail without database resets", async () => {
+  const h = harness();
+  h.state.redisUnavailable = true;
+  assert.match((await h.previewRejudge(7, { filters: {} })).error!, /Redis command timed out/);
+  await assert.rejects(h.requeueSubmission("wa", { contestId: 7 }), /Redis command timed out/);
+  assert.deepEqual(h.writes, []);
 });
 
 test("queue failure restores the previous result without overwriting a running worker", async () => {

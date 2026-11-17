@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import AdminLoginModal from "./AdminLoginModal";
+import ExternalLoginModal from "./ExternalLoginModal";
 import PrintRequestModal from "./PrintRequestModal";
 import ClarificationNotifications from "./ClarificationNotifications";
 import { ContestRole } from "@/lib/generated/prisma/enums";
@@ -33,9 +34,10 @@ type DesktopNavItem =
       onClick: () => void;
     };
 
-export default function Navbar() {
+export default function Navbar({ siteName = "NovaJudge" }: { siteName?: string }) {
   const [clickCount, setClickCount] = useState(0);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [showExternalLogin, setShowExternalLogin] = useState(false);
   const [showPrintRequest, setShowPrintRequest] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -111,6 +113,19 @@ export default function Navbar() {
 
   const openMoreMenu = () => setShowMoreMenu(true);
   const closeMoreMenu = () => setShowMoreMenu(false);
+
+  const [allowExternalLogin, setAllowExternalLogin] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/public/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        setAllowExternalLogin(data.allowExternalLogin);
+      })
+      .catch((err) => console.error(err));
+  }, []);
+
+  const handleExternalLoginOpen = () => setShowExternalLogin(true);
 
   const match = pathname.match(/^\/contest\/(\d+)/);
   const contestId = match && !pathname.endsWith("/access") ? match[1] : null;
@@ -590,6 +605,13 @@ export default function Navbar() {
                     </div>
                   )}
                 </div>
+              ) : allowExternalLogin ? (
+                <button
+                  onClick={handleExternalLoginOpen}
+                  className="px-3 py-2 text-sm font-bold rounded-sm border border-gray-300 text-gray-700 hover:bg-gray-50 cursor-pointer"
+                >
+                  外部登录
+                </button>
               ) : null}
             </div>
           </div>
@@ -609,7 +631,7 @@ export default function Navbar() {
         }`}
       >
         <div className="flex justify-between items-center p-4 border-b border-gray-100">
-          <span className="font-bold text-xl font-serif">NovaJudge</span>
+          <span className="font-bold text-xl font-serif">{siteName}</span>
           <button
             onClick={() => setIsMobileMenuOpen(false)}
             className="p-2 text-gray-500 hover:bg-gray-100 rounded-full"
@@ -737,6 +759,12 @@ export default function Navbar() {
 
       {showAdminLogin && (
         <AdminLoginModal onClose={() => setShowAdminLogin(false)} />
+      )}
+      {showExternalLogin && (
+        <ExternalLoginModal
+          onClose={() => setShowExternalLogin(false)}
+          onSuccess={() => revalidate?.()}
+        />
       )}
       {showPrintRequest && numericContestId && (
         <PrintRequestModal

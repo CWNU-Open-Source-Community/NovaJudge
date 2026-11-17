@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyAuth } from "@/lib/auth";
+import { getVerifiedGlobalUser } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { promises as fs } from "fs";
 import path from "path";
@@ -144,8 +144,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const payload = await verifyAuth(token);
-    if (!payload.isGlobalAdmin) {
+    const payload = await getVerifiedGlobalUser(token);
+    if (!payload?.isGlobalAdmin) {
       return NextResponse.json(
         { error: "Only admin can perform this action" },
         { status: 403 },

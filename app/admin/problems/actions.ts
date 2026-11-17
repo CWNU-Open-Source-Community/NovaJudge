@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requeueSubmission } from "@/lib/contest-rejudge";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getCurrentSuper } from "@/lib/auth";
 import { isProblemType } from "@/lib/problem-judge-config";
 import { normalizeProblemSamples, type ProblemSample } from "@/lib/problem-samples";
 
@@ -19,6 +20,9 @@ export interface ProblemFormData {
   samples: ProblemSample[];
   hint?: string;
 }
+
+const MAX_PROBLEM_REJUDGE = 5000;
+const REJUDGE_CONCURRENCY = 10;
 
 // 获取题目列表
 export async function getProblems(page = 1, pageSize = 20, query = "") {
@@ -109,6 +113,9 @@ export async function deleteProblem(id: number) {
 export async function rejudgeProblem(problemId: number) {
   await requireSuperAdmin();
   try {
+    const admin = await getCurrentSuper();
+    if (!admin) return { error: "Unauthorized" };
+    if (!admin.isGlobalAdmin) return { error: "Permission denied" };
     // 1. 获取该题目下所有非 PENDING/JUDGING 的提交
     const submissions = await prisma.submission.findMany({
       where: {
@@ -118,8 +125,12 @@ export async function rejudgeProblem(problemId: number) {
       select: {
         id: true,
       },
+      take: MAX_PROBLEM_REJUDGE + 1,
     });
 
+    if (submissions.length > MAX_PROBLEM_REJUDGE) {
+      return { error: "More than 5000 submissions match this problem. Use filtered batch rejudge to narrow the operation." };
+    }
     const submissionIds = submissions.map((s) => s.id);
 
     if (submissionIds.length === 0) {
@@ -127,8 +138,10 @@ export async function rejudgeProblem(problemId: number) {
     }
 
     const result = { queued: 0, skipped: 0, failed: 0 };
-    for (const id of submissionIds) {
-      result[await requeueSubmission(id).catch(() => "failed" as const)]++;
+    for (let i = 0; i < submissionIds.length; i += REJUDGE_CONCURRENCY) {
+      const outcomes = await Promise.all(submissionIds.slice(i, i + REJUDGE_CONCURRENCY)
+        .map((id) => requeueSubmission(id).catch(() => "failed" as const)));
+      for (const outcome of outcomes) result[outcome]++;
     }
 
     // 4. 刷新页面

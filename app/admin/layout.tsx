@@ -6,6 +6,7 @@ import {
   HomeIcon,
   TrophyIcon,
   ArchiveBoxIcon,
+  UserGroupIcon,
   ArrowRightOnRectangleIcon,
   GlobeAltIcon, // [新增] 用于表示前台/网站的图标
   ChartBarIcon,
@@ -15,9 +16,10 @@ import {
 
 const MENU_ITEMS = [
   { name: "Dashboard", href: "/admin", icon: HomeIcon },
-  { name: "Monitor", href: "/admin/monitor", icon: SignalIcon },
+  { name: "Judge Monitor", href: "/admin/judge-monitor", icon: SignalIcon },
   { name: "Contest Management", href: "/admin/contests", icon: TrophyIcon },
   { name: "Problem Bank", href: "/admin/problems", icon: ArchiveBoxIcon },
+  { name: "External Accounts", href: "/admin/accounts", icon: UserGroupIcon },
   { name: "Submissions", href: "/admin/submissions", icon: ChartBarIcon },
   { name: "API Keys", href: "/admin/api-keys", icon: KeyIcon },
   { name: "Training", href: "/admin/training", icon: ArchiveBoxIcon },

@@ -48,6 +48,7 @@ async function fixture(t: TestContext) {
     if (url.pathname === "/run") {
       state.compiles++;
       await delay(10);
+      init?.signal?.throwIfAborted();
       const { cmd: [command] } = JSON.parse(String(init?.body));
       if (state.failCompile) return Response.json([{ status: "Nonzero Exit Status", files: { stderr: "syntax error" } }]);
       if (state.missingExecutable) return Response.json([{ status: "Accepted", fileIds: {} }]);
@@ -197,6 +198,22 @@ test("failed uploads can retry from the persisted binary", async (t) => {
   f.state.failUpload = false;
   await f.compiler()(f.dataDir, "judge.cpp");
   assert.equal(f.state.compiles, 1);
+});
+
+test("private deployment compilation timeout is respected and does not cache a failure", async (t) => {
+  const f = await fixture(t);
+  const previous = process.env.GO_JUDGE_REQUEST_TIMEOUT_MS;
+  t.after(() => {
+    if (previous === undefined) delete process.env.GO_JUDGE_REQUEST_TIMEOUT_MS;
+    else process.env.GO_JUDGE_REQUEST_TIMEOUT_MS = previous;
+  });
+  process.env.GO_JUDGE_REQUEST_TIMEOUT_MS = "1";
+  await assert.rejects(f.compiler()(f.dataDir, "judge.cpp"), /timed out after 1 ms/);
+  assert.equal(f.state.uploads, 0);
+  assert.equal(f.redis.values.size, 0);
+  process.env.GO_JUDGE_REQUEST_TIMEOUT_MS = "120000";
+  await f.compiler()(f.dataDir, "judge.cpp");
+  assert.equal(f.state.compiles, 2);
 });
 
 test("a lost compilation lease cannot publish a cache or release another worker's lease", async (t) => {

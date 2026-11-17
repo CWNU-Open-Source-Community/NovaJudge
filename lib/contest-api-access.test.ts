@@ -25,7 +25,7 @@ function loadModule<T>(filename: string, dependencies: Record<string, unknown>, 
   const exports = {};
   vm.runInNewContext(compiled.outputText, {
     exports, require: (name: string) => dependencies[name] ?? {},
-    process: { env: {} }, console: { error() {}, log() {} },
+    process: { env: {}, cwd: () => process.cwd() }, console: { error() {}, log() {} },
     Response, TextEncoder, ReadableStream, Buffer, ...globals,
   }, { filename });
   return exports as T;
@@ -236,16 +236,89 @@ test("CLI context and submission reject old account tokens before reading conten
   }
 });
 
-test("CCS Basic access is restricted to super administrators", async () => {
-  for (const role of ["USER", "SUPER_ADMIN"]) {
+test("CCS Basic access is restricted to non-banned super administrators", async () => {
+  for (const user of [
+    { role: "GLOBAL_USER", isBanned: false },
+    { role: "SUPER_ADMIN", isBanned: true },
+    { role: "SUPER_ADMIN", isBanned: false },
+  ]) {
     const ccs = loadModule<{ checkCCSAuth(req: NextRequest): Promise<boolean> }>("lib/ccs/auth.ts", {
       ...baseDependencies(), bcryptjs: { compare: async () => true },
-      "@/lib/prisma": { prisma: { globalUser: { findUnique: async () => ({ role, password: "hash" }) } } },
+      "@/lib/prisma": { prisma: { globalUser: { findUnique: async () => ({ ...user, password: "hash" }) } } },
     });
     const request = new NextRequest("https://example.test/api/ccs/contests/1001", {
       headers: { authorization: `Basic ${Buffer.from("global:password").toString("base64")}` },
     });
-    assert.equal(await ccs.checkCCSAuth(request), role === "SUPER_ADMIN");
+    assert.equal(await ccs.checkCCSAuth(request), user.role === "SUPER_ADMIN" && !user.isBanned);
+  }
+});
+
+test("CCS respects the active global identity over an older contest administrator cookie", async () => {
+  for (const isGlobalAdmin of [false, true]) {
+    let contestLookups = 0;
+    const ccs = loadModule<{ checkCCSAuth(req: NextRequest): Promise<boolean> }>("lib/ccs/auth.ts", {
+      ...baseDependencies(),
+      "@/lib/auth": { getVerifiedGlobalUser: async () => ({ isGlobalAdmin }) },
+      "@/lib/prisma": { prisma: { user: { findUnique: async () => { contestLookups++; return { contestId: 1001, role: "ADMIN" }; } } } },
+    });
+    const request = new NextRequest("https://example.test/api/ccs/contests/1001", {
+      headers: { cookie: "auth_token=global-session; user_token=old-admin-session" },
+    });
+    assert.equal(await ccs.checkCCSAuth(request), isGlobalAdmin);
+    assert.equal(contestLookups, 0);
+  }
+});
+
+test("CCS contest access requires current proctoring proof in addition to the private grant", async () => {
+  const key = crypto.randomBytes(32).toString("base64url");
+  const originalHash = proctoring.proctoringKeyHash(key);
+  let storedHash = originalHash;
+  const grant = await tokens.signContestAccessToken(privateContest, secret);
+  const ccs = loadModule<{ createCCSAuthValidator(req: NextRequest): Promise<(() => Promise<boolean>) | null> }>("lib/ccs/auth.ts", {
+    ...baseDependencies(),
+    "@/lib/auth": {
+      getJwtSecretKey: () => secret,
+      verifyAuth: async () => ({ userId: "admin", contestId: 1001, loginSource: "PROCTORING", proctoringKeyHash: originalHash }),
+    },
+    "@/lib/prisma": { prisma: {
+      user: { findUnique: async () => ({ contestId: 1001, role: "ADMIN", proctoringKeyHash: storedHash }) },
+      contest: { findUnique: async () => privateContest },
+    } },
+  });
+  const request = (proof?: string) => new NextRequest("https://example.test/api/ccs/contests/1001/event-feed", {
+    headers: { cookie: `user_token=proctor-session; contest_access_1001=${grant}`, ...(proof ? { [proctoring.PROCTORING_HEADER]: proof } : {}) },
+  });
+  const missingProof = await ccs.createCCSAuthValidator(request());
+  assert.equal(await missingProof?.(), false);
+  const validate = await ccs.createCCSAuthValidator(request(key));
+  assert.equal(await validate?.(), true);
+  storedHash = proctoring.proctoringKeyHash(crypto.randomBytes(32).toString("base64url"));
+  assert.equal(await validate?.(), false);
+});
+
+test("contest and problem archives reject revoked administrator sessions before accessing protected storage", async () => {
+  for (const filename of [
+    "app/api/contests/import/route.ts", "app/api/contests/export/route.ts",
+    "app/api/problems/import/route.ts", "app/api/problems/export/route.ts",
+  ]) {
+    for (const globalUser of [null, { isGlobalAdmin: false }]) {
+      let checks = 0;
+      let effects = 0;
+      const blocked = new Proxy(() => { effects++; throw new Error("Storage access before current administrator check"); }, { get: () => blocked });
+      const route = loadModule<Route>(filename, {
+        ...baseDependencies(), path, fs: { promises: blocked },
+        "next/headers": { cookies: async () => ({ get: () => ({ value: "old-admin-token" }) }) },
+        "@/lib/auth": {
+          getVerifiedGlobalUser: async () => { checks++; return globalUser; },
+          verifyAuth: async () => ({ isGlobalAdmin: true }),
+        },
+        "@/lib/prisma": { prisma: blocked },
+      });
+      const response = await route.POST(new Request("https://example.test/", { method: "POST" }));
+      assert.equal(response.status, 403, filename);
+      assert.equal(checks, 1, filename);
+      assert.equal(effects, 0, filename);
+    }
   }
 });
 

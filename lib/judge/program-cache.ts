@@ -144,10 +144,21 @@ export function createJudgeProgramCompiler(options: CompilerOptions) {
     let compilation = pending.get(pendingKey);
     if (!compilation) {
       compilation = loadOrCompile(cachePath, fingerprint, async () => {
-        const response = await request(`${judgeUrl}/run`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cmd: [command] }), signal: AbortSignal.timeout(120_000),
-        });
+        const configuredTimeout = Number(process.env.GO_JUDGE_REQUEST_TIMEOUT_MS);
+        const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+          ? Math.floor(configuredTimeout) : 120_000;
+        let response: Response;
+        try {
+          response = await request(`${judgeUrl}/run`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cmd: [command] }), signal: AbortSignal.timeout(timeoutMs),
+          });
+        } catch (error) {
+          if (error instanceof Error && error.name === "TimeoutError") {
+            throw new Error(`Judge server request timed out after ${timeoutMs} ms.`);
+          }
+          throw error;
+        }
         if (!response.ok) throw new Error(`Judge Server Error: ${response.statusText}`);
         const [result] = await response.json();
         const fileId = result?.fileIds?.[binaryName];

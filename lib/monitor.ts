@@ -9,8 +9,8 @@ import { ContestStatus } from "./generated/prisma/enums";
 // ================= 监控统计 =================
 
 export interface MonitorMinuteBucket {
-  /** "HH:MM" 标签（服务器本地时间） */
-  minute: string;
+  /** 分钟起点的 Unix 毫秒时间戳，由浏览器按管理员本地时区展示 */
+  timestamp: number;
   /** 该分钟内提交数 */
   count: number;
 }
@@ -42,7 +42,7 @@ export interface MonitorStats {
 const WINDOW_MINUTES = 60;
 const ACTIVE_WINDOW_MS = 10 * 60_000;
 
-/** 汇总判题管道 + 比赛活跃度数据，供 /admin/monitor 页面与 API 使用 */
+/** 汇总判题管道 + 比赛活跃度数据，供 /admin/judge-monitor 页面与监控 API 使用 */
 export async function getMonitorStats(): Promise<MonitorStats> {
   const since = new Date(Date.now() - WINDOW_MINUTES * 60_000);
 
@@ -86,11 +86,7 @@ export async function getMonitorStats(): Promise<MonitorStats> {
   }
 
   const minutes: MonitorMinuteBucket[] = counts.map((count, i) => {
-    const d = new Date(startMs + i * 60000);
-    const label = `${String(d.getHours()).padStart(2, "0")}:${String(
-      d.getMinutes(),
-    ).padStart(2, "0")}`;
-    return { minute: label, count };
+    return { timestamp: startMs + i * 60000, count };
   });
 
   const verdicts: MonitorVerdictBucket[] = [...verdictCounts.entries()]

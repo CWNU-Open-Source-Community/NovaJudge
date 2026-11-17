@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { ContestRole, ContestStatus } from "@/lib/generated/prisma/client";
-import { verifyAuth } from "@/lib/auth";
+import { getCurrentSuper, getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export type SubmissionProgress = {
@@ -27,6 +26,7 @@ export async function canViewSubmissionTestDetails(submissionId: string) {
       contest: {
         select: {
           status: true,
+          endTime: true,
         },
       },
     },
@@ -34,49 +34,22 @@ export async function canViewSubmissionTestDetails(submissionId: string) {
 
   if (
     !submission?.contestId ||
-    submission.contest?.status !== ContestStatus.RUNNING
+    !submission.contest ||
+    submission.contest.status !== ContestStatus.RUNNING ||
+    new Date() >= submission.contest.endTime
   ) {
     return true;
   }
 
-  const cookieStore = await cookies();
-  const superAdminToken = cookieStore.get("auth_token")?.value;
-
-  if (superAdminToken) {
-    try {
-      const superAdminPayload = await verifyAuth(superAdminToken);
-      if (superAdminPayload?.isGlobalAdmin) {
-        return true;
-      }
-    } catch {
-      // Ignore invalid admin cookies and fall through to contest-role checks.
-    }
+  const globalUser = await getCurrentSuper();
+  if (globalUser) {
+    return globalUser.isGlobalAdmin;
   }
 
-  const userToken = cookieStore.get("user_token")?.value;
-  if (!userToken) {
-    return false;
-  }
-
-  try {
-    const payload = await verifyAuth(userToken);
-    if (!payload?.userId) {
-      return false;
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: {
-        contestId: true,
-        role: true,
-      },
-    });
-
-    return (
-      user?.contestId === submission.contestId &&
-      (user.role === ContestRole.ADMIN || user.role === ContestRole.JUDGE)
-    );
-  } catch {
-    return false;
-  }
+  const contestUser = await getCurrentUser();
+  return Boolean(
+    contestUser?.contestId === submission.contestId &&
+      (contestUser.role === ContestRole.ADMIN ||
+        contestUser.role === ContestRole.JUDGE),
+  );
 }

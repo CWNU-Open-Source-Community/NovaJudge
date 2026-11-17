@@ -1,5 +1,5 @@
-# 阶段 1：定义 go-judge 来源
-ARG GO_JUDGE_IMAGE=criyle/go-judge:v1.11.2
+# 阶段 1：固定 go-judge 来源版本，避免生产构建随 latest 漂移
+ARG GO_JUDGE_IMAGE=criyle/go-judge:v1.12.3
 FROM ${GO_JUDGE_IMAGE} AS source
 
 # Official GCC release, pinned to the multi-platform image digest. Bookworm's
@@ -70,7 +70,8 @@ RUN JDK_DIR=$(ls -d /usr/lib/jvm/java-21-openjdk-*) && \
 
 WORKDIR /opt
 
-# 拷贝 go-judge 二进制文件
+# 仅拷贝 go-judge 二进制，不继承来源镜像中可能与最终 Ubuntu rootfs
+# 不一致的运行时挂载配置；缺省配置会使用 /bin、/lib、/usr 等系统路径。
 COPY --from=source /opt/go-judge /opt/go-judge
 
 EXPOSE 5050 5051

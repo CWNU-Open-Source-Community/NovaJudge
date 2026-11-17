@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   ArrowPathIcon,
   ClockIcon,
@@ -33,13 +33,27 @@ function verdictClass(verdict: string) {
   return VERDICT_COLORS[verdict] ?? "bg-gray-100 text-gray-700";
 }
 
+function formatMinute(timestamp: number, localize: boolean) {
+  const date = new Date(timestamp);
+  if (!localize) return date.toISOString().slice(11, 16);
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+const subscribeToHydration = () => () => {};
+
 const CHART_W = 640;
 const CHART_H = 180;
 const CHART_PAD_TOP = 10;
 const CHART_PAD_BOTTOM = 26;
 const CHART_PAD_X = 2;
 
-function SubmissionsChart({ minutes }: { minutes: MonitorMinuteBucket[] }) {
+function SubmissionsChart({
+  minutes,
+  localizeTime,
+}: {
+  minutes: MonitorMinuteBucket[];
+  localizeTime: boolean;
+}) {
   const plotW = CHART_W - CHART_PAD_X * 2;
   const plotH = CHART_H - CHART_PAD_TOP - CHART_PAD_BOTTOM;
   const slot = plotW / minutes.length;
@@ -82,7 +96,9 @@ function SubmissionsChart({ minutes }: { minutes: MonitorMinuteBucket[] }) {
             rx="1"
             fill={isPeak ? "#2563eb" : m.count > 0 ? "#93c5fd" : "#e5e7eb"}
           >
-            <title>{`${m.minute} — ${m.count} submissions`}</title>
+            <title>
+              {`${formatMinute(m.timestamp, localizeTime)} — ${m.count} submissions`}
+            </title>
           </rect>
         );
       })}
@@ -95,7 +111,7 @@ function SubmissionsChart({ minutes }: { minutes: MonitorMinuteBucket[] }) {
           fontSize="9"
           fill="#9ca3af"
         >
-          {minutes[i].minute}
+          {formatMinute(minutes[i].timestamp, localizeTime)}
         </text>
       ))}
     </svg>
@@ -109,6 +125,13 @@ export default function MonitorClient({
 }) {
   const [data, setData] = useState<MonitorStats>(initial);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  // SSR/首次 hydration 使用稳定的 UTC 标签；挂载后再切换为浏览器本地时区，
+  // 避免服务器与管理员浏览器时区不同导致 hydration mismatch。
+  const isHydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
 
   useEffect(() => {
     let stopped = false;
@@ -223,7 +246,7 @@ export default function MonitorClient({
             No submissions in the last hour.
           </div>
         ) : (
-          <SubmissionsChart minutes={minutes} />
+          <SubmissionsChart minutes={minutes} localizeTime={isHydrated} />
         )}
       </div>
 

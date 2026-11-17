@@ -1,6 +1,6 @@
 {
   "name": "novajudge",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "bin": {
     "submit": "./scripts/submit.mjs"
@@ -39,7 +39,14 @@
     "test:polygon:integration": "tsx scripts/test-polygon-protocol.ts",
     "test:problem-update:integration": "tsx -r dotenv/config scripts/test-problem-update.ts",
     "test:communication:integration": "tsx -r dotenv/config scripts/test-communication.ts",
-    "postinstall": "npx prisma db push && npx prisma generate && npx tsx scripts/copy-monaco.ts"
+    "postinstall": "prisma generate && tsx scripts/copy-monaco.ts",
+    "db:deploy": "node scripts/deploy-database.mjs",
+    "db:status": "prisma migrate status",
+    "upgrade": "bash scripts/upgrade-production.sh",
+    "test": "node scripts/test-unit.mjs",
+    "test:database-upgrade": "node --test scripts/database-upgrade.integration.test.mjs",
+    "test:proctoring": "tsx --test lib/proctoring-access.test.ts",
+    "test:proctoring:integration": "tsx scripts/test-proctoring-login.ts"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
@@ -100,5 +107,8 @@
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
   }
 }

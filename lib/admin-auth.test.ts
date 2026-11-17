@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { Verdict } from "./generated/prisma/enums";
 
 type ServerAction = (...args: unknown[]) => Promise<unknown>;
 
@@ -76,6 +77,7 @@ for (const filename of protectedActionFiles) {
       const actions = loadModule(filename, {
         "@/lib/admin-auth": auth,
         "@/lib/prisma": { prisma: forbiddenEffect },
+        "@/lib/generated/prisma/enums": { Verdict },
         "fs": { promises: forbiddenEffect },
         "fs/promises": forbiddenEffect,
         "path": path,

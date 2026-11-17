@@ -14,6 +14,20 @@ export const DEFAULT_MEDAL: ContestMedalConfig = {
   bronze: 0,
 };
 
+/**
+ * 冠亚季按学校去重时使用的稳定键。
+ *
+ * 未填写学校的队伍不能互相视为同校，因此退回到队伍用户名；同时给键加上
+ * 类型前缀，避免学校名恰好与用户名相同时发生碰撞。
+ */
+export function getSchoolDeduplicationKey(team: {
+  school: string | null;
+  username: string;
+}): string {
+  const school = team.school?.trim();
+  return school ? `school:${school}` : `team:${team.username}`;
+}
+
 /** 与排行榜页一致的奖牌数量计算：ratio 为百分比，fixed 为固定数量 */
 export function getMedalCounts(
   total: number,
@@ -21,22 +35,38 @@ export function getMedalCounts(
 ): { gold: number; silver: number; bronze: number } {
   const cfg = medal || DEFAULT_MEDAL;
   const mode = cfg.mode || "ratio";
+  const teamCount = Math.max(0, Math.floor(Number(total) || 0));
   const gold = Math.max(0, Number(cfg.gold || 0));
   const silver = Math.max(0, Number(cfg.silver || 0));
   const bronze = Math.max(0, Number(cfg.bronze || 0));
 
-  if (mode === "fixed") {
-    return {
-      gold: Math.min(total, Math.floor(gold)),
-      silver: Math.min(total, Math.floor(silver)),
-      bronze: Math.min(total, Math.floor(bronze)),
-    };
-  }
+  const requested =
+    mode === "fixed"
+      ? {
+          gold: Math.floor(gold),
+          silver: Math.floor(silver),
+          bronze: Math.floor(bronze),
+        }
+      : {
+          gold: Math.ceil((teamCount * gold) / 100),
+          silver: Math.ceil((teamCount * silver) / 100),
+          bronze: Math.ceil((teamCount * bronze) / 100),
+        };
 
+  // 奖牌按金、银、铜依次从剩余队伍中分配，保证总数不会超过正式队伍数。
+  const allocatedGold = Math.min(teamCount, requested.gold);
+  const allocatedSilver = Math.min(
+    teamCount - allocatedGold,
+    requested.silver,
+  );
+  const allocatedBronze = Math.min(
+    teamCount - allocatedGold - allocatedSilver,
+    requested.bronze,
+  );
   return {
-    gold: Math.min(total, Math.ceil((total * gold) / 100)),
-    silver: Math.min(total, Math.ceil((total * silver) / 100)),
-    bronze: Math.min(total, Math.ceil((total * bronze) / 100)),
+    gold: allocatedGold,
+    silver: allocatedSilver,
+    bronze: allocatedBronze,
   };
 }
 

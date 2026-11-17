@@ -1,15 +1,17 @@
 import Navbar from "@/components/Navbar";
 import Link from "next/link";
 import { isCliEnabled } from "@/lib/cli-deployment";
+import { getSiteConfig } from "@/lib/site-config";
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const site = getSiteConfig();
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
+      <Navbar siteName={site.name} />
 
       {/* 主内容区域 */}
       <main className="flex justify-center w-full max-w-full mx-auto p-4 sm:p-6 lg:p-8 bg-zinc-100">
@@ -26,10 +28,11 @@ export default function RootLayout({
             安装 submit 命令行（Windows / macOS）
           </Link>}
           <p className="text-gray-500 text-xs">
+            {site.footer && <>{site.footer}<br /></>}
             Powered by{" "}
             <a
               className=" text-gray-800"
-              href="https://github.com/pppolf/NovaJudge"
+              href="https://github.com/CWNU-Open-Source-Community/NovaJudge"
               target="_blank"
             >
               NovaJudge

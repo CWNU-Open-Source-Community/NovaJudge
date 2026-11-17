@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { verifyAuth } from "@/lib/auth";
+import { getCurrentSuper, getCurrentUser } from "@/lib/auth";
 import { ContestRole, Verdict } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getOfficialSubmissionWhere } from "@/lib/official-submission";
 import { contestAccessResponse } from "@/lib/contest-access";
 
 type ContestExportConfig = {
@@ -90,25 +90,16 @@ function getMedalCounts(total: number, config: ContestExportConfig | null) {
 }
 
 async function canExportRank(contestId: number) {
-  const cookieStore = await cookies();
-  const adminToken = cookieStore.get("auth_token")?.value;
-  const userToken = cookieStore.get("user_token")?.value;
-
-  if (adminToken) {
-    const payload = await verifyAuth(adminToken);
-    if (payload?.isGlobalAdmin) return true;
+  const globalUser = await getCurrentSuper();
+  if (globalUser) {
+    return globalUser.isGlobalAdmin;
   }
 
-  if (userToken) {
-    const payload = await verifyAuth(userToken);
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { contestId: true, role: true },
-    });
-    return user?.contestId === contestId && user.role === ContestRole.ADMIN;
-  }
-
-  return false;
+  const contestUser = await getCurrentUser();
+  return Boolean(
+    contestUser?.contestId === contestId &&
+      contestUser.role === ContestRole.ADMIN,
+  );
 }
 
 function cell(value: unknown, style = "Default") {
@@ -160,7 +151,13 @@ export async function GET(
           school: true,
           category: true,
           submissions: {
-            where: { contestId: cid, submittedAt: { lte: contest.endTime } },
+            where: {
+              contestId: cid,
+              submittedAt: {
+                gte: contest.startTime,
+                lte: contest.endTime,
+              },
+            },
             select: {
               displayId: true,
               problemId: true,
@@ -181,12 +178,18 @@ export async function GET(
     const firstBloodByProblem = new Map<number, string>();
     const allAccepted = await prisma.submission.findMany({
       where: {
-        contestId: cid,
+        ...getOfficialSubmissionWhere({
+          contestId: cid,
+          startTime: contest.startTime,
+          endTime: contest.endTime,
+        }),
         verdict: Verdict.ACCEPTED,
-        submittedAt: { lte: contest.endTime },
         user: {
-          role: ContestRole.TEAM,
-          OR: [{ category: null }, { category: { not: "1" } }],
+          is: {
+            contestId: cid,
+            role: ContestRole.TEAM,
+            OR: [{ category: null }, { category: { not: "1" } }],
+          },
         },
       },
       select: {

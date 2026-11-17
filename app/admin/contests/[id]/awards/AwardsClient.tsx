@@ -14,6 +14,7 @@ import { ContestStatus } from "@/lib/generated/prisma/enums";
 import {
   getMedalCounts,
   formatFtsCitation,
+  getSchoolDeduplicationKey,
   type ContestMedalConfig,
 } from "@/lib/medal-utils";
 import type {
@@ -24,6 +25,7 @@ import type {
 import { saveContestAwards } from "./actions";
 
 interface CustomAwardDraft {
+  id: string;
   citation: string;
   teamIds: string[];
 }
@@ -49,6 +51,14 @@ interface AwardsClientProps {
 const inputClass =
   "rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 const labelClass = "mb-1 block text-xs font-bold text-gray-600";
+
+function createCustomAwardId() {
+  const suffix = globalThis.crypto?.randomUUID?.();
+  return `special-${
+    suffix ||
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+  }`;
+}
 
 function medalChip(type: "gold" | "silver" | "bronze") {
   if (type === "gold")
@@ -166,6 +176,7 @@ export default function AwardsClient({
   });
   const [custom, setCustom] = useState<CustomAwardDraft[]>(
     (initial.awards.custom || []).map((a) => ({
+      id: a.id,
       citation: a.citation,
       teamIds: a.teamIds,
     })),
@@ -280,9 +291,9 @@ export default function AwardsClient({
     ];
     return seats.map((seat) => {
       const team = official.find(
-        (t) => !schoolsSeen.has(t.school ?? "__none__"),
+        (t) => !schoolsSeen.has(getSchoolDeduplicationKey(t)),
       );
-      if (team) schoolsSeen.add(team.school ?? "__none__");
+      if (team) schoolsSeen.add(getSchoolDeduplicationKey(team));
       return { ...seat, team: team ?? null };
     });
   }, [topThreeEnabled, top3Citations, official]);
@@ -320,15 +331,15 @@ export default function AwardsClient({
     const parts: string[] = [];
     let total = 0;
     if (counts.gold > 0) {
-      total++;
+      total += 2;
       parts.push(`金牌 ${counts.gold} 队`);
     }
     if (counts.silver > 0) {
-      total++;
+      total += 2;
       parts.push(`银牌 ${counts.silver} 队`);
     }
     if (counts.bronze > 0) {
-      total++;
+      total += 2;
       parts.push(`铜牌 ${counts.bronze} 队`);
     }
     if (topThreeEnabled) {
@@ -382,7 +393,14 @@ export default function AwardsClient({
   };
 
   const addCustom = () => {
-    setCustom((prev) => [...prev, { citation: "", teamIds: [] }]);
+    setCustom((prev) => [
+      ...prev,
+      {
+        id: createCustomAwardId(),
+        citation: "",
+        teamIds: [],
+      },
+    ]);
   };
 
   const removeCustom = (index: number) => {
@@ -409,6 +427,7 @@ export default function AwardsClient({
         third: top3Citations.third.trim() || undefined,
       },
       custom: custom.map((a) => ({
+        id: a.id,
         citation: a.citation.trim(),
         teamIds: a.teamIds,
       })),
@@ -434,6 +453,7 @@ export default function AwardsClient({
       third: initial.awards.topThreeCitations?.third || "",
     },
     custom: (initial.awards.custom || []).map((a) => ({
+      id: a.id,
       citation: a.citation,
       teamIds: a.teamIds,
     })),
@@ -902,7 +922,7 @@ export default function AwardsClient({
         <div className="space-y-3">
           {custom.map((a, index) => (
             <div
-              key={index}
+              key={a.id}
               className="flex flex-col md:flex-row gap-3 items-start p-3 border border-gray-200 rounded-lg bg-gray-50/50"
             >
               <div className="flex-1 min-w-0">

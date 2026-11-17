@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { getJwtSecretKey, getVerifiedGlobalUser, verifyAuth } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { contestAccessCookieName, verifyContestAccessToken } from "@/lib/contest-access-token";
+import { proctoringAccessAllowed, PROCTORING_HEADER } from "@/lib/proctoring-access";
 
 // Capture request credentials so streams can recheck access without next/headers.
 export async function createCCSAuthValidator(req: NextRequest) {
@@ -15,16 +16,23 @@ export async function createCCSAuthValidator(req: NextRequest) {
       "utf-8",
     );
     const separator = credentials.indexOf(":");
-    const username = credentials.slice(0, separator);
-    const password = credentials.slice(separator + 1);
+    const username = separator >= 0 ? credentials.slice(0, separator) : "";
+    const password = separator >= 0 ? credentials.slice(separator + 1) : "";
 
-    if (separator > 0 && username && password) {
-      // Check against GlobalUser (admin)
+    if (username && password) {
+      // CCS Basic Auth is an administrative credential. External/global
+      // accounts must not gain CCS access merely because they have a password.
       const user = await prisma.globalUser.findUnique({
         where: { username },
+        select: { password: true, role: true, isBanned: true },
       });
 
-      if (user?.role === "SUPER_ADMIN" && user.password) {
+      if (
+        user &&
+        user.role === "SUPER_ADMIN" &&
+        !user.isBanned &&
+        user.password
+      ) {
         const isValid = await bcrypt.compare(password, user.password);
         if (isValid) return async () => true;
       }
@@ -32,8 +40,11 @@ export async function createCCSAuthValidator(req: NextRequest) {
   }
 
   const adminToken = req.cookies.get("auth_token")?.value;
-  if (adminToken && (await getVerifiedGlobalUser(adminToken))?.isGlobalAdmin) {
-    return async () => true;
+  if (adminToken) {
+    const globalUser = await getVerifiedGlobalUser(adminToken);
+    // Match the active identity used elsewhere: a valid global session takes
+    // precedence over any older contest cookie.
+    if (globalUser) return globalUser.isGlobalAdmin ? async () => true : null;
   }
 
   // 检查是否是当前比赛的管理员 (Contest Admin)
@@ -51,10 +62,11 @@ export async function createCCSAuthValidator(req: NextRequest) {
       const payload = await verifyAuth(userToken);
       if (payload.contestId !== contestId) return false;
       const [user, contest] = await Promise.all([
-        prisma.user.findUnique({ where: { id: payload.userId }, select: { contestId: true, role: true } }),
+        prisma.user.findUnique({ where: { id: payload.userId }, select: { contestId: true, role: true, proctoringKeyHash: true } }),
         prisma.contest.findUnique({ where: { id: contestId }, select: { id: true, type: true, password: true } }),
       ]);
       if (!contest || user?.contestId !== contestId || user.role !== ContestRole.ADMIN) return false;
+      if (!proctoringAccessAllowed(user.proctoringKeyHash, payload, req.headers.get(PROCTORING_HEADER))) return false;
       return contest.type === "PUBLIC" ||
         await verifyContestAccessToken(accessToken, contest, getJwtSecretKey());
     } catch {

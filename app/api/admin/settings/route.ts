@@ -1,5 +1,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { getCurrentSuper, UserJwtPayload } from "@/lib/auth";
 import {
   getManagedEnvSettings,
@@ -12,9 +13,21 @@ export async function GET() {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
+  // 获取设置，如果不存在则创建默认值
+  let setting = await prisma.systemSetting.findUnique({
+    where: { id: "default" },
+  });
+
+  if (!setting) {
+    setting = await prisma.systemSetting.create({
+      data: { id: "default" },
+    });
+  }
+
   const envSettings = await getManagedEnvSettings();
 
   return NextResponse.json({
+    ...setting,
     envSettings,
   });
 }
@@ -27,7 +40,21 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { envSettings } = body;
+    const { allowExternalLogin, envSettings } = body;
+
+    const setting = await prisma.systemSetting.upsert({
+      where: { id: "default" },
+      update: {
+        ...(typeof allowExternalLogin === "boolean"
+          ? { allowExternalLogin }
+          : {}),
+      },
+      create: {
+        id: "default",
+        allowExternalLogin:
+          typeof allowExternalLogin === "boolean" ? allowExternalLogin : false,
+      },
+    });
 
     const nextEnvSettings =
       envSettings && typeof envSettings === "object"
@@ -35,6 +62,7 @@ export async function PUT(req: NextRequest) {
         : await getManagedEnvSettings();
 
     return NextResponse.json({
+      ...setting,
       envSettings: nextEnvSettings,
     });
   } catch (e) {

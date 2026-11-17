@@ -31,6 +31,7 @@ export default function RejudgeButton({
 
         if (result?.error) {
           toast.error(result.error);
+          router.refresh();
           return;
         }
 

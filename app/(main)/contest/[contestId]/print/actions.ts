@@ -2,11 +2,10 @@
 
 import { requireContestAccess } from "@/lib/contest-access";
 
-import { getCurrentSuper, getCurrentUser, UserJwtPayload, verifyAuth } from "@/lib/auth";
+import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { ContestRole, PrintJobStatus } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
 
 const ALLOWED_PRINT_EXTENSIONS = [".cpp", ".c", ".cc", ".cxx", ".java", ".py"];
 const MAX_PRINT_CHARS = 100_000;
@@ -43,10 +42,8 @@ export async function createPrintJob(
 ) {
   await requireContestAccess(contestId);
   try {
-    const token = (await cookies()).get("user_token")?.value;
-    if (!token) return { error: "Please sign in before printing." };
-
-    const payload = await verifyAuth(token);
+    const payload = await getCurrentUser();
+    if (!payload) return { error: "Please sign in before printing." };
     if (payload.contestId !== contestId || payload.role !== ContestRole.TEAM) {
       return { error: "Only contest teams can request code printing." };
     }

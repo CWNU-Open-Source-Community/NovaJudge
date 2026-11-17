@@ -116,54 +116,27 @@ See the [installation and usage guide](./docs/CONTESTANT_CLI.md).
 
 ## Quick Start
 
-Clone the repository and install dependencies:
+Use Node.js 22. Dependency installation does not connect to or change your database.
 
 ```bash
-git clone https://github.com/pppolf/NovaJudge.git
+git clone https://github.com/CWNU-Open-Source-Community/NovaJudge.git
 cd NovaJudge
-npm install
-```
-
-Create an environment file:
-
-```bash
 cp .env.example .env
-```
-
-Common environment variables:
-
-```env
-DATABASE_URL="postgresql://postgres:password@localhost:5432/xcpc_oj?schema=public"
-REDIS_URL="redis://localhost:6379"
-GO_JUDGE_API="http://localhost:5050"
-JWT_SECRET="please-change-this-secret"
-SUPER_ADMIN_USERNAME="admin"
-SUPER_ADMIN_PASSWORD="123456"
-JUDGE_CONCURRENCY=4
-NOVAJUDGE_URL="http://localhost:3001"
-```
-
-Start PostgreSQL, Redis, and go-judge:
-
-```bash
-docker-compose up -d
-```
-
-Initialize Prisma and start the web app:
-
-```bash
-npx prisma db push
-npm run prisma
+# Fill in database credentials, JWT_SECRET and administrator credentials.
+npm ci
+docker compose up -d --build --wait
+npm run db:deploy
 npm run dev
 ```
 
-Start the judge worker in another terminal:
-
-```bash
-npm run worker
-```
-
-The default development server runs at `http://localhost:3001`.
+Run `npm run worker` in another terminal. The Web server uses port 3001.
+For production, run `npm run build` and `npm run start` with a process manager.
+Existing public and private deployments use the same code. See the
+[deployment and handover guide](docs/DEPLOYMENT.md) before upgrading an existing database.
+It covers backups, legacy schema adoption, rollback, optional external authentication,
+site branding, and organization mappings. New sites disable external login by default;
+existing sites retain their saved preference. The exam streaming console has been removed;
+judge monitoring remains at `/admin/judge-monitor`.
 
 ## Running Multiple Judge Workers
 
@@ -180,7 +153,7 @@ npm run worker
 npm run worker -- --id 1
 npm run worker -- --id 2
 
-# Start several workers at once: 4 workers with IDs 1-4
+# Start four workers with globally allocated IDs
 npm run worker:multi -- 4
 
 # Or control it through environment variables
@@ -278,6 +251,8 @@ npm run build        # Build for production
 npm run start        # Start the production server
 npm run lint         # Run ESLint
 npm run prisma       # Generate Prisma Client
+npm run db:deploy    # Explicitly deploy database migrations
+npm test             # Run application and CLI regression tests
 npm run worker       # Start a judge worker (auto-assigned ID)
 npm run worker:multi # Start multiple judge workers, e.g. "npm run worker:multi -- 4"
 npm run worker:dev   # Start a judge worker in watch mode

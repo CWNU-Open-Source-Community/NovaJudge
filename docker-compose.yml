@@ -4,16 +4,17 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: xcpc-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: xcpc_oj
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-xcpc_oj}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -21,6 +22,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: xcpc-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
@@ -32,22 +34,31 @@ services:
       retries: 5
 
   go-judge:
-   build:
-     context: .
-     dockerfile: Dockerfile
-  #  image: go-judge:latest
-   container_name: xcpc-go-judge
-   ports:
-     - "5050:5050"
-     - "5051:5051"
-   volumes:
-     - /tmp/judge:/tmp/judge
-   privileged: true
-   healthcheck:
-     test: ["CMD", "curl", "-f", "http://localhost:5050/config"]
-     interval: 10s
-     timeout: 5s
-     retries: 5
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # image: go-judge:latest
+    container_name: xcpc-go-judge
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+      - "5051:5051"
+    volumes:
+      - /tmp/judge:/tmp/judge
+      # go-judge must create and manage cgroups for sandboxed processes.
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    privileged: true
+    # Ubuntu 22.04 uses cgroup v2. Sharing the host cgroup namespace prevents
+    # go-judge from resolving an empty cgroup path inside the container.
+    cgroup: host
+    # go-judge stores its transient file data in shared memory by default.
+    shm_size: 256m
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:5050/config"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   postgres_data:

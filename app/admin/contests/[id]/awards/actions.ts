@@ -14,6 +14,7 @@ import {
   type StandingRow,
 } from "@/lib/awards";
 import type { ContestMedalConfig } from "@/lib/medal-utils";
+import { randomUUID } from "node:crypto";
 
 // 保存时提交的奖项数据
 export interface AwardsInput {
@@ -35,7 +36,7 @@ export interface AwardsInput {
       runnerUp?: string;
       third?: string;
     };
-    custom: { citation: string; teamIds: string[] }[];
+    custom: { id?: string; citation: string; teamIds: string[] }[];
   };
 }
 
@@ -116,11 +117,20 @@ export async function saveContestAwards(
     if (!contest) return { error: "Contest not found" };
 
     // 1. 基础校验
+    const mode =
+      input.medal.mode === "fixed"
+        ? ("fixed" as const)
+        : ("ratio" as const);
+    const normalizeMedalValue = (value: number) => {
+      const parsed = Number(value);
+      const nonNegative = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+      return mode === "fixed" ? Math.floor(nonNegative) : nonNegative;
+    };
     const medal = {
-      mode: input.medal.mode === "fixed" ? ("fixed" as const) : ("ratio" as const),
-      gold: Math.max(0, Math.floor(Number(input.medal.gold) || 0)),
-      silver: Math.max(0, Math.floor(Number(input.medal.silver) || 0)),
-      bronze: Math.max(0, Math.floor(Number(input.medal.bronze) || 0)),
+      mode,
+      gold: normalizeMedalValue(input.medal.gold),
+      silver: normalizeMedalValue(input.medal.silver),
+      bronze: normalizeMedalValue(input.medal.bronze),
     };
     if (medal.mode === "ratio") {
       if (medal.gold > 100 || medal.silver > 100 || medal.bronze > 100) {
@@ -134,6 +144,7 @@ export async function saveContestAwards(
       : []
     )
       .map((a) => ({
+        id: typeof a.id === "string" ? a.id.trim() : "",
         citation: (a.citation || "").trim(),
         teamIds: Array.from(
           new Set(Array.isArray(a.teamIds) ? a.teamIds : []),
@@ -164,11 +175,16 @@ export async function saveContestAwards(
         return { error: "Every custom award needs a citation (name)." };
       }
     }
-    const customWithIds = custom.map((a, index) => ({
-      id: `special-${index + 1}`,
+    const customWithIds = custom.map((a) => ({
+      id: /^special-[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/.test(a.id)
+        ? a.id
+        : `special-${randomUUID()}`,
       citation: a.citation,
       teamIds: a.teamIds,
     }));
+    if (new Set(customWithIds.map((award) => award.id)).size !== customWithIds.length) {
+      return { error: "Every custom award must have a unique ID." };
+    }
 
     // 3. 合并进 contest.config（保留其他字段）
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

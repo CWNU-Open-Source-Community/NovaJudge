@@ -1,4 +1,8 @@
-import { signAuth, verifyAuth } from "@/lib/auth";
+import {
+  getVerifiedContestUser,
+  getVerifiedGlobalUser,
+  signAuth,
+} from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getClientIpCandidates } from "@/lib/request-ip";
@@ -37,24 +41,33 @@ export async function GET(req: NextRequest, { params }: Props) {
     return denied;
   }
 
-  const existingUserToken = req.cookies.get("user_token")?.value;
-  if (existingUserToken) {
-    try {
-      const payload = await verifyAuth(existingUserToken);
-      if (payload.contestId === cid) {
-        return contestRedirect(cid, "?login=true");
-      }
-    } catch {}
-  }
-
   const authToken = req.cookies.get("auth_token")?.value;
   if (authToken) {
-    try {
-      const payload = await verifyAuth(authToken);
-      if (payload.isGlobalAdmin) {
-        return contestRedirect(cid, "");
+    const globalUser = await getVerifiedGlobalUser(authToken);
+    if (globalUser) {
+      const response = contestRedirect(cid, "");
+      if (req.cookies.get("user_token")?.value) {
+        response.cookies.set("user_token", "", {
+          httpOnly: true,
+          path: "/",
+          sameSite: "lax",
+          maxAge: 0,
+          expires: new Date(0),
+          secure:
+            process.env.NODE_ENV === "production" &&
+            process.env.ENABLE_SECURE_COOKIE === "true",
+        });
       }
-    } catch {}
+      return response;
+    }
+  }
+
+  const existingUserToken = req.cookies.get("user_token")?.value;
+  if (existingUserToken) {
+    const payload = await getVerifiedContestUser(existingUserToken);
+    if (payload?.contestId === cid) {
+      return contestRedirect(cid, "?login=true");
+    }
   }
 
   const clientIps = getClientIpCandidates(req.headers);
@@ -104,6 +117,16 @@ export async function GET(req: NextRequest, { params }: Props) {
     httpOnly: true,
     path: "/",
     sameSite: "lax",
+    secure:
+      process.env.NODE_ENV === "production" &&
+      process.env.ENABLE_SECURE_COOKIE === "true",
+  });
+  response.cookies.set("auth_token", "", {
+    httpOnly: true,
+    path: "/",
+    sameSite: "strict",
+    maxAge: 0,
+    expires: new Date(0),
     secure:
       process.env.NODE_ENV === "production" &&
       process.env.ENABLE_SECURE_COOKIE === "true",

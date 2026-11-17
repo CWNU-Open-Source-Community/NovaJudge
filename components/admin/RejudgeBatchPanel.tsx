@@ -80,10 +80,18 @@ export default function RejudgeBatchPanel() {
     setCount(null); // 条件变化后，旧的数量预览失效
   };
 
+  // datetime-local 不携带时区；在浏览器按管理员本地时间解析后转换成 ISO，
+  // 避免服务端按 UTC 解析造成筛选时间偏移。空值保持为空。
+  const getServerFilters = (): RejudgeFilters => ({
+    ...filters,
+    from: filters.from ? new Date(filters.from).toISOString() : "",
+    to: filters.to ? new Date(filters.to).toISOString() : "",
+  });
+
   const handlePreview = async () => {
     setCounting(true);
     try {
-      const result = await countRejudgeCandidates(filters);
+      const result = await countRejudgeCandidates(getServerFilters());
       if (result.error) {
         toast.error(result.error);
         setCount(null);
@@ -107,13 +115,14 @@ export default function RejudgeBatchPanel() {
     setConfirmOpen(false);
     setRejudging(true);
     try {
-      const result = await rejudgeByFilters(filters);
-      if (result.error) {
+      const result = await rejudgeByFilters(getServerFilters());
+      if (result.error && result.queued === undefined) {
         toast.error(result.error);
         return;
       }
       const message = `已入队 ${result.queued ?? 0} 条，跳过 ${result.skipped ?? 0} 条，入队失败 ${result.failed ?? 0} 条`;
-      if (result.failed) toast.error(message);
+      if (result.error) toast.error(`${result.error} ${message}`);
+      else if (result.failed) toast.error(message);
       else toast.success(message);
       setCount(null);
       router.refresh();

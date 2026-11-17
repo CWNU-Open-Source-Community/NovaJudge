@@ -34,7 +34,21 @@ export async function adminSubmit(
       },
     });
 
-    await enqueueJudge(submission.id);
+    try {
+      await enqueueJudge(submission.id);
+    } catch (error) {
+      await prisma.submission.update({
+        where: { id: submission.id },
+        data: {
+          verdict: Verdict.SYSTEM_ERROR,
+          errorMessage:
+            error instanceof Error
+              ? error.message
+              : "Judge queue unavailable.",
+        },
+      });
+      throw error;
+    }
 
     revalidatePath(`/admin/submissions`);
     return { success: true, submissionId: submission.id };

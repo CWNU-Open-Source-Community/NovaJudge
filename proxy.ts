@@ -6,10 +6,16 @@ import { proctoringAccessAllowed, PROCTORING_HEADER, PROCTORING_REQUIRED } from 
 
 export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
-  const userToken = req.cookies.get("user_token")?.value || req.headers.get("authorization")?.match(/^Bearer (\S+)$/i)?.[1];
+  const bearerToken = req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   const globalToken = req.cookies.get("auth_token")?.value;
-  const administrator = globalToken ? await getVerifiedGlobalUser(globalToken) : null;
-  if (userToken && !userToken.startsWith("njcli_") && !administrator?.isGlobalAdmin && !["/api/auth/login", "/api/auth/logout"].includes(path)) {
+  const globalUser = globalToken ? await getVerifiedGlobalUser(globalToken) : null;
+  // Match the identity used by the route: CLI endpoints use Bearer tokens,
+  // while browser routes prefer a verified global session over contest cookies.
+  const userToken = path.startsWith("/api/cli/")
+    ? bearerToken
+    : globalUser ? undefined : req.cookies.get("user_token")?.value;
+  // Device tokens are checked against their monitored login inside the CLI API.
+  if (userToken && !userToken.startsWith("njcli_") && !["/api/auth/login", "/api/auth/logout", "/api/auth/external/password-login"].includes(path)) {
     let payload;
     try { payload = await verifyAuth(userToken); } catch { /* Existing route authentication handles invalid tokens. */ }
     if (payload?.contestId && !payload.isGlobalAdmin) {

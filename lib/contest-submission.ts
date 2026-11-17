@@ -1,4 +1,10 @@
-import { ContestRole, Verdict, type Prisma, type Submission } from "@/lib/generated/prisma/client";
+import {
+  ContestRole,
+  ContestStatus,
+  Verdict,
+  type Prisma,
+  type Submission,
+} from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { enqueueJudge } from "@/lib/queue";
 import { redis } from "@/lib/redis";
@@ -118,7 +124,8 @@ export async function createContestSubmission({
     }
   }
   const config = contest.config as ContestFreezeConfig | null;
-  const isEnded = now > contest.endTime;
+  const isEnded =
+    contest.status === ContestStatus.ENDED || now >= contest.endTime;
 
   let isFrozen = false;
   if (config?.frozenDuration) {
@@ -129,18 +136,21 @@ export async function createContestSubmission({
   }
 
   if (actor.type === "contest") {
-    const user = await prisma.user.findUnique({
+    const contestUser = await prisma.user.findUnique({
       where: { id: actor.userId },
       select: { contestId: true, role: true },
     });
-    if (!user || user.contestId !== contestId) {
-      throw new Error("The account does not belong to this contest.");
+
+    if (
+      !contestUser ||
+      contestUser.contestId !== contestId ||
+      contestUser.role !== ContestRole.TEAM
+    ) {
+      throw new Error("Only teams in this contest can submit code.");
     }
-    if (user.role !== ContestRole.TEAM) {
-      throw new Error("Only contest teams can submit code.");
-    }
+
     if (now < contest.startTime) {
-      throw new Error("The contest has not started.");
+      throw new Error("The contest has not started yet.");
     }
 
     if (isEnded && isFrozen) {
@@ -153,25 +163,34 @@ export async function createContestSubmission({
   let virtualParticipationId: string | null = null;
 
   if (actor.type === "global") {
+    const globalUser = await prisma.globalUser.findUnique({
+      where: { id: actor.globalUserId },
+      select: { externalId: true, isBanned: true },
+    });
+
+    if (!globalUser || globalUser.isBanned) {
+      throw new Error("Global user is unavailable.");
+    }
+
     if (!isEnded) {
-      throw new Error("Virtual participation is available after the contest ends.");
+      throw new Error("Global submissions are available after the contest ends.");
     }
 
-    if (!isVpEnabled(contest.config)) {
-      throw new Error("Virtual participation is not enabled for this contest.");
-    }
-
+    const isExternalUser = globalUser.externalId !== null;
     const vp = await getRunningVirtualParticipation(
       contestId,
       actor.globalUserId,
       now,
     );
 
-    if (!vp) {
+    if (vp) {
+      virtualParticipationId = vp.id;
+    } else if (!isExternalUser) {
+      if (!isVpEnabled(contest.config)) {
+        throw new Error("Virtual participation is not enabled for this contest.");
+      }
       throw new Error("Start virtual participation before submitting.");
     }
-
-    virtualParticipationId = vp.id;
   }
 
   const nextId = await getNextDisplayId(contestId);

@@ -9,6 +9,7 @@ import {
   getLatestVirtualParticipation,
   getRunningVirtualParticipation,
 } from "@/lib/virtual-participation";
+import { getOfficialSubmissionWhere } from "@/lib/official-submission";
 
 interface Props {
   params: Promise<{
@@ -71,6 +72,11 @@ export default async function Problems({ params }: Props) {
 
   const userId = userPayload?.userId;
   const globalUserId = (globalUser as unknown as UserJwtPayload)?.userId;
+  const isExternalUser =
+    Boolean(globalUser?.externalId) && !globalUser?.isGlobalAdmin;
+  const isContestEnded =
+    contestInfo.status === ContestStatus.ENDED ||
+    new Date() >= contestInfo.endTime;
   const runningVp =
     !userId && globalUserId
       ? await getRunningVirtualParticipation(contestId, String(globalUserId))
@@ -81,49 +87,49 @@ export default async function Problems({ params }: Props) {
       : null;
 
   // 封榜统计逻辑
-  const config = contestInfo?.config as { frozenDuration?: number } | null;
+  const config = contestInfo.config as { frozenDuration?: number } | null;
   const frozenDuration = config?.frozenDuration ?? 0;
-  const endTime = contestInfo?.endTime;
+  let officialVisibleUntil = contestInfo.endTime;
+  let officialUpperBoundExclusive = false;
 
-  let dateFilter = {};
-
-  if (frozenDuration > 0 && endTime) {
-    const freezeTime = new Date(endTime.getTime() - frozenDuration * 60 * 1000);
-    dateFilter = {
-      submittedAt: {
-        lt: freezeTime,
-      },
-    };
+  if (frozenDuration > 0) {
+    officialVisibleUntil = new Date(
+      contestInfo.endTime.getTime() - frozenDuration * 60 * 1000,
+    );
+    officialUpperBoundExclusive = true;
   }
 
   if (runningVp) {
     const now = new Date();
-    dateFilter = {
-      submittedAt: {
-        lte: new Date(
-          Math.min(
-            contestInfo.startTime.getTime() +
-              (now.getTime() - runningVp.startedAt.getTime()),
-            contestInfo.endTime.getTime(),
-          ),
-        ),
-      },
-    };
+    officialVisibleUntil = new Date(
+      Math.min(
+        contestInfo.startTime.getTime() +
+          (now.getTime() - runningVp.startedAt.getTime()),
+        contestInfo.endTime.getTime(),
+      ),
+    );
+    officialUpperBoundExclusive = false;
   }
+
+  const officialWhere = getOfficialSubmissionWhere({
+    contestId,
+    startTime: contestInfo.startTime,
+    endTime: contestInfo.endTime,
+    visibleUntil: officialVisibleUntil,
+    exclusiveUpperBound: officialUpperBoundExclusive,
+  });
 
   const totalStats = await prisma.submission.groupBy({
     by: ["problemId"],
-    where: { contestId: contestId, virtualParticipationId: null, ...dateFilter },
+    where: officialWhere,
     _count: { _all: true },
   });
 
   const acStats = await prisma.submission.groupBy({
     by: ["problemId"],
     where: {
-      contestId: contestId,
+      ...officialWhere,
       verdict: Verdict.ACCEPTED,
-      virtualParticipationId: null,
-      ...dateFilter,
     },
     _count: { _all: true },
   });
@@ -182,9 +188,22 @@ export default async function Problems({ params }: Props) {
             verdict: Verdict.ACCEPTED,
             ...(userId
               ? { userId }
-              : latestVp
-                ? { virtualParticipationId: latestVp.id }
-                : { id: "__never__" }),
+              : runningVp
+                ? {
+                    globalUserId: String(globalUserId),
+                    virtualParticipationId: runningVp.id,
+                  }
+                : isExternalUser && isContestEnded
+                  ? {
+                      globalUserId: String(globalUserId),
+                      virtualParticipationId: null,
+                    }
+                  : latestVp
+                    ? {
+                        globalUserId: String(globalUserId),
+                        virtualParticipationId: latestVp.id,
+                      }
+                    : { id: "__never__" }),
           },
           select: {
             problemId: true,

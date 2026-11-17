@@ -1,12 +1,11 @@
 import { requireContestAccess } from "@/lib/contest-access";
-import { getCurrentSuper, verifyAuth } from "@/lib/auth";
+import { getCurrentSuper, getCurrentUser } from "@/lib/auth";
 import {
   ContestRole,
   ContestStatus,
   Verdict,
 } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { cookies } from "next/headers";
 import Link from "next/link";
 import RankSearch from "./RankSearch";
 import RankTable from "./RankTable";
@@ -22,6 +21,7 @@ import {
   getRunningVirtualParticipation,
 } from "@/lib/virtual-participation";
 import IncludeVpToggle from "./IncludeVpToggle";
+import { getOfficialSubmissionWhere } from "@/lib/official-submission";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
@@ -118,11 +118,9 @@ export default async function Rank({ params, searchParams }: Props) {
     );
   }
 
-  // 2. 权限校验
-  const cookieStore = await cookies();
-  const token = cookieStore.get("user_token")?.value;
-  const payload = token ? await verifyAuth(token).catch(() => null) : null;
+  // 2. 权限校验。有效的全局会话优先于比赛 Cookie。
   const glabelPayload = await getCurrentSuper();
+  const payload = glabelPayload ? null : await getCurrentUser();
 
   let currentUser = null;
   let isTeamMember = false;
@@ -240,10 +238,13 @@ export default async function Rank({ params, searchParams }: Props) {
 
   const allAcSubmissions = await prisma.submission.findMany({
     where: {
-      contestId: cid,
+      ...getOfficialSubmissionWhere({
+        contestId: cid,
+        startTime: contestInfo.startTime,
+        endTime: contestInfo.endTime,
+        visibleUntil: runningViewerVp ? effectiveNow : contestInfo.endTime,
+      }),
       verdict: Verdict.ACCEPTED,
-      virtualParticipationId: null,
-      ...(runningViewerVp ? { submittedAt: { lte: effectiveNow } } : {}),
     },
     select: {
       id: true,
@@ -268,29 +269,6 @@ export default async function Rank({ params, searchParams }: Props) {
     const current = firstBloodMap.get(sub.problemId);
     if (!current || relativeTimeMs < current.relativeTimeMs) {
       firstBloodMap.set(sub.problemId, { submissionId: sub.id, relativeTimeMs });
-    }
-  }
-
-  for (const vp of latestVirtualParticipations) {
-    for (const sub of vp.submissions) {
-      if (sub.verdict !== Verdict.ACCEPTED) continue;
-
-      const submittedAt = sub.submittedAt.getTime();
-      if (
-        submittedAt < vp.startedAt.getTime() ||
-        submittedAt > vp.endedAt.getTime()
-      ) {
-        continue;
-      }
-
-      const relativeTimeMs = submittedAt - vp.startedAt.getTime();
-      const current = firstBloodMap.get(sub.problemId);
-      if (!current || relativeTimeMs < current.relativeTimeMs) {
-        firstBloodMap.set(sub.problemId, {
-          submissionId: sub.id,
-          relativeTimeMs,
-        });
-      }
     }
   }
 
@@ -583,17 +561,26 @@ export default async function Rank({ params, searchParams }: Props) {
     return a.penalty - b.penalty;
   });
 
-  // 计算 Rank (处理并列)
-  for (let i = 0; i < allTeamRankings.length; i++) {
-    if (
-      i > 0 &&
-      allTeamRankings[i].solved === allTeamRankings[i - 1].solved &&
-      allTeamRankings[i].penalty === allTeamRankings[i - 1].penalty
-    ) {
-      allTeamRankings[i].rank = allTeamRankings[i - 1].rank;
-    } else {
-      allTeamRankings[i].rank = i + 1;
+  // 计算正式名次：打星队和 VP 都不占用正式队伍的名次数。
+  let officialPosition = 0;
+  let previousOfficialTeam: TeamRankData | null = null;
+  for (const team of allTeamRankings) {
+    if (isStarTeam(team.category)) {
+      team.rank = "*";
+      continue;
     }
+
+    officialPosition++;
+    if (
+      previousOfficialTeam &&
+      team.solved === previousOfficialTeam.solved &&
+      team.penalty === previousOfficialTeam.penalty
+    ) {
+      team.rank = previousOfficialTeam.rank;
+    } else {
+      team.rank = officialPosition;
+    }
+    previousOfficialTeam = team;
   }
 
   const officialTeams = allTeamRankings.filter(
@@ -973,20 +960,6 @@ export default async function Rank({ params, searchParams }: Props) {
       if (a.solved !== b.solved) return b.solved - a.solved;
       return a.penalty - b.penalty;
     });
-
-    for (let i = 0; i < combinedRankings.length; i++) {
-      if (isStarTeam(combinedRankings[i].category)) {
-        combinedRankings[i].rank = "*";
-      } else if (
-        i > 0 &&
-        combinedRankings[i].solved === combinedRankings[i - 1].solved &&
-        combinedRankings[i].penalty === combinedRankings[i - 1].penalty
-      ) {
-        combinedRankings[i].rank = combinedRankings[i - 1].rank;
-      } else {
-        combinedRankings[i].rank = i + 1;
-      }
-    }
 
     displayTeamRankings = combinedRankings.filter((team) => {
       if (

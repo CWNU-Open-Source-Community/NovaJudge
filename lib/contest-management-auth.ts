@@ -1,5 +1,4 @@
-import { cookies } from "next/headers";
-import { getCurrentSuper, verifyAuth } from "./auth";
+import { getCurrentSuper, getCurrentUser } from "./auth";
 import { hasContestAccess } from "./contest-access";
 import { prisma } from "./prisma";
 
@@ -15,14 +14,16 @@ export async function getContestManager(contestId: number): Promise<ContestManag
   if (!(await hasContestAccess(contestId))) return null;
 
   const globalUser = await getCurrentSuper();
-  if (globalUser?.isGlobalAdmin) {
-    return { key: `global-${globalUser.userId}`, userId: globalUser.userId, isGlobalAdmin: true };
+  if (globalUser) {
+    if (globalUser.isGlobalAdmin) {
+      return { key: `global-${globalUser.userId}`, userId: globalUser.userId, isGlobalAdmin: true };
+    }
+    // A current global session must not inherit an older contest cookie's role.
+    return null;
   }
 
-  const token = (await cookies()).get("user_token")?.value;
-  if (!token) return null;
-  const payload = await verifyAuth(token).catch(() => null);
-  if (!payload?.userId) return null;
+  const payload = await getCurrentUser();
+  if (!payload?.userId || payload.contestId !== contestId) return null;
 
   const user = await prisma.user.findUnique({
     where: { id: String(payload.userId) },

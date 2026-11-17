@@ -154,13 +154,41 @@ export const LANGUAGES: Record<string, LanguageConfig> = {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function callGoJudge(payload: any, timeoutMs?: number) {
-  const res = await fetch(`${GO_JUDGE_URL}/run`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
-  });
+async function callGoJudge(payload: any, communicationTimeoutMs?: number) {
+  const configuredTimeout = Number(process.env.GO_JUDGE_REQUEST_TIMEOUT_MS);
+  const commands = Array.isArray(payload?.cmd) ? payload.cmd : [];
+  const maxRunTimeMs = commands.reduce((max: number, command: unknown) => {
+    if (!command || typeof command !== "object") return max;
+    const limits = command as { cpuLimit?: unknown; clockLimit?: unknown };
+    const clockLimit = Number(limits.clockLimit);
+    const runLimit = Number.isFinite(clockLimit) && clockLimit > 0
+      ? clockLimit : Number(limits.cpuLimit);
+    return Number.isFinite(runLimit) && runLimit > 0
+      ? Math.max(max, runLimit / 1_000_000)
+      : max;
+  }, 0);
+  // HTTP transport must outlive the sandbox watchdog, even with a short override.
+  const timeoutMs = Math.max(
+    Math.ceil(maxRunTimeMs) + 60_000,
+    communicationTimeoutMs ?? 0,
+    Number.isFinite(configuredTimeout) && configuredTimeout > 0
+      ? Math.floor(configuredTimeout) : 0,
+  );
+
+  let res: Response;
+  try {
+    res = await fetch(`${GO_JUDGE_URL}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new Error(`Judge server request timed out after ${timeoutMs} ms.`);
+    }
+    throw error;
+  }
   if (!res.ok) throw new Error(`Judge Server Error: ${res.statusText}`);
   return res.json();
 }
@@ -169,7 +197,7 @@ async function deleteTmpFile(id: string) {
   try {
     const res = await fetch(`${GO_JUDGE_URL}/file/${id}`, {
       method: "DELETE",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) console.warn(`Failed to delete file ${id}: ${res.statusText}`);
     return res;
@@ -196,10 +224,11 @@ function normalizeTestInput(input: string) {
 }
 
 function getProblemDataDir(problemId: number) {
+  const root = process.env.PROBLEM_DATA_ROOT?.trim()
+    ? path.resolve(process.env.PROBLEM_DATA_ROOT)
+    : path.join(process.cwd(), "uploads", "problems");
   return path.join(
-    process.cwd(),
-    "uploads",
-    "problems",
+    root,
     problemId.toString(),
     "data",
   );

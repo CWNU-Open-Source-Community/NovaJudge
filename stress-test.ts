@@ -5,30 +5,31 @@
  * 用于压测（多开）判题机的判题吞吐与稳定性。
  *
  * 用法：
- *   npx tsx stress-test.ts [--total=100] [--batch=20] [--lang=cpp]
- *                         [--problem=1] [--no-wait] [--timeout=600] [--mark=xxx]
+ *   npx tsx stress-test.ts --problem=1 --confirm [--total=100] [--batch=20]
+ *                         [--lang=cpp] [--no-wait] [--timeout=600] [--mark=xxx]
  *
  * 或者：
- *   npm run stress -- --total=100 --batch=20 --lang=cpp
+ *   npm run stress -- --problem=1 --confirm --total=100 --batch=20 --lang=cpp
  *
  * 提示：压测前请先启动判题机（npm run worker 或 npm run worker:multi -- N），
  *       并确认目标题目 ID 存在且有测试数据。
  */
 import { prisma } from "./lib/prisma";
-import { enqueueJudge, judgeQueue } from "./lib/queue";
+import { closeJudgeQueue, enqueueJudge } from "./lib/queue";
 import { Verdict } from "@/lib/generated/prisma/enums";
 import { listJudgeWorkers, getJudgeQueueStats } from "./lib/worker-registry";
 import { redis } from "./lib/redis";
 
 // ---------------- 配置区域 ----------------
 const DEFAULTS = {
-  PROBLEM_ID: 1, // ⚠️ 目标题目 ID，请确保该题存在且有测试数据
+  PROBLEM_ID: 0, // 必须通过 --problem 显式指定，避免误压测题目 #1
   TOTAL_REQUESTS: 50, // 模拟并发提交的总数量
   BATCH_SIZE: 10, // 每批次并发入队数（防止把本机打死）
   LANGUAGE: "java", // 提交语言：c | cpp | java | pypy3
   WAIT_FOR_RESULTS: true, // 入队后是否等待判题完成并统计结果
   POLL_INTERVAL_MS: 1000, // 轮询判题进度的间隔
   TIMEOUT_MS: 10 * 60 * 1000, // 等待判题完成的超时时间（默认 10 分钟）
+  CONFIRM: false, // 必须显式传 --confirm，避免误向当前数据库写入压测提交
 };
 
 interface StressConfig {
@@ -39,6 +40,7 @@ interface StressConfig {
   WAIT_FOR_RESULTS: boolean;
   POLL_INTERVAL_MS: number;
   TIMEOUT_MS: number;
+  CONFIRM: boolean;
   MARK?: string; // 可选标记，会以注释形式写入每份提交的代码，便于事后定位/清理
 }
 
@@ -121,6 +123,9 @@ function parseArgs(argv: string[]): StressConfig {
       case "mark":
         cfg.MARK = value;
         break;
+      case "confirm":
+        cfg.CONFIRM = true;
+        break;
     }
   }
   return cfg;
@@ -156,6 +161,14 @@ async function main() {
     console.error("❌ --total 与 --batch 必须为正数");
     process.exit(1);
   }
+  if (!Number.isInteger(cfg.PROBLEM_ID) || cfg.PROBLEM_ID <= 0) {
+    console.error("❌ 必须用 --problem=<题目 ID> 显式指定压测题目");
+    process.exit(1);
+  }
+  if (!cfg.CONFIRM) {
+    console.error("❌ 压测会写入真实提交；确认目标数据库后请显式添加 --confirm");
+    process.exit(1);
+  }
 
   console.log("\n🚀 NovaJudge 判题压力测试");
   console.log(`   题目 ID    : ${cfg.PROBLEM_ID}`);
@@ -176,17 +189,16 @@ async function main() {
   }
   console.log(`📚 目标题目: #${problem.id} ${problem.title}`);
 
-  // 2. 找一个用户挂靠提交（优先全局管理员，其次普通用户）
-  const globalUser = await prisma.globalUser.findFirst();
-  const normalUser = await prisma.user.findFirst();
-  if (!globalUser && !normalUser) {
-    console.error("❌ 数据库没有任何用户，无法创建提交。");
+  // 2. 仅使用超级管理员挂靠提交，避免污染比赛队伍或外部登录账号
+  const globalUser = await prisma.globalUser.findFirst({
+    where: { role: "SUPER_ADMIN" },
+  });
+  if (!globalUser) {
+    console.error("❌ 数据库没有超级管理员，无法安全创建压测提交。");
     process.exit(1);
   }
-  const actor = globalUser
-    ? { kind: "global" as const, id: globalUser.id }
-    : { kind: "normal" as const, id: normalUser!.id };
-  console.log(`👤 提交挂靠用户: ${actor.kind === "global" ? "globalUser" : "user"} ${actor.id}`);
+  const actor = { kind: "global" as const, id: globalUser.id };
+  console.log(`👤 提交挂靠用户: globalUser ${actor.id}`);
 
   // 3. 展示当前在线判题机
   const initialWorkers = await listJudgeWorkers();
@@ -229,7 +241,21 @@ async function main() {
       });
 
       // B. 幂等入队（固定 jobId，重复入队不会产生重复任务）
-      await enqueueJudge(submission.id);
+      try {
+        await enqueueJudge(submission.id);
+      } catch (error) {
+        await prisma.submission.update({
+          where: { id: submission.id },
+          data: {
+            verdict: Verdict.SYSTEM_ERROR,
+            errorMessage:
+              error instanceof Error
+                ? error.message
+                : "Judge queue unavailable during stress test.",
+          },
+        });
+        throw error;
+      }
 
       return submission.id;
     });
@@ -319,7 +345,7 @@ async function main() {
 
 async function cleanup() {
   try {
-    await judgeQueue.close();
+    await closeJudgeQueue();
   } catch {}
   try {
     await redis.quit();

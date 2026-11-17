@@ -13,6 +13,18 @@ datasource db {
   provider = "postgresql"
 }
 
+// ================= 系统配置 =================
+model SystemSetting {
+  id String @id @default("default") // 单例模式，固定为 "default"
+
+  allowExternalLogin Boolean @default(false) // 新站点默认关闭；升级保留现有设置
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
 enum ContestStatus {
   PENDING
   RUNNING
@@ -67,6 +79,8 @@ model GlobalUser {
   username    String       @unique
   password    String?
   role        String       @default("GLOBAL_USER")
+  externalId  String?      @unique
+  isBanned    Boolean      @default(false)
   displayName String?
   studentId   String?
   email       String?
@@ -342,6 +356,7 @@ model Submission {
   @@index([contestId, globalUserId])
   @@index([contestId, problemId])
   @@index([virtualParticipationId])
+  @@index([submittedAt])
   @@map("submissions")
 }
 

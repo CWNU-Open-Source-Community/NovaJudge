@@ -4,8 +4,7 @@ import { Verdict } from "./generated/prisma/enums";
 import { requireContestManager } from "./contest-management-auth";
 import { buildContestSubmissionWhere } from "./contest-submission-query";
 import { prisma } from "./prisma";
-import { redis } from "./redis";
-import { enqueueJudge, judgeQueue } from "./queue";
+import { enqueueJudge, judgeQueue, judgeQueueConnection as redis } from "./queue";
 import {
   MAX_CONTEST_REJUDGE_BATCH,
   type ContestRejudgePreview,
@@ -76,9 +75,9 @@ export async function requeueSubmission(
     });
     if (reset.count !== 1) return "skipped";
 
+    let enqueueResult: Awaited<ReturnType<typeof enqueueJudge>>;
     try {
-      await enqueueJudge(submissionId);
-      return "queued";
+      enqueueResult = await enqueueJudge(submissionId);
     } catch {
       // Redis may have accepted the job even if the caller lost the response.
       const job = await judgeQueue.getJob(`judge-sub-${submissionId}`).catch(() => undefined);
@@ -95,6 +94,16 @@ export async function requeueSubmission(
       });
       return "failed";
     }
+    if (enqueueResult.outcome === "already-active") {
+      // The old job may become active between the first queue read and enqueue.
+      // Restore only our pending reset; a worker's new state always wins.
+      await prisma.submission.updateMany({
+        where: { ...scope, verdict: Verdict.PENDING },
+        data: submission,
+      });
+      return "skipped";
+    }
+    return "queued";
   } finally {
     await redis.eval(RELEASE_LOCK, 1, lockKey, lockOwner).catch(() => undefined);
   }

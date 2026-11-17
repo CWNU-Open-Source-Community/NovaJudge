@@ -32,6 +32,13 @@ export const ENV_SETTING_DEFINITIONS: EnvSettingDefinition[] = [
     restartRequired: true,
   },
   {
+    key: "EXTERNAL_AUTH_URL",
+    label: "External Login URL",
+    description: "Password-login endpoint for the external identity provider.",
+    placeholder: "https://example.com/api/user/external/login",
+    restartRequired: false,
+  },
+  {
     key: "NOVAJUDGE_URL",
     label: "NovaJudge URL",
     description: "Public base URL used by CLI tools and auto-login helpers.",

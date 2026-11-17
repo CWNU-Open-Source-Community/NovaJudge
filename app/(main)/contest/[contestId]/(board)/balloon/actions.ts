@@ -6,6 +6,7 @@ import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { ContestRole, Verdict } from "@/lib/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
+import { getOfficialSubmissionWhere } from "@/lib/official-submission";
 import { revalidatePath } from "next/cache";
 
 async function checkPermission(contestId: number) {
@@ -29,13 +30,29 @@ export async function syncBalloons(contestId: number) {
   const isAdmin = await checkPermission(contestId);
   if (!isAdmin) return;
 
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { startTime: true, endTime: true },
+  });
+  if (!contest) return;
+
+  const officialWhere = getOfficialSubmissionWhere({
+    contestId,
+    startTime: contest.startTime,
+    endTime: contest.endTime,
+  });
   const acSubmissions = await prisma.submission.findMany({
-    where: { contestId, verdict: Verdict.ACCEPTED },
+    where: {
+      ...officialWhere,
+      verdict: Verdict.ACCEPTED,
+    },
     select: { id: true, userId: true, problemId: true },
   });
 
   let count = 0;
   for (const sub of acSubmissions) {
+    if (!sub.userId) continue;
+
     const exists = await prisma.balloon.findUnique({
       where: { submissionId: sub.id },
     });
@@ -44,7 +61,13 @@ export async function syncBalloons(contestId: number) {
     const previousBalloon = await prisma.balloon.findFirst({
       where: {
         contestId,
-        submission: { userId: sub.userId, problemId: sub.problemId },
+        submission: {
+          is: {
+            ...officialWhere,
+            userId: sub.userId,
+            problemId: sub.problemId,
+          },
+        },
       },
     });
 
@@ -77,13 +100,28 @@ export async function getBalloonData(contestId: number) {
     (superAdmin as UserJwtPayload)?.isGlobalAdmin;
 
   if (!isMaster && (role !== ContestRole.BALLOON || !contestUser?.userId)) {
-    return { balloons: [], runners: [], role: null };
+    return { balloons: [], runners: [], role };
   }
 
-  const whereCondition: Prisma.BalloonWhereInput = { contestId };
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { startTime: true, endTime: true },
+  });
+  if (!contest) return { balloons: [], runners: [], role: null };
+
+  const whereCondition: Prisma.BalloonWhereInput = {
+    contestId,
+    submission: {
+      is: getOfficialSubmissionWhere({
+        contestId,
+        startTime: contest.startTime,
+        endTime: contest.endTime,
+      }),
+    },
+  };
 
   if (!isMaster) {
-    whereCondition.assignedToId = contestUser?.userId;
+    whereCondition.assignedToId = contestUser!.userId;
   }
 
   const balloons = await prisma.balloon.findMany({
@@ -146,8 +184,24 @@ export async function assignBalloon(
     throw new Error("Runner must be a balloon volunteer in this contest.");
   }
 
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { startTime: true, endTime: true },
+  });
+  if (!contest) return;
+
   await prisma.balloon.updateMany({
-    where: { id: balloonId, contestId },
+    where: {
+      id: balloonId,
+      contestId,
+      submission: {
+        is: getOfficialSubmissionWhere({
+          contestId,
+          startTime: contest.startTime,
+          endTime: contest.endTime,
+        }),
+      },
+    },
     data: { assignedToId: runner.id, status: "ASSIGNED" },
   });
   revalidatePath(`/contest/${contestId}/balloon`);
@@ -161,16 +215,31 @@ export async function completeBalloon(contestId: number, balloonId: number) {
     (user?.contestId === contestId &&
       (user?.role === ContestRole.ADMIN || user?.role === ContestRole.JUDGE)) ||
     (superAdmin as UserJwtPayload)?.isGlobalAdmin;
+  const isRunner =
+    !!user?.userId && user.contestId === contestId && user.role === ContestRole.BALLOON;
 
-  if (!isMaster && (!user?.userId || user.contestId !== contestId || user.role !== ContestRole.BALLOON)) {
+  if (!isMaster && !isRunner) {
     throw new Error("Only assigned balloon volunteers or contest staff can complete delivery.");
   }
+
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { startTime: true, endTime: true },
+  });
+  if (!contest) return;
 
   await prisma.balloon.updateMany({
     where: {
       id: balloonId,
       contestId,
-      ...(isMaster ? {} : { assignedToId: user?.userId }),
+      submission: {
+        is: getOfficialSubmissionWhere({
+          contestId,
+          startTime: contest.startTime,
+          endTime: contest.endTime,
+        }),
+      },
+      ...(isMaster ? {} : { assignedToId: user!.userId }),
     },
     data: { status: "COMPLETED" },
   });
