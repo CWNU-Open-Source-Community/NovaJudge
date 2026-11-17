@@ -34,7 +34,15 @@ type DesktopNavItem =
       onClick: () => void;
     };
 
-export default function Navbar({ siteName = "NovaJudge" }: { siteName?: string }) {
+export default function Navbar({
+  siteName = "NovaJudge",
+  externalLoginLabel = "",
+  externalLoginUrl = "",
+}: {
+  siteName?: string;
+  externalLoginLabel?: string;
+  externalLoginUrl?: string;
+}) {
   const [clickCount, setClickCount] = useState(0);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [showExternalLogin, setShowExternalLogin] = useState(false);
@@ -762,6 +770,8 @@ export default function Navbar({ siteName = "NovaJudge" }: { siteName?: string }
       )}
       {showExternalLogin && (
         <ExternalLoginModal
+          providerLabel={externalLoginLabel}
+          providerUrl={externalLoginUrl}
           onClose={() => setShowExternalLogin(false)}
           onSuccess={() => revalidate?.()}
         />

@@ -165,6 +165,7 @@ For production, build and run with a process manager (`npm run build && npm run 
 | `NOVAJUDGE_URL` | `http://localhost:3001` | Base URL reachable by contestants (used by CLI pairing and links) |
 | `NOVAJUDGE_CLI_MODE` | `public` | Keep `public` on public networks (disables CLI); set `intranet` only on isolated intranet deployments |
 | `EXTERNAL_AUTH_URL` / `APP_KEY` | *(empty)* | Optional external authentication endpoint and server-side app key (disabled by default on new installs) |
+| `NOVAJUDGE_EXTERNAL_LOGIN_LABEL` / `NOVAJUDGE_EXTERNAL_LOGIN_URL` | *(empty)* | Optional provider display name and HTTP(S) portal URL shown in the external login modal |
 | `NOVAJUDGE_SITE_NAME` / `NOVAJUDGE_SITE_DESCRIPTION` | `NovaJudge` / `XCPC Online Judge` | Customizable navbar/page title and meta description |
 | `NOVAJUDGE_FOOTER_TEXT` | *(empty)* | Optional school or organization footer line |
 | `NOVAJUDGE_ORG_MAP_PATH` | `config/org-map.json` | Optional path to external school-to-organization ID JSON mapping |

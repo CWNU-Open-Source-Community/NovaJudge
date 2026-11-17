@@ -11,7 +11,11 @@ export default function RootLayout({
   const site = getSiteConfig();
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar siteName={site.name} />
+      <Navbar
+        siteName={site.name}
+        externalLoginLabel={site.externalLoginLabel}
+        externalLoginUrl={site.externalLoginUrl}
+      />
 
       {/* 主内容区域 */}
       <main className="flex justify-center w-full max-w-full mx-auto p-4 sm:p-6 lg:p-8 bg-zinc-100">

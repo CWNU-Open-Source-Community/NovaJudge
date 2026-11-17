@@ -165,6 +165,7 @@ npm run worker
 | `NOVAJUDGE_URL` | `http://localhost:3001` | 选手可访问的站点地址（供 CLI 自动绑定与链接生成使用） |
 | `NOVAJUDGE_CLI_MODE` | `public` | 公网部署保持 `public`（关闭 CLI）；仅在隔离内网环境设为 `intranet` 后启用 `/cli`、`submit` 与 `printfile` |
 | `EXTERNAL_AUTH_URL` / `APP_KEY` | *(空)* | 可选外部统一认证接口与服务端密钥（新安装默认关闭，旧私服保留原开关状态） |
+| `NOVAJUDGE_EXTERNAL_LOGIN_LABEL` / `NOVAJUDGE_EXTERNAL_LOGIN_URL` | *(空)* | 可选外部登录弹窗中展示的认证站点名称与 HTTP(S) 跳转链接 |
 | `NOVAJUDGE_SITE_NAME` / `NOVAJUDGE_SITE_DESCRIPTION` | `NovaJudge` / `XCPC Online Judge` | 站点导航栏/标题名称与页面描述（修改后重新 build 并重启 Web） |
 | `NOVAJUDGE_FOOTER_TEXT` | *(空)* | 可选的学校或组织页脚说明文字 |
 | `NOVAJUDGE_ORG_MAP_PATH` | `config/org-map.json` | 可选外部组织映射 JSON 路径（如 `/etc/novajudge/org-map.json`） |

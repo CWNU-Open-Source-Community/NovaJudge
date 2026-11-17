@@ -86,6 +86,7 @@ npm run build
 | `NOVAJUDGE_URL` | 选手可访问的站点地址 |
 | `NOVAJUDGE_CLI_MODE` | 默认为 `public`；需要内网 CLI 时设置为 `intranet` |
 | `EXTERNAL_AUTH_URL`、`APP_KEY` | 可选外部认证接口及应用密钥；密钥只放服务器环境中 |
+| `NOVAJUDGE_EXTERNAL_LOGIN_LABEL`、`NOVAJUDGE_EXTERNAL_LOGIN_URL` | 可选外部登录弹窗显示的认证平台名称与链接 |
 | `NOVAJUDGE_SITE_NAME` | 站点名称，默认 NovaJudge |
 | `NOVAJUDGE_SITE_DESCRIPTION` | 页面描述，默认 XCPC Online Judge |
 | `NOVAJUDGE_FOOTER_TEXT` | 可选的学校/组织页脚文字 |
