@@ -55,7 +55,7 @@ export async function initSuperAdmin() {
     const err = error as { code?: string };
     if (err?.code === "P2021") {
       console.warn(
-        "⚠️ [Bootstrap] Database schema not initialized (table global_users missing). Run `npx prisma db push` or `npx prisma migrate deploy` and restart.",
+        "⚠️ [Bootstrap] Database schema not initialized (table global_users missing). Run `npm run db:deploy` and restart.",
       );
       return;
     }

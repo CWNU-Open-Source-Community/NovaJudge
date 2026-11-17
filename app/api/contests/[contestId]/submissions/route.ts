@@ -34,15 +34,14 @@ export async function GET(
 ) {
   try {
     const apiKey = request.headers.get("x-api-key");
-    let isGlobalAdmin = false;
-    if (apiKey) {
-      const user = await validateApiKey(apiKey);
-      if (!user) {
-        return NextResponse.json({ error: "Invalid API Key" }, { status: 403 });
-      }
-      isGlobalAdmin = user.role === "SUPER_ADMIN";
-    } else {
+    if (!apiKey) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+    const user = await validateApiKey(apiKey);
+    // This integration exports every submission's source, including live contests.
+    // Recheck the owner's current role even for keys issued before a role change.
+    if (user?.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "Administrator API Key required" }, { status: 403 });
     }
 
     const { contestId } = await params;
@@ -53,7 +52,7 @@ export async function GET(
     }
 
     const denied = await contestAccessResponse(contestIdNumber);
-    if (denied && (denied.status !== 403 || !isGlobalAdmin)) return denied;
+    if (denied && denied.status !== 403) return denied;
 
     const submissions = await prisma.submission.findMany({
       where: {

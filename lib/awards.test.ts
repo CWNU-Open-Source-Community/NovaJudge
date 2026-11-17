@@ -7,6 +7,7 @@ import ts from "typescript";
 import type { FeedAward } from "./awards";
 import { Verdict } from "./generated/prisma/enums";
 import * as medalUtils from "./medal-utils";
+import * as officialSubmission from "./official-submission";
 
 const startTime = new Date("2026-10-25T01:00:00Z");
 const problems = [
@@ -35,6 +36,7 @@ async function feedAwards(options: {
   })).sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime());
   const dependencies: Record<string, unknown> = {
     "./medal-utils": medalUtils,
+    "./official-submission": officialSubmission,
     "./generated/prisma/enums": { Verdict },
     "./prisma": { prisma: {
       contest: { findUnique: async () => ({

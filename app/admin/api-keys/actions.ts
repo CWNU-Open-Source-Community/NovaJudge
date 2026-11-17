@@ -1,6 +1,6 @@
 "use server";
 
-import { getCurrentSuper, UserJwtPayload } from "@/lib/auth";
+import { requireSuperAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { randomBytes } from "crypto";
@@ -12,8 +12,7 @@ function generateApiKey() {
 }
 
 export async function getApiKeys() {
-  const user = (await getCurrentSuper()) as UserJwtPayload;
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireSuperAdmin();
 
   return await prisma.apiKey.findMany({
     where: { userId: user.userId },
@@ -22,8 +21,7 @@ export async function getApiKeys() {
 }
 
 export async function createApiKey(name: string) {
-  const user = (await getCurrentSuper()) as UserJwtPayload;
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireSuperAdmin();
 
   const key = generateApiKey();
 
@@ -40,8 +38,7 @@ export async function createApiKey(name: string) {
 }
 
 export async function deleteApiKey(id: string) {
-  const user = (await getCurrentSuper()) as UserJwtPayload;
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireSuperAdmin();
 
   await prisma.apiKey.delete({
     where: { id, userId: user.userId },
@@ -52,8 +49,7 @@ export async function deleteApiKey(id: string) {
 }
 
 export async function toggleApiKey(id: string, isEnabled: boolean) {
-  const user = (await getCurrentSuper()) as UserJwtPayload;
-  if (!user) throw new Error("Unauthorized");
+  const user = await requireSuperAdmin();
 
   await prisma.apiKey.update({
     where: { id, userId: user.userId },

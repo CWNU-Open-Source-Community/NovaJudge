@@ -28,6 +28,7 @@ import {
   getLatestVirtualParticipation,
   getRunningVirtualParticipation,
 } from "@/lib/virtual-participation";
+import { getOfficialSubmissionWhere } from "@/lib/official-submission";
 
 type Problem = {
   id: number;
@@ -129,51 +130,50 @@ export default async function ProblemDetail({ params }: Props) {
     frozenDuration?: number;
   } | null;
   const frozenDuration = config?.frozenDuration ?? 0;
-  const endTime = contestProblem.contest.endTime;
+  let officialVisibleUntil = contestProblem.contest.endTime;
+  let officialUpperBoundExclusive = false;
 
-  let dateFilter = {};
-
-  if (frozenDuration > 0 && endTime) {
-    const freezeTime = new Date(endTime.getTime() - frozenDuration * 60 * 1000);
-    dateFilter = {
-      submittedAt: {
-        lt: freezeTime,
-      },
-    };
+  if (frozenDuration > 0) {
+    officialVisibleUntil = new Date(
+      contestProblem.contest.endTime.getTime() -
+        frozenDuration * 60 * 1000,
+    );
+    officialUpperBoundExclusive = true;
   }
 
   if (runningVp) {
     const now = new Date();
-    dateFilter = {
-      submittedAt: {
-        lte: new Date(
-          Math.min(
-            contestProblem.contest.startTime.getTime() +
-              (now.getTime() - runningVp.startedAt.getTime()),
-            contestProblem.contest.endTime.getTime(),
-          ),
-        ),
-      },
-    };
+    officialVisibleUntil = new Date(
+      Math.min(
+        contestProblem.contest.startTime.getTime() +
+          (now.getTime() - runningVp.startedAt.getTime()),
+        contestProblem.contest.endTime.getTime(),
+      ),
+    );
+    officialUpperBoundExclusive = false;
   }
+
+  const officialWhere = getOfficialSubmissionWhere({
+    contestId: cid,
+    startTime: contestProblem.contest.startTime,
+    endTime: contestProblem.contest.endTime,
+    visibleUntil: officialVisibleUntil,
+    exclusiveUpperBound: officialUpperBoundExclusive,
+  });
 
   const [officialTotalStats, officialAcStats, vpTotalStats, vpAcStats] =
     await Promise.all([
       prisma.submission.count({
         where: {
-          contestId: cid,
+          ...officialWhere,
           problemId: problem.id,
-          virtualParticipationId: null,
-          ...dateFilter,
         },
       }),
       prisma.submission.count({
         where: {
-          contestId: cid,
+          ...officialWhere,
           problemId: problem.id,
           verdict: Verdict.ACCEPTED,
-          virtualParticipationId: null,
-          ...dateFilter,
         },
       }),
       latestVp

@@ -8,6 +8,7 @@ import {
   getRelativeTime,
 } from "./utils";
 import { getOrganizationMap } from "@/lib/org-mapper";
+import { getOfficialSubmissionWhere } from "@/lib/official-submission";
 
 
 const organization_map = await getOrganizationMap();
@@ -199,11 +200,19 @@ export async function getProblems(contestId: number) {
 }
 
 export async function getLanguages(contestId: number) {
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { startTime: true, endTime: true },
+  });
+  if (!contest) return [];
+
   const languages = await prisma.submission.groupBy({
     by: ["language"],
-    where: {
+    where: getOfficialSubmissionWhere({
       contestId,
-    },
+      startTime: contest.startTime,
+      endTime: contest.endTime,
+    }),
   });
 
   if (languages.length === 0) {
@@ -306,9 +315,11 @@ export async function getSubmissions(contestId: number) {
   if (!contest) return [];
 
   const submissions = await prisma.submission.findMany({
-    where: {
+    where: getOfficialSubmissionWhere({
       contestId,
-    },
+      startTime: contest.startTime,
+      endTime: contest.endTime,
+    }),
     include: {
       user: true,
       problem: true,
@@ -326,9 +337,11 @@ export async function getJudgements(contestId: number) {
   if (!contest) return [];
 
   const submissions = await prisma.submission.findMany({
-    where: {
+    where: getOfficialSubmissionWhere({
       contestId,
-    },
+      startTime: contest.startTime,
+      endTime: contest.endTime,
+    }),
     include: {
       user: true,
       problem: true,
@@ -352,7 +365,11 @@ export async function getRuns(contestId: number) {
 
   const submissions = await prisma.submission.findMany({
     where: {
-      contestId,
+      ...getOfficialSubmissionWhere({
+        contestId,
+        startTime: contest.startTime,
+        endTime: contest.endTime,
+      }),
       verdict: {
         not: "PENDING", // 只返回开始评测的提交
       },
@@ -409,8 +426,18 @@ export async function getRuns(contestId: number) {
 }
 
 export async function getSubmissionStates(contestId: number) {
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { startTime: true, endTime: true },
+  });
+  if (!contest) return [];
+
   return await prisma.submission.findMany({
-    where: { contestId },
+    where: getOfficialSubmissionWhere({
+      contestId,
+      startTime: contest.startTime,
+      endTime: contest.endTime,
+    }),
     select: {
       id: true,
       verdict: true,

@@ -3,17 +3,20 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import {
   getCurrentSuper,
-  verifyAuth,
+  getCurrentUser,
+  UserJwtPayload,
 } from "@/lib/auth";
-import { cookies } from "next/headers";
-import { ContestStatus } from "@/lib/generated/prisma/client";
+import {
+  ContestRole,
+  ContestStatus,
+  ContestType,
+} from "@/lib/generated/prisma/client";
 import VerdictBadge from "@/components/VerdictBadge";
 import Link from "next/link";
 import CodeViewer from "./CodeViewer";
 import { ContestConfig } from "@/app/(main)/page";
 import { getDictionary } from "@/lib/get-dictionary";
 import { getRunningVirtualParticipation } from "@/lib/virtual-participation";
-import { getContestManager } from "@/lib/contest-management-auth";
 import { ContestRejudgeButton } from "../RejudgeControls";
 
 interface Props {
@@ -32,7 +35,13 @@ export default async function SubmissionDetail({ params }: Props) {
   const [contestInfo, submission] = await Promise.all([
     prisma.contest.findUnique({
       where: { id: cid },
-      select: { status: true, config: true, endTime: true, type: true },
+      select: {
+        status: true,
+        config: true,
+        startTime: true,
+        endTime: true,
+        type: true,
+      },
     }),
     prisma.submission.findFirst({
       where: {
@@ -45,6 +54,8 @@ export default async function SubmissionDetail({ params }: Props) {
             id: true,
             username: true,
             displayName: true,
+            role: true,
+            contestId: true,
           },
         },
         globalUser: {
@@ -67,71 +78,75 @@ export default async function SubmissionDetail({ params }: Props) {
   if (!contestInfo || !submission) return notFound();
 
   const globalUser = await getCurrentSuper();
-  const canRejudge = Boolean(await getContestManager(cid));
+  const user = globalUser ? null : await getCurrentUser();
+  const userPayload = user as UserJwtPayload | null;
+  const isContestEnded =
+    contestInfo.status === ContestStatus.ENDED ||
+    new Date() >= contestInfo.endTime;
 
-  // 2. 获取当前用户信息
-  const cookieStore = await cookies();
-  const token = cookieStore.get("user_token")?.value;
-  const payload = token ? await verifyAuth(token).catch(() => null) : null;
+  const isGlobalSubmissionOwner =
+    Boolean(globalUser?.userId) &&
+    submission.globalUserId === globalUser?.userId;
 
-  // 3. 权限校验逻辑
-  const isContestEnded = contestInfo.status === ContestStatus.ENDED;
+  // 2. 权限校验逻辑
+  const payload = userPayload;
   const isGlobalAdmin = !!globalUser?.isGlobalAdmin;
   const runningVp =
     globalUser?.userId && !isGlobalAdmin
       ? await getRunningVirtualParticipation(cid, String(globalUser.userId))
       : null;
 
-  const config = contestInfo.config as ContestConfig;
+  const config = contestInfo.config as ContestConfig | null;
+  const frozenDuration = Number(config?.frozenDuration || 0);
   const freezeTime =
-    contestInfo.endTime.getTime() - config.frozenDuration! * 60 * 1000;
+    contestInfo.endTime.getTime() - frozenDuration * 60 * 1000;
   const isFrozen =
-    config.frozenDuration !== 0 &&
-    (freezeTime ? new Date().getTime() >= freezeTime : false);
+    frozenDuration > 0 && new Date().getTime() >= freezeTime;
 
-  if (payload?.userId || globalUser?.userId || isGlobalAdmin) {
-    let currentUser = null;
-    if (payload?.userId) {
-      currentUser = await prisma.user.findUnique({
-        where: { id: payload.userId },
-        select: {
-          id: true,
-          role: true,
-          contestId: true,
-        },
-      });
+  let currentUser = null;
+  if (payload?.userId) {
+    const candidate = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: {
+        id: true,
+        role: true,
+        contestId: true,
+      },
+    });
 
-      if ((!currentUser || currentUser.contestId !== cid) && !isGlobalAdmin) {
-        return notFound();
-      }
-    }
-
-    // 检查是否为当前比赛的用户
-
-    // 检查权限逻辑：
-    // 1. 提交者总能看自己的
-    // 2. 管理员/评委总能看所有的
-    // 3. 普通用户只能在比赛结束后看其他人的
-
-    const isOwner =
-      (!!currentUser?.id && submission.user?.id === currentUser.id) ||
-      (!!globalUser?.userId && submission.globalUser?.id === globalUser.userId &&
-        (!runningVp || submission.virtualParticipationId === runningVp.id));
-
-    const isPublicOfficialSubmission =
-      isContestEnded && !isFrozen && submission.virtualParticipationId === null;
-    const hasPermission =
-      isOwner || canRejudge || (!isOwner && isPublicOfficialSubmission);
-
-    if (!hasPermission) {
-      return notFound();
-    }
-  } else {
-    // 未登录用户：只能在比赛结束后 并且 未封榜 查看
-    if (!isContestEnded || isFrozen) {
-      return notFound();
+    // 其他比赛的账号在本场按普通访客处理，与提交列表保持一致。
+    if (candidate?.contestId === cid) {
+      currentUser = candidate;
     }
   }
+
+  // 进行中的 VP 只允许查看当前轮；赛后详情可见性不受正式赛统计范围限制。
+  const isContestSubmissionOwner =
+    Boolean(currentUser?.id) && submission.userId === currentUser?.id;
+  const isOwner =
+    isContestSubmissionOwner ||
+    (isGlobalSubmissionOwner &&
+      (!runningVp || submission.virtualParticipationId === runningVp.id));
+  const isAdmin =
+    isGlobalAdmin ||
+    currentUser?.role === ContestRole.ADMIN ||
+    currentUser?.role === ContestRole.JUDGE;
+  const canRejudge = isAdmin;
+  const canViewEndedSubmission =
+    isContestEnded &&
+    !isFrozen &&
+    !runningVp &&
+    (contestInfo.type === ContestType.PUBLIC || Boolean(currentUser));
+
+  if (!isOwner && !isAdmin && !canViewEndedSubmission) {
+    return notFound();
+  }
+
+  // 非 VP 的赛后补题沿用公开代码规则；他人的 VP 仅展示提交信息。
+  const canViewCode =
+    isOwner ||
+    isAdmin ||
+    (canViewEndedSubmission && submission.virtualParticipationId === null);
 
   const contestProblem = await prisma.contestProblem.findFirst({
     where: {
@@ -187,7 +202,8 @@ export default async function SubmissionDetail({ params }: Props) {
             <p className="text-gray-900">
               {submission.user?.displayName ||
                 submission.globalUser?.displayName ||
-                submission.user?.username}
+                submission.user?.username ||
+                submission.globalUser?.username}
             </p>
           </div>
           <div>
@@ -251,7 +267,7 @@ export default async function SubmissionDetail({ params }: Props) {
           </div>
         </div>
 
-        {submission.errorMessage && (
+        {canViewCode && submission.errorMessage && (
           <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-sm">
             <span className="font-bold text-red-600">Error Message:</span>
             <pre className="mt-2 text-sm text-red-700 whitespace-pre-wrap">
@@ -262,7 +278,14 @@ export default async function SubmissionDetail({ params }: Props) {
       </div>
 
       {/* 代码展示 */}
-      <CodeViewer code={submission.code} language={submission.language} />
+      {canViewCode ? (
+        <CodeViewer code={submission.code} language={submission.language} />
+      ) : (
+        <p className="text-sm text-gray-500">
+          Source code for virtual submissions is visible only to the submitter
+          and contest administrators.
+        </p>
+      )}
     </div>
   );
 }

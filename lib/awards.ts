@@ -1,8 +1,10 @@
 import { prisma } from "./prisma";
 import { Verdict } from "./generated/prisma/enums";
+import { getOfficialSubmissionWhere } from "./official-submission";
 import {
   getMedalCounts,
   formatFtsCitation,
+  getSchoolDeduplicationKey,
   DEFAULT_MEDAL,
   type ContestMedalConfig,
 } from "./medal-utils";
@@ -121,11 +123,13 @@ export async function getContestAwardsConfig(
 export async function getFirstSolves(
   contestId: number,
 ): Promise<FirstSolveInfo[]> {
-  const [contest, contestProblems, submissions] = await Promise.all([
-    prisma.contest.findUnique({
-      where: { id: contestId },
-      select: { endTime: true },
-    }),
+  const contest = await prisma.contest.findUnique({
+    where: { id: contestId },
+    select: { startTime: true, endTime: true },
+  });
+  if (!contest) return [];
+
+  const [contestProblems, submissions] = await Promise.all([
     prisma.contestProblem.findMany({
       where: { contestId },
       select: { problemId: true, displayId: true },
@@ -133,9 +137,12 @@ export async function getFirstSolves(
     }),
     prisma.submission.findMany({
       where: {
-        contestId,
+        ...getOfficialSubmissionWhere({
+          contestId,
+          startTime: contest.startTime,
+          endTime: contest.endTime,
+        }),
         verdict: Verdict.ACCEPTED,
-        user: { role: "TEAM" },
       },
       select: {
         problemId: true,
@@ -146,15 +153,11 @@ export async function getFirstSolves(
     }),
   ]);
 
-  if (!contest) return [];
-
-  const endMs = contest.endTime.getTime();
   const firstByProblem = new Map<
     number,
     { username: string; submittedAt: Date }
   >();
   for (const s of submissions) {
-    if (s.submittedAt.getTime() > endMs) continue;
     if (firstByProblem.has(s.problemId)) continue;
     if (!s.user?.username) continue;
     firstByProblem.set(s.problemId, {
@@ -224,6 +227,7 @@ export async function computeContestStandings(
           problemIds.has(s.problemId) &&
           s.verdict !== Verdict.COMPILE_ERROR &&
           s.verdict !== Verdict.SYSTEM_ERROR &&
+          s.submittedAt.getTime() >= startMs &&
           s.submittedAt.getTime() <= endMs,
       )
       .sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime());
@@ -263,7 +267,12 @@ export async function computeContestStandings(
     };
   });
 
-  rows.sort((a, b) => b.solved - a.solved || a.penalty - b.penalty);
+  rows.sort(
+    (a, b) =>
+      b.solved - a.solved ||
+      a.penalty - b.penalty ||
+      a.username.localeCompare(b.username),
+  );
   return rows;
 }
 
@@ -292,7 +301,7 @@ export async function getFeedAwards(contestId: number): Promise<FeedAward[]> {
     const teamIds = teams.map((t) => t.username);
     awards.push({ id, citation: citation || id, team_ids: teamIds });
     awards.push({
-      id: `id-${Math.random()}`,
+      id: `${id}-list`,
       citation: citation || id,
       team_ids: teamIds,
       display_mode: "list",
@@ -320,7 +329,7 @@ export async function getFeedAwards(contestId: number): Promise<FeedAward[]> {
     );
     if (teams.length > 0) {
       awards.push({
-        id: `id-${Math.random()}`,
+        id: "excellence-award",
         citation: cfg.excellenceCitation || "优秀奖",
         team_ids: teams.map((t) => t.username),
       });
@@ -346,10 +355,10 @@ export async function getFeedAwards(contestId: number): Promise<FeedAward[]> {
     const schoolsSeen = new Set<string>();
     for (const seat of seats) {
       const team = official.find(
-        (t) => !schoolsSeen.has(t.school ?? "__none__"),
+        (t) => !schoolsSeen.has(getSchoolDeduplicationKey(t)),
       );
       if (!team) break; // 学校数不足时，后续奖项不再生成
-      schoolsSeen.add(team.school ?? "__none__");
+      schoolsSeen.add(getSchoolDeduplicationKey(team));
       awards.push({
         id: seat.id,
         citation: seat.citation,
@@ -371,8 +380,18 @@ export async function getFeedAwards(contestId: number): Promise<FeedAward[]> {
     });
   }
 
+  const validTeamIds = new Set(standings.map((team) => team.username));
   cfg.custom.forEach((custom, index) => {
-    const teamIds = Array.isArray(custom.teamIds) ? custom.teamIds : [];
+    const teamIds = Array.isArray(custom.teamIds)
+      ? Array.from(
+          new Set(
+            custom.teamIds.filter(
+              (teamId): teamId is string =>
+                typeof teamId === "string" && validTeamIds.has(teamId),
+            ),
+          ),
+        )
+      : [];
     if (teamIds.length === 0) return;
     awards.push({
       id: custom.id || `special-${index + 1}`,

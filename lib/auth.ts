@@ -19,6 +19,7 @@ export interface GlobalUserJwtPayload extends UserJwtPayload {
   displayName?: string | null;
   studentId?: string | null;
   email?: string | null;
+  externalId?: string | null;
 }
 
 // 获取密钥并转换为 Uint8Array（jose 要求的格式）
@@ -50,19 +51,53 @@ export async function verifyAuth(token: string): Promise<UserJwtPayload> {
   }
 }
 
-export async function getCurrentUser() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("user_token")?.value;
-
-  if (!token) return null;
-
+export async function getVerifiedContestUser(
+  token: string,
+): Promise<UserJwtPayload | null> {
   try {
     const payload = await verifyAuth(token);
-    return payload;
+    const contestUser = await prisma.user.findUnique({
+      where: { id: String(payload.userId) },
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        contestId: true,
+      },
+    });
+
+    if (!contestUser || payload.contestId !== contestUser.contestId) {
+      return null;
+    }
+
+    return {
+      ...payload,
+      userId: contestUser.id,
+      username: contestUser.username,
+      role: contestUser.role,
+      contestId: contestUser.contestId,
+      isGlobalAdmin: false,
+    };
   } catch (error) {
     console.log(error);
-    return new Error("Your token has expired or is invalid.");
+    return null;
   }
+}
+
+export async function getCurrentUser(): Promise<UserJwtPayload | null> {
+  const cookieStore = await cookies();
+  const globalToken = cookieStore.get("auth_token")?.value;
+
+  // A verified global session is the active identity. This also prevents a
+  // stale contest cookie from overriding an external-login session.
+  if (globalToken) {
+    const globalUser = await getVerifiedGlobalUser(globalToken);
+    if (globalUser) return null;
+  }
+
+  const token = cookieStore.get("user_token")?.value;
+  if (!token) return null;
+  return getVerifiedContestUser(token);
 }
 
 export async function getVerifiedGlobalUser(
@@ -76,13 +111,15 @@ export async function getVerifiedGlobalUser(
         id: true,
         username: true,
         role: true,
+        externalId: true,
+        isBanned: true,
         displayName: true,
         studentId: true,
         email: true,
       },
     });
 
-    if (!globalUser) {
+    if (!globalUser || globalUser.isBanned) {
       return null;
     }
 
@@ -95,6 +132,7 @@ export async function getVerifiedGlobalUser(
       displayName: globalUser.displayName,
       studentId: globalUser.studentId,
       email: globalUser.email,
+      externalId: globalUser.externalId,
     };
   } catch (error) {
     console.log(error);
@@ -111,7 +149,7 @@ export async function validateApiKey(apiKey: string) {
     include: { user: true },
   });
 
-  if (!keyRecord || !keyRecord.isEnabled) return null;
+  if (!keyRecord || !keyRecord.isEnabled || keyRecord.user.isBanned) return null;
 
   // 异步更新最后使用时间，不阻塞主流程
   prisma.apiKey

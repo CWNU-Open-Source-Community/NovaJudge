@@ -4,6 +4,7 @@ import Pagination from "@/components/Pagination";
 import {
   ContestRole,
   ContestStatus,
+  ContestType,
   Verdict,
 } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -11,8 +12,7 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import VerdictCell from "@/components/VerdictCell";
 import StatusControls from "./StatusControls";
 import SearchAndFilter from "./SearchAndFilter";
-import { getCurrentSuper, verifyAuth } from "@/lib/auth";
-import { cookies } from "next/headers";
+import { getCurrentSuper, getCurrentUser } from "@/lib/auth";
 import { ContestConfig } from "@/app/(main)/page";
 import { getDictionary } from "@/lib/get-dictionary";
 import { Metadata } from "next";
@@ -85,7 +85,9 @@ export default async function Status({ params, searchParams }: Props) {
     select: {
       status: true,
       config: true,
+      startTime: true,
       endTime: true,
+      type: true,
     },
   });
 
@@ -95,15 +97,14 @@ export default async function Status({ params, searchParams }: Props) {
     );
   }
 
-  // 2. 获取当前用户信息
-  const cookieStore = await cookies();
-  const token = cookieStore.get("user_token")?.value;
-  const payload = token ? await verifyAuth(token).catch(() => null) : null;
+  // 2. 获取当前用户信息。有效的全局会话优先于比赛 Cookie。
+  const globalUser = await getCurrentSuper();
+  const payload = globalUser ? null : await getCurrentUser();
 
   // 3. 获取当前用户在比赛中的角色
   let currentUser = null;
   if (payload?.userId) {
-    currentUser = await prisma.user.findUnique({
+    const candidate = await prisma.user.findUnique({
       where: { id: payload.userId },
       select: {
         id: true,
@@ -111,9 +112,11 @@ export default async function Status({ params, searchParams }: Props) {
         contestId: true,
       },
     });
+    if (candidate?.contestId === cid) {
+      currentUser = candidate;
+    }
   }
 
-  const globalUser = await getCurrentSuper();
   // 4. 权限校验逻辑
   const isAdmin =
     !!globalUser?.isGlobalAdmin ||
@@ -130,7 +133,10 @@ export default async function Status({ params, searchParams }: Props) {
     latestVp?.status === "RUNNING" &&
     latestVp.startedAt <= now &&
     latestVp.endedAt >= now;
+  const isContestEnded =
+    contestInfo.status === ContestStatus.ENDED || now >= contestInfo.endTime;
   const isGuest = !currentUser && !globalUser && !isAdmin;
+
   const config = contestInfo.config as ContestConfig;
   const freezeTime = config?.frozenDuration
     ? contestInfo.endTime.getTime() - config?.frozenDuration * 60 * 1000
@@ -138,32 +144,55 @@ export default async function Status({ params, searchParams }: Props) {
   const isFrozen =
     config?.frozenDuration !== 0 &&
     (freezeTime ? new Date().getTime() >= freezeTime : false);
-  const isContestEnded = contestInfo.status === ContestStatus.ENDED;
-  const showTestDetails =
-    contestInfo.status !== ContestStatus.RUNNING || Boolean(isAdmin);
+  const showTestDetails = isContestEnded || Boolean(isAdmin);
   const canViewAll =
     !isRunningVp &&
-    ((isContestEnded && !isFrozen) || isAdmin || isGuest || Boolean(latestVp));
-  const canSearch =
-    !isRunningVp &&
-    ((isContestEnded && !isFrozen) || isAdmin || isGuest || Boolean(latestVp));
+    (isAdmin ||
+      ((contestInfo.type === ContestType.PUBLIC || Boolean(currentUser)) &&
+        ((isContestEnded && !isFrozen) ||
+          isGuest ||
+          Boolean(latestVp))));
+  const canSearch = canViewAll;
 
   // 用户选择查看所有提交且有权限
   const userWantsViewAll = isAdmin || viewAll === "true";
   const shouldViewAll = userWantsViewAll && canViewAll;
 
-  const finalUserId = shouldViewAll ? userId : currentUser?.id;
+  let visibleScopeWhere: Prisma.SubmissionWhereInput;
 
-  // 构建查询条件
-  let where: Prisma.SubmissionWhereInput = {
-    contestId: cid,
-  };
-
-  if (finalUserId) {
-    where.userId = finalUserId;
-  } else if (!shouldViewAll && latestVp) {
-    where.virtualParticipationId = latestVp.id;
+  if (isAdmin) {
+    // 管理员可以审计原始提交，包括 VP 和补题。
+    visibleScopeWhere = { contestId: cid };
+    if (userId) visibleScopeWhere.userId = userId;
+  } else if (!shouldViewAll && currentUser) {
+    visibleScopeWhere = { contestId: cid, userId: currentUser.id };
+  } else if (
+    !shouldViewAll &&
+    isRunningVp &&
+    latestVp &&
+    globalUser?.userId
+  ) {
+    visibleScopeWhere = {
+      contestId: cid,
+      globalUserId: String(globalUser.userId),
+      virtualParticipationId: latestVp.id,
+    };
+  } else if (!shouldViewAll && globalUser?.userId) {
+    // 非 VP 进行状态下，“我的提交”包含历次 VP 和赛后补题记录。
+    visibleScopeWhere = {
+      contestId: cid,
+      globalUserId: String(globalUser.userId),
+    };
+  } else if (!shouldViewAll && globalUser) {
+    visibleScopeWhere = { contestId: cid, id: "__never__" };
+  } else {
+    // 提交列表展示正式、VP 和补题记录；正式赛统计独立筛选。
+    visibleScopeWhere = { contestId: cid };
+    if (userId) visibleScopeWhere = { ...visibleScopeWhere, userId };
   }
+
+  // 后续筛选基于当前可见集合，不能扩大提交范围。
+  let where: Prisma.SubmissionWhereInput = { ...visibleScopeWhere };
 
   // 问题筛选
   if (problem && !isAdmin) {
@@ -226,6 +255,7 @@ export default async function Status({ params, searchParams }: Props) {
       prisma.submission.count({ where }),
       prisma.submission.findMany({
         where,
+        omit: { code: true },
         include: {
           user: {
             select: {
@@ -275,7 +305,7 @@ export default async function Status({ params, searchParams }: Props) {
       // 获取所有语言
       prisma.submission
         .findMany({
-          where: { contestId: cid },
+          where: visibleScopeWhere,
           select: { language: true },
           distinct: ["language"],
         })
@@ -283,7 +313,7 @@ export default async function Status({ params, searchParams }: Props) {
       // 获取所有判题结果
       prisma.submission
         .findMany({
-          where: { contestId: cid },
+          where: visibleScopeWhere,
           select: { verdict: true },
           distinct: ["verdict"],
         })
@@ -308,6 +338,9 @@ export default async function Status({ params, searchParams }: Props) {
         memoryUsed: null,
         language: "-",
         verdict: "FROZEN",
+        passedTests: 0,
+        totalTests: 0,
+        errorMessage: null,
       };
     }
 
@@ -344,13 +377,15 @@ export default async function Status({ params, searchParams }: Props) {
   };
 
   const statusLabel =
-    isAdmin ? "（本场全部提交）" : !shouldViewAll && currentUser
+    !shouldViewAll && currentUser && !isAdmin
       ? "(Your Submissions)"
-      : !shouldViewAll && latestVp
-        ? `(Your latest VP #${latestVp.attemptNo})`
-      : isContestEnded
-        ? "(Contest Ended - All Submissions Visible)"
-        : "";
+      : !shouldViewAll && isRunningVp && latestVp
+        ? `(Your current VP #${latestVp.attemptNo})`
+        : !shouldViewAll && globalUser && !isAdmin
+          ? "(Your Submissions)"
+          : isContestEnded
+            ? "(Contest Ended - All Submissions Visible)"
+            : "";
 
   const dict = await getDictionary();
 
@@ -372,7 +407,7 @@ export default async function Status({ params, searchParams }: Props) {
             verdictRecord={verdictRecord}
             languageRecord={languageRecord}
           />
-          {(currentUser || latestVp) && (
+          {(currentUser || globalUser) && (
             <StatusControls canViewAll={canViewAll} />
           )}
         </div>}
@@ -506,6 +541,22 @@ export default async function Status({ params, searchParams }: Props) {
                     return `Runtime Error on test ${submission.passedTests + 1}`;
                   return String(submission.verdict);
                 })();
+                // 列表可见性不授予源码/编译信息权限，也不向客户端传整条记录。
+                const canViewErrorMessage =
+                  Boolean(isAdmin) ||
+                  (Boolean(currentUser?.id) &&
+                    submission.userId === currentUser?.id) ||
+                  (Boolean(globalUser?.userId) &&
+                    submission.globalUserId === globalUser?.userId);
+                const verdictSubmission = {
+                  id: submission.id,
+                  verdict: submission.verdict,
+                  passedTests: submission.passedTests,
+                  totalTests: submission.totalTests,
+                  errorMessage: canViewErrorMessage
+                    ? submission.errorMessage
+                    : null,
+                };
 
                 return (
                   <tr
@@ -573,17 +624,14 @@ export default async function Status({ params, searchParams }: Props) {
                         className="mx-auto max-w-full overflow-hidden text-ellipsis whitespace-nowrap [&>button]:max-w-full [&>button]:overflow-hidden [&>span]:max-w-full [&>span]:overflow-hidden [&>span>span]:truncate"
                         title={verdictTitle}
                       >
-                        <VerdictCell
-                          submission={{
-                            id: submission.id,
-                            verdict: submission.verdict,
-                            passedTests: submission.passedTests,
-                            totalTests: submission.totalTests,
-                            errorMessage: submission.errorMessage,
-                          }}
-                          isGuest={isGuest && !isContestEnded}
-                          showTestDetails={showTestDetails}
-                        />
+                        {isGuest && !isContestEnded ? (
+                          <VerdictCell submission={verdictSubmission} isGuest={true} />
+                        ) : (
+                          <VerdictCell
+                            submission={verdictSubmission}
+                            showTestDetails={showTestDetails}
+                          />
+                        )}
                       </div>
                     </td>
                   </tr>

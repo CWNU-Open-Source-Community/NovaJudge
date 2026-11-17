@@ -4,7 +4,11 @@ import ProblemInfoCard from "@/components/ProblemInfoCard";
 import { prisma } from "@/lib/prisma";
 import SubmitForm from "./client";
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
-import { ContestRole, Verdict } from "@/lib/generated/prisma/client";
+import {
+  ContestRole,
+  ContestStatus,
+  Verdict,
+} from "@/lib/generated/prisma/client";
 import { Metadata } from "next";
 import Link from "next/link";
 import { CommandLineIcon } from "@heroicons/react/24/outline";
@@ -13,6 +17,7 @@ import {
   getLatestVirtualParticipation,
   getRunningVirtualParticipation,
 } from "@/lib/virtual-participation";
+import { getOfficialSubmissionWhere } from "@/lib/official-submission";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
@@ -53,6 +58,8 @@ export default async function SubmitPage({ params, searchParams }: Props) {
         select: {
           startTime: true,
           endTime: true,
+          status: true,
+          config: true,
         },
       },
     },
@@ -64,7 +71,13 @@ export default async function SubmitPage({ params, searchParams }: Props) {
   const user = await getCurrentUser();
 
   const currentRole = (user as unknown as UserJwtPayload)?.role;
+  const currentContestId = (user as unknown as UserJwtPayload)?.contestId;
   const globalUserId = (SuperAdmin as unknown as UserJwtPayload)?.userId;
+  const isExternalUser =
+    Boolean(SuperAdmin?.externalId) && !SuperAdmin?.isGlobalAdmin;
+  const isContestEnded =
+    contestProblem.contest.status === ContestStatus.ENDED ||
+    new Date() >= contestProblem.contest.endTime;
   const runningVp =
     !user && globalUserId
       ? await getRunningVirtualParticipation(cid, String(globalUserId))
@@ -74,37 +87,53 @@ export default async function SubmitPage({ params, searchParams }: Props) {
       ? await getLatestVirtualParticipation(cid, String(globalUserId))
       : null;
 
-  const dateFilter = runningVp
-    ? {
-        submittedAt: {
-          lte: new Date(
-            Math.min(
-              contestProblem.contest.startTime.getTime() +
-                (new Date().getTime() - runningVp.startedAt.getTime()),
-              contestProblem.contest.endTime.getTime(),
-            ),
-          ),
-        },
-      }
-    : {};
+  const contestConfig = contestProblem.contest.config as {
+    frozenDuration?: number;
+  } | null;
+  const frozenDuration = contestConfig?.frozenDuration ?? 0;
+  let officialVisibleUntil = contestProblem.contest.endTime;
+  let officialUpperBoundExclusive = false;
+
+  if (frozenDuration > 0) {
+    officialVisibleUntil = new Date(
+      contestProblem.contest.endTime.getTime() -
+        frozenDuration * 60 * 1000,
+    );
+    officialUpperBoundExclusive = true;
+  }
+
+  if (runningVp) {
+    officialVisibleUntil = new Date(
+      Math.min(
+        contestProblem.contest.startTime.getTime() +
+          (new Date().getTime() - runningVp.startedAt.getTime()),
+        contestProblem.contest.endTime.getTime(),
+      ),
+    );
+    officialUpperBoundExclusive = false;
+  }
+
+  const officialWhere = getOfficialSubmissionWhere({
+    contestId: cid,
+    startTime: contestProblem.contest.startTime,
+    endTime: contestProblem.contest.endTime,
+    visibleUntil: officialVisibleUntil,
+    exclusiveUpperBound: officialUpperBoundExclusive,
+  });
 
   const [officialTotalStats, officialAcStats, vpTotalStats, vpAcStats] =
     await Promise.all([
       prisma.submission.count({
         where: {
-          contestId: cid,
+          ...officialWhere,
           problemId: problem.id,
-          virtualParticipationId: null,
-          ...dateFilter,
         },
       }),
       prisma.submission.count({
         where: {
-          contestId: cid,
+          ...officialWhere,
           problemId: problem.id,
           verdict: Verdict.ACCEPTED,
-          virtualParticipationId: null,
-          ...dateFilter,
         },
       }),
       latestVp
@@ -152,7 +181,9 @@ export default async function SubmitPage({ params, searchParams }: Props) {
     currentRole === ContestRole.ADMIN ||
     currentRole === ContestRole.JUDGE;
   const isSubmitDisabled =
-    (!!user && currentRole !== ContestRole.TEAM) || (!user && !runningVp);
+    (!!user &&
+      (currentRole !== ContestRole.TEAM || currentContestId !== cid)) ||
+    (!user && !runningVp && !(isExternalUser && isContestEnded));
   return (
     <div className="flex flex-col w-full lg:flex-row gap-6 items-start">
       <aside>

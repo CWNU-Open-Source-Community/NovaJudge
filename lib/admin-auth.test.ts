@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import { Verdict } from "./generated/prisma/enums";
 
 type ServerAction = (...args: unknown[]) => Promise<unknown>;
 
@@ -45,6 +46,7 @@ test("the administrator guard accepts the verified super administrator", async (
 
 const protectedActionFiles = [
   "app/admin/actions.ts",
+  "app/admin/api-keys/actions.ts",
   "app/admin/contests/actions.ts",
   "app/admin/contests/[id]/edit/actions.ts",
   "app/admin/contests/[id]/users/actions.ts",
@@ -61,23 +63,25 @@ for (const filename of protectedActionFiles) {
     for (const user of [null, { userId: "ordinary", isGlobalAdmin: false }]) {
       let authChecks = 0;
       let effects = 0;
+      const getCurrentSuper = async () => {
+        authChecks++;
+        return user;
+      };
       const auth = loadModule("lib/admin-auth.ts", {
-        "@/lib/auth": {
-          getCurrentSuper: async () => {
-            authChecks++;
-            return user;
-          },
-        },
+        "@/lib/auth": { getCurrentSuper },
       });
       const forbiddenEffect = new Proxy(() => {
         effects++;
         throw new Error("Protected storage was accessed before authorization");
       }, { get: () => forbiddenEffect });
       const actions = loadModule(filename, {
+        "@/lib/auth": { getCurrentSuper },
         "@/lib/admin-auth": auth,
         "@/lib/prisma": { prisma: forbiddenEffect },
+        "@/lib/generated/prisma/enums": { Verdict },
         "fs": { promises: forbiddenEffect },
         "fs/promises": forbiddenEffect,
+        "crypto": { randomBytes: forbiddenEffect },
         "path": path,
         "next/cache": { revalidatePath: forbiddenEffect },
         "@/lib/queue": { enqueueJudge: forbiddenEffect },

@@ -1,23 +1,25 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getVerifiedGlobalUser, verifyAuth } from "@/lib/auth";
-import { serialize } from "cookie";
+import {
+  getVerifiedContestUser,
+  getVerifiedGlobalUser,
+} from "@/lib/auth";
 
-function clearAuthTokenResponse() {
-  const cookie = serialize("auth_token", "", {
+function expireCookie(
+  response: NextResponse,
+  name: "auth_token" | "user_token",
+  sameSite: "strict" | "lax",
+) {
+  response.cookies.set(name, "", {
     httpOnly: true,
     secure:
       process.env.NODE_ENV === "production" &&
       process.env.ENABLE_SECURE_COOKIE === "true",
-    sameSite: "strict",
+    sameSite,
     maxAge: 0,
+    expires: new Date(0),
     path: "/",
   });
-
-  return NextResponse.json(
-    { user: null },
-    { headers: { "Set-Cookie": cookie } },
-  );
 }
 
 export async function GET() {
@@ -29,7 +31,7 @@ export async function GET() {
     if (authToken) {
       const user = await getVerifiedGlobalUser(authToken);
       if (user) {
-        return NextResponse.json({
+        const response = NextResponse.json({
           user: {
             username: user.username,
             role: user.role,
@@ -40,26 +42,31 @@ export async function GET() {
             email: user.email,
           },
         });
+        if (userToken) expireCookie(response, "user_token", "lax");
+        return response;
       }
-
-      return clearAuthTokenResponse();
     }
 
     if (userToken) {
-      try {
-        const u = await verifyAuth(userToken);
-        return NextResponse.json({
+      const user = await getVerifiedContestUser(userToken);
+      if (user) {
+        const response = NextResponse.json({
           user: {
-            username: u.username,
-            role: u.role,
-            isGlobalAdmin: !!u.isGlobalAdmin,
-            contestId: u.contestId ?? null,
+            username: user.username,
+            role: user.role,
+            isGlobalAdmin: false,
+            contestId: user.contestId ?? null,
           },
         });
-      } catch {}
+        if (authToken) expireCookie(response, "auth_token", "strict");
+        return response;
+      }
     }
 
-    return NextResponse.json({ user: null });
+    const response = NextResponse.json({ user: null });
+    if (authToken) expireCookie(response, "auth_token", "strict");
+    if (userToken) expireCookie(response, "user_token", "lax");
+    return response;
   } catch {
     return NextResponse.json({ user: null });
   }

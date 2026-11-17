@@ -4,14 +4,15 @@ import "katex/dist/katex.min.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { Toaster } from "sonner";
+import { getSiteConfig } from "@/lib/site-config";
 
-export const metadata: Metadata = {
-  title: {
-    template: "%s | NovaJudge",
-    default: "NovaJudge - XCPC Online Judge",
-  },
-  description: "High-performance Online Judge system",
-};
+export function generateMetadata(): Metadata {
+  const site = getSiteConfig();
+  return {
+    title: { template: `%s | ${site.name}`, default: `${site.name} - ${site.description}` },
+    description: site.description,
+  };
+}
 
 export default function RootLayout({
   children,

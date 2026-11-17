@@ -103,9 +103,13 @@ export async function GET(
   const exportableSubmissions = contest.submissions.filter(
     (submission) =>
       submission.userId &&
+      submission.globalUserId === null &&
+      submission.virtualParticipationId === null &&
       submission.user?.role === "TEAM" &&
       teamIdMap.has(submission.userId) &&
-      problemLabelMap.has(submission.problemId),
+      problemLabelMap.has(submission.problemId) &&
+      submission.submittedAt >= contest.startTime &&
+      submission.submittedAt <= contest.endTime,
   );
 
   let output = "";

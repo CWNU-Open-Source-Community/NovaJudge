@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import ts from "typescript";
 import * as policy from "./cli-device-policy";
 import * as printPolicy from "./print-file-policy";
@@ -895,7 +895,7 @@ test("ordinary web submissions keep their default persistence and judge only aft
     passedTests: 0, totalTests: 0, timeUsed: null, memoryUsed: null, submittedAt: new Date(),
   };
   const submissionService = loadModule<typeof import("./contest-submission")>("lib/contest-submission.ts", {
-    "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" }, Verdict: { PENDING: "PENDING", SYSTEM_ERROR: "SYSTEM_ERROR" } },
+    "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" }, ContestStatus: { ENDED: "ENDED" }, Verdict: { PENDING: "PENDING", SYSTEM_ERROR: "SYSTEM_ERROR" } },
     "@/lib/prisma": { prisma: {
       contestProblem: { findFirst: async () => ({ problemId: 1, problem: { title: "A+B" }, contest: {
         id: 2, type: "PUBLIC", config: null, startTime: new Date(Date.now() - 60_000), endTime: new Date(Date.now() + 60_000),
@@ -932,4 +932,89 @@ test("ordinary web submissions keep their default persistence and judge only aft
     throw new policy.CliDeviceError("Contest changed", 409, "CONTEST_CHANGED");
   } }), { code: "CONTEST_CHANGED" });
   assert.deepEqual(events, [], "A rejected persistence hook must not write or enqueue.");
+});
+
+test("private deployment keeps external upsolving, account bans and virtual participation separate from official team submissions", async () => {
+  const persisted: Record<string, unknown>[] = [];
+  const contest = { id: 2, type: "PUBLIC", status: "ENDED", config: {}, startTime: new Date(Date.now() - 120_000), endTime: new Date(Date.now() - 60_000) };
+  const account = { externalId: "external-id" as string | null, isBanned: false };
+  let participation: { id: string } | null = null;
+  const submissionService = loadModule<typeof import("./contest-submission")>("lib/contest-submission.ts", {
+    "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" }, ContestStatus: { ENDED: "ENDED" }, Verdict: { PENDING: "PENDING", SYSTEM_ERROR: "SYSTEM_ERROR" } },
+    "@/lib/prisma": { prisma: {
+      contestProblem: { findFirst: async () => ({ problemId: 1, problem: { title: "A+B" }, contest }) },
+      globalUser: { findUnique: async () => account },
+      submission: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          persisted.push(data);
+          return { ...data, id: "saved-global", submittedAt: new Date() };
+        },
+      },
+    } },
+    "@/lib/queue": { enqueueJudge: async () => {} },
+    "@/lib/redis": { redis: { incr: async () => 2 } },
+    "@/lib/auth": { getJwtSecretKey: () => secret },
+    "@/lib/contest-access": { hasContestAccess: async () => true },
+    "@/lib/contest-access-token": grants,
+    "@/lib/virtual-participation": { getRunningVirtualParticipation: async () => participation, isVpEnabled: () => true },
+  });
+  const input = { contestId: 2, problemDisplayId: "A", language: "cpp", code: "int main(){}", actor: { type: "global" as const, globalUserId: "global-id" } };
+  await submissionService.createContestSubmission(input);
+  assert.equal(persisted[0].userId, null, "External upsolving must not acquire an official team identity.");
+  assert.equal(persisted[0].globalUserId, "global-id");
+  assert.equal(persisted[0].virtualParticipationId, null);
+  account.isBanned = true;
+  await assert.rejects(submissionService.createContestSubmission(input), /Global user is unavailable/);
+  assert.equal(persisted.length, 1);
+  account.isBanned = false;
+  account.externalId = null;
+  await assert.rejects(submissionService.createContestSubmission(input), /Start virtual participation/);
+  participation = { id: "vp-id" };
+  await submissionService.createContestSubmission(input);
+  assert.equal(persisted[1].userId, null);
+  assert.equal(persisted[1].globalUserId, "global-id");
+  assert.equal(persisted[1].virtualParticipationId, "vp-id");
+  contest.status = "RUNNING";
+  contest.endTime = new Date(Date.now() + 60_000);
+  await assert.rejects(submissionService.createContestSubmission(input), /after the contest ends/);
+  assert.equal(persisted.length, 2);
+});
+
+test("private proxy preserves active global identities while CLI requests always use their own bearer authorization", async () => {
+  let globalValid = true;
+  let contestReads = 0;
+  const checkedTokens: string[] = [];
+  const route = loadModule<typeof import("../proxy")>("proxy.ts", {
+    "next/server": { NextResponse },
+    "./lib/auth": {
+      getVerifiedGlobalUser: async () => globalValid ? { userId: "global-id", isGlobalAdmin: false } : null,
+      verifyAuth: async (token: string) => {
+        checkedTokens.push(token);
+        return { userId: "team-id", contestId: 2, isGlobalAdmin: false };
+      },
+    },
+    "./lib/prisma": { prisma: { user: { findUnique: async () => {
+      contestReads++;
+      return { proctoringKeyHash: "a".repeat(64) };
+    } } } },
+    "./lib/proctoring-access": proctoring,
+  });
+  const req = (route: string, token?: string) => new NextRequest(`${base}${route}`, { headers: {
+    cookie: "auth_token=verified-global; user_token=old-team",
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+  } });
+  assert.equal((await route.proxy(req("/contest/2"))).status, 200);
+  assert.equal(contestReads, 0, "An active external/global session must supersede an old contest cookie.");
+  globalValid = false;
+  assert.equal((await route.proxy(req("/contest/2"))).status, 403);
+  assert.deepEqual(checkedTokens, ["old-team"]);
+  globalValid = true;
+  assert.equal((await route.proxy(req("/api/cli/context", "cli-jwt"))).status, 403);
+  assert.equal(checkedTokens.at(-1), "cli-jwt", "Global cookies must not bypass CLI bearer checks.");
+  const readsBeforeDevice = contestReads;
+  assert.equal((await route.proxy(req("/api/cli/device", validToken))).status, 200);
+  assert.equal(contestReads, readsBeforeDevice, "The device API owns njcli_ binding validation.");
+  globalValid = false;
+  assert.equal((await route.proxy(req("/api/auth/external/password-login"))).status, 200);
+  assert.equal(contestReads, readsBeforeDevice, "An old monitored cookie must not block external sign-in.");
 });

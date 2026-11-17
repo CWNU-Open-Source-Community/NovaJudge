@@ -2,7 +2,7 @@ import { ContestStatus, ContestType } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { JsonValue } from "@prisma/client/runtime/client";
 import Link from "next/link";
-import { getCurrentUser, UserJwtPayload } from "@/lib/auth";
+import { getCurrentSuper, getCurrentUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import {
   LockClosedIcon,
@@ -109,12 +109,11 @@ function StatusBadge({ status }: { status: ContestStatus }) {
 }
 
 export default async function ContestList() {
-  const currentUser = await getCurrentUser();
+  const globalSession = await getCurrentSuper();
+  const currentUser = globalSession ? null : await getCurrentUser();
 
-  if (currentUser) {
-    if ((currentUser as UserJwtPayload).contestId) {
-      redirect(`/contest/${(currentUser as UserJwtPayload).contestId}`);
-    }
+  if (currentUser?.contestId) {
+    redirect(`/contest/${currentUser.contestId}`);
   }
 
   const contests = await prisma.contest.findMany({

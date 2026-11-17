@@ -106,54 +106,27 @@ CCS Basic 认证仅允许超级管理员。
 
 ## 快速开始
 
-克隆仓库并安装依赖：
+使用 Node.js 22。安装依赖只生成客户端和编辑器资源，不连接或修改业务数据库。
 
 ```bash
-git clone https://github.com/pppolf/NovaJudge.git
+git clone https://github.com/CWNU-Open-Source-Community/NovaJudge.git
 cd NovaJudge
-npm install
-```
-
-创建环境变量文件：
-
-```bash
 cp .env.example .env
-```
-
-常用环境变量：
-
-```env
-DATABASE_URL="postgresql://postgres:password@localhost:5432/xcpc_oj?schema=public"
-REDIS_URL="redis://localhost:6379"
-GO_JUDGE_API="http://localhost:5050"
-JWT_SECRET="please-change-this-secret"
-SUPER_ADMIN_USERNAME="admin"
-SUPER_ADMIN_PASSWORD="123456"
-JUDGE_CONCURRENCY=4
-NOVAJUDGE_URL="http://localhost:3001"
-```
-
-启动 PostgreSQL、Redis 和 go-judge：
-
-```bash
-docker-compose up -d
-```
-
-初始化 Prisma 并启动 Web 服务：
-
-```bash
-npx prisma db push
-npm run prisma
+# 填写数据库连接、JWT_SECRET、管理员账号密码等配置。
+npm ci
+docker compose up -d --build --wait
+npm run db:deploy
 npm run dev
 ```
 
-在另一个终端启动判题机：
+另开终端执行 `npm run worker`，网页默认运行在 `http://localhost:3001`。
+生产部署使用 `npm run build` 和 `npm run start`，并配置进程管理器。
 
-```bash
-npm run worker
-```
-
-开发服务器默认运行在 `http://localhost:3001`。
+公开、校内部署现在使用同一套源码。旧系统升级请先阅读
+[统一版本部署与维护交接](docs/DEPLOYMENT.md)，包括备份、旧库识别、升级、回滚和交接步骤。
+外部登录作为可选功能保留：新安装默认关闭，已有私服保留原设置。
+学校名称、页脚和组织映射通过部署配置设置。考场推流控制台已移除，
+判题监控保留在 `/admin/judge-monitor`，监考专用登录和内网 CLI 继续可用。
 
 ## 多开判题机
 
@@ -169,7 +142,7 @@ npm run worker
 npm run worker -- --id 1
 npm run worker -- --id 2
 
-# 一键多开：启动 4 台判题机，ID 依次为 1-4
+# 一键多开：启动 4 台判题机，自动分配全局 ID
 npm run worker:multi -- 4
 
 # 或通过环境变量控制

@@ -93,6 +93,7 @@ export interface RejudgeFilters {
 
 // 单次批量重测的上限，防止误操作把整库灌入队列
 const MAX_REJUDGE_BATCH = 5000;
+const REJUDGE_CONCURRENCY = 10;
 
 // 根据筛选条件构造 Prisma where（供 count 与 findMany 共用）
 function buildRejudgeWhere(filters: RejudgeFilters) {
@@ -197,16 +198,32 @@ export async function rejudgeByFilters(
       return { error: "匹配数量已超过上限，请缩小筛选范围。" };
     }
     const result = { queued: 0, skipped: 0, failed: 0 };
-    for (const id of submissionIds) {
-      const outcome = await requeueSubmission(id, {
-        contestId: filters.contestId ?? undefined,
-        includeAccepted: filters.includeAccepted === true,
-      }).catch(() => "failed" as const);
-      result[outcome]++;
-    }
+    // Preserve the private deployment's bounded concurrency while sharing the
+    // lock, conditional reset and recovery logic with contest rejudging.
+    let nextIndex = 0;
+    await Promise.all(Array.from(
+      { length: Math.min(REJUDGE_CONCURRENCY, submissionIds.length) },
+      async () => {
+        while (true) {
+          const index = nextIndex++;
+          if (index >= submissionIds.length) return;
+          const outcome = await requeueSubmission(submissionIds[index], {
+            contestId: filters.contestId ?? undefined,
+            includeAccepted: filters.includeAccepted === true,
+          }).catch(() => "failed" as const);
+          result[outcome]++;
+        }
+      },
+    ));
 
     revalidatePath("/admin/submissions");
-    return { success: result.failed === 0, ...result };
+    return {
+      success: result.failed === 0,
+      ...result,
+      ...(result.failed > 0 ? {
+        error: result.failed + " submission(s) could not be queued. Refresh and verify their status before retrying.",
+      } : {}),
+    };
   } catch (e) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return { error: (e as any).message || "Failed to rejudge submissions" };

@@ -18,7 +18,7 @@ function harness(kind: "problems" | "contests", auth: "admin" | "user" | "anonym
   const dependencies: Record<string, unknown> = {
     "next/server": { NextResponse },
     "next/headers": { cookies: async () => ({ get: () => auth === "anonymous" ? undefined : { value: "session" } }) },
-    "@/lib/auth": { verifyAuth: async () => ({ isGlobalAdmin: auth === "admin" }) },
+    "@/lib/auth": { getVerifiedGlobalUser: async () => ({ isGlobalAdmin: auth === "admin" }) },
     "@/lib/prisma": { prisma: {
       problem: {
         create: async ({ data }: { data: Record<string, unknown> }) => { nativeCreates.push(data); return { id: 123, title: data.title }; },

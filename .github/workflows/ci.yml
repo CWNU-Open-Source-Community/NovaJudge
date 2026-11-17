@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: novajudge
+          POSTGRES_PASSWORD: ci-${{ github.run_id }}-${{ github.run_attempt }}
+          POSTGRES_DB: novajudge_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U novajudge -d novajudge_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://novajudge:ci-${{ github.run_id }}-${{ github.run_attempt }}@127.0.0.1:5432/novajudge_ci?schema=public
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_SECRET: ci-${{ github.sha }}
+      GO_JUDGE_API: http://127.0.0.1:5050
+      NEXT_TELEMETRY_DISABLED: 1
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies and generate Prisma client
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Test fresh installs and legacy database upgrades
+        env:
+          TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:database-upgrade
+
+      - name: Deploy database migrations
+        run: npm run db:deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test application and contestant CLI
+        run: npm test
+
+      - name: Test contest question notifications
+        run: npm run test:clarification-notifications:integration
+
+      - name: Build
+        run: npm run build

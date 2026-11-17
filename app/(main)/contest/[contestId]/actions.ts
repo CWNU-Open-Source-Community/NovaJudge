@@ -77,6 +77,16 @@ export async function loginContestUser(contestId: number, formData: FormData) {
       process.env.NODE_ENV === "production" &&
       process.env.ENABLE_SECURE_COOKIE === "true",
   });
+  cookieStore.set("auth_token", "", {
+    httpOnly: true,
+    path: "/",
+    sameSite: "strict",
+    maxAge: 0,
+    expires: new Date(0),
+    secure:
+      process.env.NODE_ENV === "production" &&
+      process.env.ENABLE_SECURE_COOKIE === "true",
+  });
 
   // 5. 重定向到比赛主页
   redirect(`/contest/${contestId}?login=true`);

@@ -1,9 +1,8 @@
 import { requireContestAccess } from "@/lib/contest-access";
 // app/contest/[contestId]/page.tsx
 
-import { getCurrentSuper, verifyAuth } from "@/lib/auth";
+import { getCurrentSuper, getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -90,20 +89,19 @@ export default async function ContestLogin({
 
   if (!contest) notFound();
 
-  // 检查是否已登录
-  const cookieStore = await cookies();
-  const user_token = cookieStore.get("user_token")?.value;
+  // 检查是否已登录。有效的全局会话优先于历史比赛 Cookie。
   const globalSession = await getCurrentSuper();
+  const contestSession = globalSession ? null : await getCurrentUser();
   let user;
   let super_admin;
   let glabel_user;
-  if (user_token) {
-    const payload = await verifyAuth(user_token).catch(() => null);
-    if (payload?.userId && payload.contestId === id) {
-      user = await prisma.user.findFirst({
-        where: { id: payload.userId, contestId: id },
-      });
-    }
+  if (contestSession?.userId) {
+    user = await prisma.user.findFirst({
+      where: {
+        id: contestSession.userId,
+        contestId: id,
+      },
+    });
   }
   if (globalSession) {
     if (globalSession.isGlobalAdmin) {
@@ -113,7 +111,7 @@ export default async function ContestLogin({
     }
   }
 
-  if (!user && !super_admin && !error && autoLogin !== "miss") {
+  if (!user && !globalSession && !error && autoLogin !== "miss") {
     redirect(`/api/contests/${id}/auto-login`);
   }
 

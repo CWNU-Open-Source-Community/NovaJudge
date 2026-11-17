@@ -1,0 +1,445 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ContestStatus {
+  PENDING
+  RUNNING
+  ENDED
+}
+
+enum ContestType {
+  PRIVATE
+  PUBLIC
+}
+
+enum ContestRole {
+  TEAM
+  JUDGE
+  BALLOON
+  PRINT
+  OBSERVER
+  ADMIN
+}
+
+enum Verdict {
+  PENDING
+  JUDGING
+  ACCEPTED
+  WRONG_ANSWER
+  TIME_LIMIT_EXCEEDED
+  MEMORY_LIMIT_EXCEEDED
+  RUNTIME_ERROR
+  COMPILE_ERROR
+  PRESENTATION_ERROR
+  SYSTEM_ERROR
+}
+
+enum ClariCategory {
+  QUESTION
+  NOTICE
+}
+
+enum PrintJobStatus {
+  PENDING
+  PRINTING
+  PRINTED
+  FAILED
+  CANCELLED
+}
+
+// ================= 用户模块 =================
+
+// 全局管理员
+model GlobalUser {
+  id          String       @id @default(uuid())
+  username    String       @unique
+  password    String?
+  role        String       @default("GLOBAL_USER")
+  displayName String?
+  studentId   String?
+  email       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  submissions Submission[]
+  apiKeys     ApiKey[]
+  virtualParticipations VirtualParticipation[]
+
+  @@map("global_users")
+}
+
+model ApiKey {
+  id         String     @id @default(uuid())
+  key        String     @unique
+  name       String?
+  userId     String
+  user       GlobalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isEnabled  Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  lastUsedAt DateTime?
+
+  @@map("api_keys")
+}
+
+// 比赛用户 (User)
+model User {
+  id            String  @id @default(uuid())
+  username      String
+  password      String
+  plainPassword String?
+
+  contestId Int
+  contest   Contest @relation(fields: [contestId], references: [id])
+
+  displayName String? // 显示名称
+  members     String? // 队员信息
+  school      String? // 学校
+  seat        String? // 座位号
+  coach       String? // 教练
+  category    String? // 队伍类别
+
+  role ContestRole @default(TEAM)
+  autoLoginIp String? // IP auto-login binding
+
+  lastLoginIp String? // 最近登录 IP
+  lastLoginAt DateTime? // 最近登录时间
+  proctoringKeyHash String? @db.VarChar(64) // 非空时，该比赛账号只能通过监考客户端访问
+  proctoringLoginAt DateTime?
+
+  submissions    Submission[]
+  clarifications Clarification[]
+  replies        Reply[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  balloons  Balloon[]
+  printJobs PrintJob[]
+  cliDevices CliDevice[]
+
+  // 联合唯一索引：保证同一场比赛内 username 唯一
+  @@unique([contestId, username])
+  @@unique([contestId, autoLoginIp])
+  @@map("users")
+}
+
+// ================= 比赛模块 =================
+
+model Contest {
+  id          Int     @id @default(autoincrement()) // 从 1000 开始需在数据库层面设置 sequence
+  title       String
+  description String? @db.Text
+
+  startTime DateTime
+  endTime   DateTime
+
+  type     ContestType   @default(PUBLIC)
+  password String? // 私有赛密码
+  status   ContestStatus @default(PENDING)
+  visible  Boolean       @default(true) // 是否在首页展示
+
+  config Json? // 封榜配置等
+
+  users          User[]
+  problems       ContestProblem[]
+  submissions    Submission[]
+  clarifications Clarification[]
+  virtualParticipations VirtualParticipation[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  balloons  Balloon[]
+  printJobs PrintJob[]
+
+  // 训练中心节点
+  trainingNodes TrainingNode[]
+  cliSettings CliSettings[]
+  cliDevices CliDevice[]
+
+  @@map("contests")
+}
+
+// Administrator-selected contest for browser-paired contestant CLI devices.
+model CliSettings {
+  id              Int      @id @default(1)
+  activeContestId Int?
+  activeContest   Contest? @relation(fields: [activeContestId], references: [id], onDelete: SetNull)
+
+  @@map("cli_settings")
+}
+
+model CliDevice {
+  id                 String   @id @default(uuid())
+  tokenHash          String   @unique @db.VarChar(64)
+  userCode           String   @unique @db.VarChar(9)
+  contestId          Int
+  contest            Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  userId             String?
+  user               User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  contestAccessToken String?  @db.Text
+  proctoringKeyHash   String?  @db.VarChar(64) // 监考签发的设备随当前监考登录绑定失效
+  pairingExpiresAt   DateTime
+  expiresAt          DateTime
+  approvedAt         DateTime?
+  createdAt          DateTime @default(now())
+
+  @@index([contestId])
+  @@index([userId])
+  @@map("cli_devices")
+}
+
+// 新增气球模型
+model Balloon {
+  id Int @id @default(autoincrement())
+
+  submissionId String     @unique // 一个 AC 提交对应一个气球
+  submission   Submission @relation(fields: [submissionId], references: [id])
+
+  contestId Int
+  contest   Contest @relation(fields: [contestId], references: [id])
+
+  // 状态: PENDING (待分配), ASSIGNED (已分配/配送中), COMPLETED (已送达)
+  status String @default("PENDING")
+
+  assignedToId String? // 指派给哪个用户 (Runner)
+  assignedTo   User?   @relation(fields: [assignedToId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("balloons")
+}
+
+model PrintJob {
+  id Int @id @default(autoincrement())
+
+  contestId Int
+  contest   Contest @relation(fields: [contestId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  language String
+  code     String @db.Text
+  sourceFilename String?
+
+  status PrintJobStatus @default(PENDING)
+
+  printerName  String?
+  errorMessage String? @db.Text
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  printedAt DateTime?
+
+  @@index([contestId, status])
+  @@map("print_jobs")
+}
+
+// ================= 题目模块 (题库) =================
+
+model Problem {
+  id Int @id @default(autoincrement())
+
+  title String
+  type  String @default("default") // default, spj, interactive, communication
+
+  // 默认限制
+  defaultTimeLimit   Int // ms
+  defaultMemoryLimit Int // MB
+
+  // 核心内容 (JSON)
+  sections Json
+  samples  Json
+  hint     String? @db.Text
+
+  // 判题配置缓存 (来自 YAML)
+  judgeConfig Json?
+
+  // 关联
+  contestProblems ContestProblem[]
+  submissions     Submission[]
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  clarifications Clarification[]
+
+  @@map("problems")
+}
+
+// ================= 比赛-题目关联 (ContestProblem) =================
+
+model ContestProblem {
+  id String @id @default(uuid())
+
+  contestId Int
+  contest   Contest @relation(fields: [contestId], references: [id])
+
+  problemId Int
+  problem   Problem @relation(fields: [problemId], references: [id])
+
+  displayId String // A, B, C
+
+  // 覆盖配置
+  realTimeLimit   Int? // ms
+  realMemoryLimit Int? // MB
+  color           String? // 气球颜色
+
+  @@unique([contestId, displayId]) // 比赛内展示ID唯一
+  @@unique([contestId, problemId]) // 比赛内题目不重复
+  @@map("contest_problems")
+}
+
+// ================= 提交记录 =================
+
+model Submission {
+  id String @id @default(uuid())
+
+  displayId Int @default(0) // 比赛内的 Run ID (由 Redis 生成)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  // 【新增】关联全局管理员
+  globalUserId String?
+  globalUser   GlobalUser? @relation(fields: [globalUserId], references: [id])
+
+  virtualParticipationId String?
+  virtualParticipation   VirtualParticipation? @relation(fields: [virtualParticipationId], references: [id])
+
+  contestId Int?
+  contest   Contest? @relation(fields: [contestId], references: [id])
+
+  problemId Int
+  problem   Problem @relation(fields: [problemId], references: [id])
+
+  language   String
+  code       String @db.Text
+  codeLength Int
+
+  verdict      Verdict @default(PENDING)
+  timeUsed     Int? // ms
+  memoryUsed   Int? // KB
+  errorMessage String? @db.Text
+
+  passedTests Int @default(0)
+  totalTests  Int @default(0)
+
+  submittedAt DateTime @default(now())
+  balloon     Balloon?
+
+  @@index([contestId, userId])
+  @@index([contestId, globalUserId])
+  @@index([contestId, problemId])
+  @@index([virtualParticipationId])
+  @@map("submissions")
+}
+
+model VirtualParticipation {
+  id String @id @default(uuid())
+
+  contestId Int
+  contest   Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+
+  globalUserId String
+  globalUser   GlobalUser @relation(fields: [globalUserId], references: [id], onDelete: Cascade)
+
+  attemptNo Int
+
+  startedAt  DateTime @default(now())
+  endedAt    DateTime
+  finishedAt DateTime?
+  status     String   @default("RUNNING")
+
+  submissions Submission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contestId, globalUserId, attemptNo])
+  @@index([contestId, globalUserId, startedAt])
+  @@index([contestId])
+  @@index([globalUserId])
+  @@map("virtual_participations")
+}
+
+// ================= 答疑模块 =================
+
+model Clarification {
+  id Int @id @default(autoincrement())
+
+  contestId Int
+  contest   Contest @relation(fields: [contestId], references: [id])
+
+  displayId String? // 存 A, B, C... 方便前端显示
+  problemId Int?
+  problem   Problem? @relation(fields: [problemId], references: [id])
+
+  userId String? // 可选，Admin 发的公告可能没有 User
+  user   User?   @relation(fields: [userId], references: [id])
+
+  title    String?
+  content  String        @db.Text
+  category ClariCategory @default(QUESTION)
+
+  isPublic Boolean @default(false) // 是否公开给所有队伍
+
+  replies Reply[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contestId, category])
+  @@map("clarifications")
+}
+
+model Reply {
+  id Int @id @default(autoincrement())
+
+  clarificationId Int
+  clarification   Clarification @relation(fields: [clarificationId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([clarificationId, createdAt, id])
+  @@map("replies")
+}
+
+// ================= 训练中心模块 =================
+
+// 训练目录节点 (可以是文件夹，也可以是关联的比赛)
+model TrainingNode {
+  id   String  @id @default(uuid())
+  name String // 节点名称 (文件夹名 或 比赛显示名)
+  slug String? // URL 路径别名 (仅对文件夹有效)
+  type String // "FOLDER" | "CONTEST"
+
+  parentId String? // 父节点 ID (为空则为根节点)
+  parent   TrainingNode?  @relation("Tree", fields: [parentId], references: [id], onDelete: Cascade)
+  children TrainingNode[] @relation("Tree")
+
+  // 如果是比赛节点，关联一个 Contest
+  contestId Int?
+  contest   Contest? @relation(fields: [contestId], references: [id])
+
+  rank Int @default(0) // 排序权重
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("training_nodes")
+}

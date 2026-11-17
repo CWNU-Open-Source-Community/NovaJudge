@@ -51,8 +51,10 @@ const compiled = ts.transpileModule(readFileSync(path.resolve(filename), "utf8")
 function harness(
   type: "standard" | "spj" | "interactive" | "communication", responses: SandboxResult[][],
   language = "pypy3", polygon?: PolygonJudgeConfig, sample = { input: "input\n", output: "ok\n" },
+  environment: Record<string, string> = {},
 ) {
   const requests: { cmd: Command[] }[] = [];
+  const requestTimeouts: number[] = [];
   const updates: SubmissionUpdate[] = [];
   const diagnostics: unknown[][] = [];
   const progress: Record<string, unknown>[] = [];
@@ -94,8 +96,11 @@ function harness(
       assert.ok(name in dependencies, `Unexpected import ${name}`);
       return dependencies[name];
     },
-    process: { env: {}, cwd: () => process.cwd() },
-    AbortSignal,
+    process: { env: environment, cwd: () => process.cwd() },
+    AbortSignal: { timeout: (ms: number) => {
+      requestTimeouts.push(ms);
+      return new AbortController().signal;
+    } },
     console: { error: (...args: unknown[]) => diagnostics.push(args), warn: (...args: unknown[]) => diagnostics.push(args) },
     fetch: async (_url: string, options: { method: string; body?: string }) => {
       if (options.method === "DELETE") return { ok: true };
@@ -110,7 +115,7 @@ function harness(
     debugProblemSamples(problem: unknown, code: string, language: string): Promise<DebugAllSamplesResult>;
   };
   return {
-    requests, updates, diagnostics, progress, compiledPrograms,
+    requests, requestTimeouts, updates, diagnostics, progress, compiledPrograms,
     run: async () => {
       await judge.judgeSubmission("fixture");
       assert.equal(responses.length, 0, "All expected sandbox responses must be used");
@@ -123,6 +128,22 @@ function harness(
     },
   };
 }
+
+test("HTTP timeout leaves room for the sandbox watchdog even with a short configured override", async () => {
+  for (const configured of [undefined, "1000", "180000"]) {
+    const h = harness("standard", [[accepted()]], "pypy3", undefined, undefined, configured ? {
+      GO_JUDGE_REQUEST_TIMEOUT_MS: configured,
+    } : {});
+    assert.equal((await h.run()).verdict, "ACCEPTED");
+    assert.equal(h.requestTimeouts[0], configured === "180000" ? 180_000 : 120_000);
+  }
+});
+
+test("interactive HTTP timeout covers the longest member of the sandbox group", async () => {
+  const h = harness("interactive", [[accepted(), accepted()]]);
+  assert.equal((await h.run()).verdict, "ACCEPTED");
+  assert.equal(h.requestTimeouts[0], 260_000);
+});
 
 for (const mode of ["run", "sample"] as const) {
   for (const [name, input, expected] of [

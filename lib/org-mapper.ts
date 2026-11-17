@@ -9,26 +9,25 @@ export async function getOrganizationMap(): Promise<Record<string, string>> {
   }
 
   try {
-    const filePath = path.join(process.cwd(), "config", "org-map.json");
+    const filePath = process.env.NOVAJUDGE_ORG_MAP_PATH?.trim()
+      ? path.resolve(process.env.NOVAJUDGE_ORG_MAP_PATH)
+      : path.join(process.cwd(), "config", "org-map.json");
 
     const fileContent = await fs.readFile(filePath, "utf-8");
 
-    cachedOrgMap = JSON.parse(fileContent);
+    const parsed: unknown = JSON.parse(fileContent);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
+        Object.values(parsed).some((value) => typeof value !== "string")) {
+      throw new Error("Organization mapping must be an object of string values.");
+    }
+    cachedOrgMap = parsed as Record<string, string>;
     return cachedOrgMap!;
   } catch (error) {
     console.error(
-      "读取组织映射文件失败, 请检查 config/org-map.json 是否存在:",
+      "Unable to read organization mapping. Check NOVAJUDGE_ORG_MAP_PATH or config/org-map.json:",
       error,
     );
 
-    return {
-      计算机学院: "cs",
-      数学科学学院: "math",
-      地理科学学院: "geo",
-      电子信息工程学院: "eie",
-      环境科学与工程学院: "env",
-      物理与天文学院: "phy",
-      壹零智创: "ylzc",
-    };
+    return {};
   }
 }

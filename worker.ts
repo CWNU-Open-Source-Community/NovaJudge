@@ -3,12 +3,14 @@ import { Worker } from "bullmq";
 import { judgeSubmission } from "./lib/judge";
 import { redis } from "./lib/redis";
 import { prisma } from "./lib/prisma";
-import { ContestStatus } from "./lib/generated/prisma/enums";
+import { ContestStatus, Verdict } from "./lib/generated/prisma/enums";
+import { JUDGE_QUEUE_NAME } from "./lib/queue-constants";
 import os from "os";
 import {
   registerJudgeWorker,
   unregisterJudgeWorker,
   tryAcquireSchedulerLease,
+  JUDGE_WORKER_SEQUENCE_KEY,
   type JudgeWorkerInfo,
 } from "./lib/worker-registry";
 
@@ -34,9 +36,14 @@ async function main() {
   const requestedId = resolveWorkerId();
   // 没指定 ID 时自动分配：<主机名>-<序号>（序号来自 Redis 自增，保证唯一）
   const workerId =
-    requestedId || `${os.hostname()}-${await redis.incr("judge:worker:seq")}`;
+    requestedId ||
+    `${os.hostname()}-${await redis.incr(JUDGE_WORKER_SEQUENCE_KEY)}`;
 
-  const concurrency = Number(process.env.JUDGE_CONCURRENCY || 1);
+  const configuredConcurrency = Number(process.env.JUDGE_CONCURRENCY || 1);
+  const concurrency =
+    Number.isFinite(configuredConcurrency) && configuredConcurrency > 0
+      ? Math.floor(configuredConcurrency)
+      : 1;
   const judgeApi = process.env.GO_JUDGE_API || "http://localhost:5050";
 
   console.log("🚀 Judge Worker Started...");
@@ -84,7 +91,7 @@ async function main() {
   //    同一提交不会产生重复任务。
   // ───────────────────────────────────────────────────────────
   const worker = new Worker(
-    "judge-queue",
+    JUDGE_QUEUE_NAME,
     async (job) => {
       console.log(
         `[${workerId}] Processing job ${job.id}: submission ${job.data.submissionId}`,
@@ -119,13 +126,50 @@ async function main() {
   });
 
   worker.on("failed", (job, err) => {
-    processedCount += 1;
     if (job) {
       const jobId = String(job.id ?? "");
       activeJobs = activeJobs.filter((a) => a.jobId !== jobId);
     }
     publishHeartbeat().catch(() => {});
     console.log(`[${workerId}] Job ${job?.id} has failed with ${err.message}`);
+
+    if (job) {
+      const submissionId = String(job.data?.submissionId ?? "");
+      if (submissionId) {
+        // A failed event is also emitted for attempts that BullMQ will retry.
+        // Query the resulting state so stalled/unrecoverable jobs are covered
+        // without marking ordinary delayed retries as terminal.
+        void job
+          .getState()
+          .then((state) => {
+            if (state !== "failed") return;
+            // BullMQ emits `failed` for retryable attempts as well. Count only
+            // the terminal failure as a processed submission.
+            processedCount += 1;
+            void publishHeartbeat().catch(() => {});
+            return prisma.submission.updateMany({
+              where: {
+                id: submissionId,
+                verdict: { in: [Verdict.PENDING, Verdict.JUDGING] },
+              },
+              data: {
+                verdict: Verdict.SYSTEM_ERROR,
+                errorMessage: `Judge job failed after ${job.attemptsMade} attempt(s): ${err.message}`,
+              },
+            });
+          })
+          .catch((updateError) =>
+            console.error(
+              `[${workerId}] Failed to reconcile terminal job ${job.id} for submission ${submissionId}:`,
+              updateError,
+            ),
+          );
+      }
+    }
+  });
+
+  worker.on("error", (error) => {
+    console.error(`[${workerId}] BullMQ worker error:`, error);
   });
 
   // ───────────────────────────────────────────────────────────
@@ -198,15 +242,18 @@ async function main() {
   // ───────────────────────────────────────────────────────────
   // 5. 优雅退出：注销判题机信息并关闭连接
   // ───────────────────────────────────────────────────────────
+  let isShuttingDown = false;
   async function shutdown(signal: string) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
     console.log(`[${workerId}] Received ${signal}, shutting down gracefully...`);
-    clearInterval(heartbeatTimer);
     clearInterval(schedulerTimer);
     try {
-      await unregisterJudgeWorker(workerId);
+      await worker.close(); // 等待正在处理的任务完成，期间继续上报心跳
     } catch {}
+    clearInterval(heartbeatTimer);
     try {
-      await worker.close(); // 等待正在处理的任务完成
+      await unregisterJudgeWorker(workerId);
     } catch {}
     try {
       await redis.quit();
