@@ -1,6 +1,7 @@
 "use server";
 
 import { requireContestAccess } from "@/lib/contest-access";
+import { getDictionary } from "@/lib/get-dictionary";
 
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { Prisma } from "@/lib/generated/prisma/client";
@@ -181,7 +182,7 @@ export async function assignBalloon(
     select: { id: true },
   });
   if (!runner) {
-    throw new Error("Runner must be a balloon volunteer in this contest.");
+    throw new Error((await getDictionary()).balloon.invalidVolunteer);
   }
 
   const contest = await prisma.contest.findUnique({
@@ -219,7 +220,7 @@ export async function completeBalloon(contestId: number, balloonId: number) {
     !!user?.userId && user.contestId === contestId && user.role === ContestRole.BALLOON;
 
   if (!isMaster && !isRunner) {
-    throw new Error("Only assigned balloon volunteers or contest staff can complete delivery.");
+    throw new Error((await getDictionary()).balloon.deliveryRestricted);
   }
 
   const contest = await prisma.contest.findUnique({

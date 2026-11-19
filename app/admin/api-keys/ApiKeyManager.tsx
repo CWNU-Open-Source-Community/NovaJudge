@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useState } from "react";
 import { createApiKey, deleteApiKey, toggleApiKey } from "./actions";
 import { toast } from "sonner";
@@ -26,6 +28,7 @@ export default function ApiKeyManager({
 }: {
   initialKeys: ApiKey[];
 }) {
+  const { t, locale } = useAdminLocale();
   const [keys, setKeys] = useState(initialKeys);
   const [isCreating, setIsCreating] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
@@ -40,10 +43,10 @@ export default function ApiKeyManager({
           k.id === id ? { ...k, isEnabled: !currentStatus } : k,
         ),
       );
-      toast.success(`API Key ${!currentStatus ? "enabled" : "disabled"}`);
+      toast.success(t(`API key ${currentStatus ? "disabled" : "enabled"}.`, `API 密钥已${currentStatus ? "停用" : "启用"}。`));
     } catch (error) {
       console.log(error);
-      toast.error("Failed to update API Key status");
+      toast.error(t("Failed to update API Key status", "更新密钥状态失败"));
     }
   };
 
@@ -53,14 +56,14 @@ export default function ApiKeyManager({
     try {
       const res = await createApiKey(newKeyName);
       if (res.success) {
-        toast.success("API Key created successfully");
+        toast.success(t("API Key created successfully", "API 密钥已创建"));
         setNewKeyName("");
         // 简单刷新页面或者手动更新列表 (这里简单起见刷新页面)
         window.location.reload();
       }
     } catch (error) {
       console.log(error);
-      toast.error("Failed to create API Key");
+      toast.error(t("Failed to create API Key", "创建 API 密钥失败"));
     } finally {
       setIsCreating(false);
     }
@@ -70,11 +73,11 @@ export default function ApiKeyManager({
     if (!deletingKeyId) return;
     try {
       await deleteApiKey(deletingKeyId);
-      toast.success("API Key deleted");
+      toast.success(t("API Key deleted", "API 密钥已撤销"));
       setKeys((prev) => prev.filter((k) => k.id !== deletingKeyId));
     } catch (error) {
       console.log(error);
-      toast.error("Failed to delete API Key");
+      toast.error(t("Failed to delete API Key", "撤销 API 密钥失败"));
     } finally {
       setDeletingKeyId(null);
     }
@@ -120,40 +123,41 @@ export default function ApiKeyManager({
 
     if (success) {
       setCopied(true);
-      toast.success("Copied to clipboard");
+      toast.success(t("Copied to clipboard", "已复制到剪贴板"));
 
       // 2秒后恢复图标状态
       setTimeout(() => {
         setCopied(false);
       }, 2000);
     } else {
-      toast.error("Failed to copy code");
+      toast.error(t("Failed to copy code", "复制失败"));
     }
   };
 
   return (
     <div className="space-y-6">
-      <ConfirmModal
+      <ConfirmModal cancelText={t("Cancel", "取消")}
         isOpen={!!deletingKeyId}
-        title="Revoke API Key"
-        message="Are you sure you want to revoke this API key? Any applications using it will immediately stop working."
-        confirmText="Revoke"
+        title={t("Revoke API Key", "撤销 API 密钥")}
+        message={t("Are you sure you want to revoke this API key? Any applications using it will immediately stop working.", "撤销后，使用该密钥的应用将立即失去访问权限。确认撤销？")}
+        confirmText={t("Revoke", "撤销")}
         onConfirm={handleDelete}
         onCancel={() => setDeletingKeyId(null)}
         isDestructive
       />
 
       {/* Create Form */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+      <div className="admin-card p-4 sm:p-5">
         <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
           <PlusIcon className="w-5 h-5" />
-          Generate New Key
+          {t("Generate New Key", "创建密钥")}
         </h3>
-        <form onSubmit={handleCreate} className="flex gap-4">
+        <form onSubmit={handleCreate} className="flex flex-wrap gap-2.5">
           <input
             type="text"
-            placeholder="Key Name (e.g. My Script)"
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder={t("Key Name (e.g. My Script)", "密钥名称（如外榜同步）")}
+            aria-label={t("Key name", "密钥名称")}
+            className="admin-input w-auto flex-1 basis-44"
             value={newKeyName}
             onChange={(e) => setNewKeyName(e.target.value)}
             required
@@ -161,35 +165,35 @@ export default function ApiKeyManager({
           <button
             type="submit"
             disabled={isCreating}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors cursor-pointer"
+            className="admin-button admin-button-primary"
           >
-            {isCreating ? "Generating..." : "Generate"}
+            {isCreating ? t("Generating...", "正在创建…") : t("Generate", "创建")}
           </button>
         </form>
       </div>
 
       {/* Key List */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="admin-card overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
           <KeyIcon className="w-5 h-5 text-gray-500" />
-          <h3 className="font-medium text-gray-700">Active API Keys</h3>
+          <h3 className="font-medium text-gray-700">{t("Active API Keys", "密钥列表")}</h3>
         </div>
 
         {keys.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
-            No API keys found. Generate one to get started.
+            {t("No API keys found. Generate one to get started.", "还没有 API 密钥，可以在上方创建。")}
           </div>
         ) : (
           <ul className="divide-y divide-gray-100">
             {keys.map((key) => (
               <li
                 key={key.id}
-                className="p-6 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                className="flex flex-wrap items-start justify-between gap-3 p-4 transition-colors hover:bg-gray-50 sm:p-5"
               >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-gray-900">
-                      {key.name || "Untitled"}
+                      {key.name || t("Untitled", "未命名")}
                     </span>
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full ${
@@ -198,24 +202,25 @@ export default function ApiKeyManager({
                           : "bg-gray-100 text-gray-500"
                       }`}
                     >
-                      {key.isEnabled ? "Active" : "Disabled"}
+                      {key.isEnabled ? t("Active", "正常") : t("Disabled", "已停用")}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 font-mono text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded w-fit">
-                    {key.key}
+                  <div className="flex w-fit max-w-full items-center gap-2 rounded-md bg-gray-100 px-2 py-1 font-mono text-xs text-gray-700">
+                    <span className="break-all">{key.key}</span>
                     <button
                       onClick={() => copyToClipboard(key.key)}
                       className="text-gray-400 hover:text-gray-600"
-                      title="Copy"
+                      title={t("Copy", "复制")}
+                      aria-label={t("Copy key", "复制密钥")}
                     >
                       <ClipboardDocumentIcon className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    Created: {new Date(key.createdAt).toLocaleDateString()}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-600">
+                    <span>{t("Created:", "创建于：")} {new Date(key.createdAt).toLocaleDateString(locale)}</span>
                     {key.lastUsedAt && (
-                      <span className="ml-4">
-                        Last used: {new Date(key.lastUsedAt).toLocaleString()}
+                      <span>
+                        {t("Last used:", "最后使用：")} {new Date(key.lastUsedAt).toLocaleString(locale)}
                       </span>
                     )}
                   </div>
@@ -229,14 +234,14 @@ export default function ApiKeyManager({
                         ? "text-green-600 hover:bg-green-50"
                         : "text-gray-400 hover:bg-gray-50"
                     }`}
-                    title={key.isEnabled ? "Disable Key" : "Enable Key"}
+                    title={key.isEnabled ? t("Disable Key", "停用密钥") : t("Enable Key", "启用密钥")}
                   >
                     <PowerIcon className="w-5 h-5" />
                   </button>
                   <button
                     onClick={() => setDeletingKeyId(key.id)}
                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
-                    title="Revoke Key"
+                    title={t("Revoke Key", "撤销密钥")}
                   >
                     <TrashIcon className="w-5 h-5" />
                   </button>

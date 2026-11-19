@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Prisma } from "./generated/prisma/client";
 import { Verdict } from "./generated/prisma/enums";
 import { requireContestManager } from "./contest-management-auth";
+import { formatMessage, zh, type Dictionary } from "./dictionaries";
 import { buildContestSubmissionWhere } from "./contest-submission-query";
 import { prisma } from "./prisma";
 import { enqueueJudge, judgeQueue, judgeQueueConnection as redis } from "./queue";
@@ -17,14 +18,14 @@ const SNAPSHOT_TTL_SECONDS = 10 * 60;
 const TAKE_SNAPSHOT = "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]); end; return v";
 const RELEASE_LOCK = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end; return 0";
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "重判操作失败，请稍后重试。";
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }
 
-function checkedIds(value: unknown): string[] {
+function checkedIds(value: unknown, copy: Dictionary["rejudge"]): string[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_CONTEST_REJUDGE_BATCH ||
     value.some((id) => typeof id !== "string" || !id.trim() || id.length > 100)) {
-    throw new Error(`请选择 1 至 ${MAX_CONTEST_REJUDGE_BATCH} 条有效提交。`);
+    throw new Error(formatMessage(copy.selectValid, { limit: MAX_CONTEST_REJUDGE_BATCH }));
   }
   return [...new Set(value as string[])];
 }
@@ -112,15 +113,16 @@ export async function requeueSubmission(
 export async function previewRejudge(
   contestId: number,
   request: ContestRejudgeRequest,
+  dict: Dictionary = zh,
 ): Promise<ContestRejudgePreview> {
   try {
-    const actor = await requireContestManager(contestId);
+    const actor = await requireContestManager(contestId, dict.rejudge.managerRequired);
     if (!request || typeof request !== "object" ||
       (request.includeAccepted !== undefined && typeof request.includeAccepted !== "boolean")) {
-      throw new Error("重判条件无效。");
+      throw new Error(dict.rejudge.invalidRequest);
     }
-    const filters = await buildContestSubmissionWhere(contestId, request.filters);
-    const ids = request.submissionIds === undefined ? undefined : checkedIds(request.submissionIds);
+    const filters = await buildContestSubmissionWhere(contestId, request.filters, dict);
+    const ids = request.submissionIds === undefined ? undefined : checkedIds(request.submissionIds, dict.rejudge);
     const submissions = await prisma.submission.findMany({
       where: { AND: [filters, rejudgeEligibility(request.includeAccepted), ...(ids ? [{ id: { in: ids } }] : [])] },
       take: MAX_CONTEST_REJUDGE_BATCH + 1,
@@ -132,7 +134,7 @@ export async function previewRejudge(
       },
     });
     if (submissions.length > MAX_CONTEST_REJUDGE_BATCH) {
-      throw new Error(`匹配提交超过 ${MAX_CONTEST_REJUDGE_BATCH} 条，请缩小筛选范围。`);
+      throw new Error(formatMessage(dict.rejudge.tooMany, { limit: MAX_CONTEST_REJUDGE_BATCH }));
     }
     if (!submissions.length) return { count: 0, sample: [] };
 
@@ -152,28 +154,28 @@ export async function previewRejudge(
       sample: submissions.slice(0, 5).map((submission) => ({
         id: submission.id, displayId: submission.displayId,
         teamName: submission.user?.displayName || submission.user?.username ||
-          submission.globalUser?.displayName || submission.globalUser?.username || "未知队伍",
+          submission.globalUser?.displayName || submission.globalUser?.username || dict.common.unknown,
         problemLabel: labels.get(submission.problemId) || String(submission.problemId),
         verdict: submission.verdict,
       })),
     };
   } catch (error) {
-    return { error: errorMessage(error) };
+    return { error: errorMessage(error, dict.rejudge.processingFailed) };
   }
 }
 
-export async function executeRejudge(contestId: number, token: string): Promise<ContestRejudgeResult> {
+export async function executeRejudge(contestId: number, token: string, dict: Dictionary = zh): Promise<ContestRejudgeResult> {
   try {
-    const actor = await requireContestManager(contestId);
+    const actor = await requireContestManager(contestId, dict.rejudge.managerRequired);
     if (typeof token !== "string" || !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(token)) {
-      throw new Error("重判预览无效，请重新预览。");
+      throw new Error(dict.rejudge.invalidPreview);
     }
     // Actor-specific keys prevent another manager from consuming this preview.
     const raw = await redis.eval(TAKE_SNAPSHOT, 1, `rejudge:preview:${contestId}:${actor.key}:${token}`);
-    if (typeof raw !== "string") throw new Error("预览已过期或已执行，请重新预览。");
+    if (typeof raw !== "string") throw new Error(dict.rejudge.expiredPreview);
     const snapshot = JSON.parse(raw) as { contestId: number; actorKey: string; submissionIds: string[]; includeAccepted: boolean };
-    if (snapshot.contestId !== contestId || snapshot.actorKey !== actor.key) throw new Error("重判预览不属于当前账号或比赛。");
-    const ids = checkedIds(snapshot.submissionIds);
+    if (snapshot.contestId !== contestId || snapshot.actorKey !== actor.key) throw new Error(dict.rejudge.wrongPreview);
+    const ids = checkedIds(snapshot.submissionIds, dict.rejudge);
     const queuedIds: string[] = [];
     let skipped = 0;
     let failed = 0;
@@ -191,18 +193,18 @@ export async function executeRejudge(contestId: number, token: string): Promise<
     }));
     return { queued: queuedIds.length, skipped, failed, submissionIds: queuedIds };
   } catch (error) {
-    return { error: errorMessage(error) };
+    return { error: errorMessage(error, dict.rejudge.processingFailed) };
   }
 }
 
-export async function readRejudgeProgress(contestId: number, submissionIds: string[]): Promise<ContestRejudgeProgress> {
+export async function readRejudgeProgress(contestId: number, submissionIds: string[], dict: Dictionary = zh): Promise<ContestRejudgeProgress> {
   try {
-    await requireContestManager(contestId);
-    const ids = checkedIds(submissionIds);
+    await requireContestManager(contestId, dict.rejudge.managerRequired);
+    const ids = checkedIds(submissionIds, dict.rejudge);
     const submissions = await prisma.submission.findMany({
       where: { contestId, id: { in: ids } }, select: { id: true, verdict: true },
     });
-    if (submissions.length !== ids.length) throw new Error("部分提交不存在或不属于本场比赛。");
+    if (submissions.length !== ids.length) throw new Error(dict.rejudge.missingSubmissions);
     const result = { pending: 0, judging: 0, completed: 0, failed: 0 };
     let cursor = 0;
     await Promise.all(Array.from({ length: Math.min(8, submissions.length) }, async () => {
@@ -227,6 +229,6 @@ export async function readRejudgeProgress(contestId: number, submissionIds: stri
     }));
     return result;
   } catch (error) {
-    return { error: errorMessage(error) };
+    return { error: errorMessage(error, dict.rejudge.processingFailed) };
   }
 }

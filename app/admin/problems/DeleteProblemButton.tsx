@@ -1,11 +1,14 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { TrashIcon } from "@heroicons/react/24/outline";
 import { deleteProblem } from "./actions";
 import { useState } from "react";
 import ConfirmModal from "@/components/admin/ConfirmModal";
 
 export default function RejudgeButton({ problemId }: { problemId: number }) {
+  const { t } = useAdminLocale();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   const handleDelete = () => {
@@ -19,22 +22,22 @@ export default function RejudgeButton({ problemId }: { problemId: number }) {
 
   return (
     <>
-      <ConfirmModal
+      <ConfirmModal cancelText={t("Cancel", "取消")}
         isOpen={isConfirmOpen}
-        title="Delete Problem"
-        message={`Are you sure you want to DELETE this problem #${problemId}?`}
-        confirmText="Delete"
+        title={t("Delete Problem", "删除题目")}
+        message={t(`Delete problem #${problemId}?`, `确认删除题目 #${problemId}？`)}
+        confirmText={t("Delete", "删除")}
         onConfirm={confirmDelete}
         onCancel={() => setIsConfirmOpen(false)}
         isDestructive
       />
       <button
         onClick={handleDelete}
-        className="text-red-400 hover:text-red-600 cursor-pointer"
-        title="Delete Problem"
+        className="admin-icon-button text-red-400 hover:text-red-600"
+        title={t("Delete Problem", "删除题目")}
         type="button"
       >
-        <TrashIcon className="w-5 h-5" />
+        <TrashIcon className="size-[18px]" aria-hidden="true" />
       </button>
     </>
   );

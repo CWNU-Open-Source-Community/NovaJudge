@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -12,7 +14,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { ContestStatus } from "@/lib/generated/prisma/enums";
 import {
-  getMedalCounts,
+  getMedalists,
   formatFtsCitation,
   getSchoolDeduplicationKey,
   type ContestMedalConfig,
@@ -60,22 +62,23 @@ function createCustomAwardId() {
   }`;
 }
 
-function medalChip(type: "gold" | "silver" | "bronze") {
+function MedalChip({ type }: { type: "gold" | "silver" | "bronze" }) {
+  const { t } = useAdminLocale();
   if (type === "gold")
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-xs font-bold">
-        🥇 Gold
+        {t("🥇 Gold", "🥇 金牌")}
       </span>
     );
   if (type === "silver")
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-200 text-gray-700 text-xs font-bold">
-        🥈 Silver
+        {t("🥈 Silver", "🥈 银牌")}
       </span>
     );
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 text-xs font-bold">
-      🥉 Bronze
+      {t("🥉 Bronze", "🥉 铜牌")}
     </span>
   );
 }
@@ -90,6 +93,7 @@ function TeamMultiSelect({
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
+  const { t } = useAdminLocale();
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const filtered = teams.filter(
@@ -113,14 +117,14 @@ function TeamMultiSelect({
         <input
           type="text"
           className="w-full text-sm px-2 py-1 rounded border border-gray-200 outline-none transition focus:border-blue-500"
-          placeholder="搜索队伍（用户名 / 队名）..."
+          placeholder={t("Search by username or team name…", "搜索队伍（用户名 / 队名）...")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
       <div className="max-h-40 overflow-y-auto divide-y divide-gray-50">
         {filtered.length === 0 && (
-          <p className="p-2 text-xs text-gray-400">无匹配队伍</p>
+          <p className="p-2 text-xs text-gray-400">{t("No matching teams", "无匹配队伍")}</p>
         )}
         {filtered.map((t) => (
           <label
@@ -148,7 +152,7 @@ function TeamMultiSelect({
               <button
                 type="button"
                 className="hover:text-red-600 cursor-pointer"
-                title="移除"
+                title={t("Remove", "移除")}
                 onClick={() => onChange(selected.filter((x) => x !== v))}
               >
                 ×
@@ -165,6 +169,7 @@ export default function AwardsClient({
   contestId,
   initial,
 }: AwardsClientProps) {
+  const { t } = useAdminLocale();
   const router = useRouter();
 
   const [medal, setMedal] = useState<ContestMedalConfig>(initial.medal);
@@ -207,7 +212,7 @@ export default function AwardsClient({
     () => standings.filter((t) => !t.isStar),
     [standings],
   );
-  const counts = getMedalCounts(official.length, medal);
+  const medalists = useMemo(() => getMedalists(official, medal), [official, medal]);
 
   // 榜单预览：金银铜 + 并列名次（与排行榜页口径一致）
   const preview = useMemo(() => {
@@ -216,22 +221,9 @@ export default function AwardsClient({
       string,
       "gold" | "silver" | "bronze"
     >();
-    official.slice(0, counts.gold).forEach((t) => {
-      medalByUsername.set(t.username, "gold");
-    });
-    official
-      .slice(counts.gold, counts.gold + counts.silver)
-      .forEach((t) => {
-        medalByUsername.set(t.username, "silver");
-      });
-    official
-      .slice(
-        counts.gold + counts.silver,
-        counts.gold + counts.silver + counts.bronze,
-      )
-      .forEach((t) => {
-        medalByUsername.set(t.username, "bronze");
-      });
+    for (const tier of ["gold", "silver", "bronze"] as const) {
+      for (const team of medalists[tier]) medalByUsername.set(team.username, tier);
+    }
 
     // 名次（含并列，按整个榜单顺序计算，与排行榜页一致）
     const ranks = new Map<string, number>();
@@ -255,7 +247,7 @@ export default function AwardsClient({
         medal: isOfficial ? medalByUsername.get(t.username) : undefined,
       };
     });
-  }, [standings, official, counts]);
+  }, [standings, medalists]);
 
   const teamOptions = useMemo(
     () =>
@@ -275,17 +267,17 @@ export default function AwardsClient({
     const seats = [
       {
         key: "champion",
-        label: "冠军",
+        label: t("Champion", "冠军"),
         citation: top3Citations.champion || "冠军",
       },
       {
         key: "runnerUp",
-        label: "亚军",
+        label: t("Runner-up", "亚军"),
         citation: top3Citations.runnerUp || "亚军",
       },
       {
         key: "third",
-        label: "季军",
+        label: t("Third place", "季军"),
         citation: top3Citations.third || "季军",
       },
     ];
@@ -296,7 +288,7 @@ export default function AwardsClient({
       if (team) schoolsSeen.add(getSchoolDeduplicationKey(team));
       return { ...seat, team: team ?? null };
     });
-  }, [topThreeEnabled, top3Citations, official]);
+  }, [topThreeEnabled, top3Citations, official, t]);
 
   // 快速解题奖预览（每题独立一条，含打星队伍）
   const ftsPreview = useMemo(() => {
@@ -315,32 +307,25 @@ export default function AwardsClient({
   // 优秀奖预览：未获金银铜、解出至少 1 题的队伍
   const excellencePreview = useMemo(() => {
     if (!excellenceEnabled) return [];
-    const medalTeamIds = new Set(
-      official.slice(0, counts.gold + counts.silver + counts.bronze).map(
-        (t) => t.username,
-      ),
-    );
-    return official.filter(
-      (t) => t.solved > 0 && !medalTeamIds.has(t.username),
-    );
-  }, [excellenceEnabled, official, counts]);
+    return preview.filter(team => !team.isStar && team.solved > 0 && !team.medal);
+  }, [excellenceEnabled, preview]);
 
   // 当前配置将生成的奖项事件总数（导出前核对用）
   const awardSummary = useMemo(() => {
     if (!enabled) return null;
     const parts: string[] = [];
     let total = 0;
-    if (counts.gold > 0) {
+    if (medalists.gold.length > 0) {
       total += 2;
-      parts.push(`金牌 ${counts.gold} 队`);
+      parts.push(`金牌 ${medalists.gold.length} 队`);
     }
-    if (counts.silver > 0) {
+    if (medalists.silver.length > 0) {
       total += 2;
-      parts.push(`银牌 ${counts.silver} 队`);
+      parts.push(`银牌 ${medalists.silver.length} 队`);
     }
-    if (counts.bronze > 0) {
+    if (medalists.bronze.length > 0) {
       total += 2;
-      parts.push(`铜牌 ${counts.bronze} 队`);
+      parts.push(`铜牌 ${medalists.bronze.length} 队`);
     }
     if (topThreeEnabled) {
       const n = topThreePreview.filter((s) => s.team).length;
@@ -365,7 +350,7 @@ export default function AwardsClient({
     return { total, parts };
   }, [
     enabled,
-    counts,
+    medalists,
     topThreeEnabled,
     topThreePreview,
     ftsEnabled,
@@ -467,10 +452,10 @@ export default function AwardsClient({
         toast.error(result.error);
         return;
       }
-      toast.success("奖项设置已保存，导出 Event Feed 即可用于滚榜");
+      toast.success(t("Awards saved. Export the Event Feed to use them in the resolver.", "奖项设置已保存，导出 Event Feed 即可用于滚榜"));
       router.refresh();
     } catch {
-      toast.error("Failed to save awards");
+      toast.error(t("Failed to save awards", "保存奖项失败"));
     } finally {
       setSaving(false);
     }
@@ -495,10 +480,10 @@ export default function AwardsClient({
       if (currentSnapshot !== initialSnapshot) {
         const saveResult = await saveContestAwards(contestId, buildPayload());
         if (saveResult.error) {
-          toast.error(`保存失败，已取消导出：${saveResult.error}`);
+          toast.error(t(`Export canceled because saving failed. ${saveResult.error}`, `保存失败，已取消导出。${saveResult.error}`));
           return;
         }
-        toast.success("已自动保存设置，开始导出…");
+        toast.success(t("Settings saved. Exporting…", "已自动保存设置，开始导出…"));
       }
 
       // 2. 导出
@@ -538,10 +523,10 @@ export default function AwardsClient({
       a.click();
       window.URL.revokeObjectURL(blobUrl);
       document.body.removeChild(a);
-      toast.success("已导出（含奖项）。在 resolver 中滚榜到最后阶段即可看到奖项公布");
+      toast.success(t("Exported with awards. They appear at the end in the resolver.", "已导出（含奖项）。在 resolver 中滚榜到最后阶段即可看到奖项公布"));
     } catch (error) {
       toast.error(
-        `Export failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        t(`Export failed. ${error instanceof Error ? error.message : "Unknown error"}`, `导出失败。${error instanceof Error ? error.message : "未知错误"}`),
       );
     } finally {
       setExporting(false);
@@ -557,11 +542,10 @@ export default function AwardsClient({
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <TrophyIcon className="w-7 h-7 text-amber-500" />
-            Awards — {initial.contest.title}
+            {t("Awards —", "奖项 ·")} {initial.contest.title}
           </h1>
           <p className="text-gray-500 mt-1 text-sm">
-            Contest #{initial.contest.id} · 设置奖项后导出 Event Feed，即可用
-            ICPC Tools resolver 滚榜
+            {t("Contest #", "比赛 #")}{initial.contest.id} {t("· Export an Event Feed with awards for ICPC Tools Resolver", "· 设置奖项后导出 Event Feed，即可用 ICPC Tools resolver 滚榜")}
           </p>
         </div>
         <div className="flex gap-2">
@@ -571,28 +555,27 @@ export default function AwardsClient({
             className="inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 disabled:opacity-50"
           >
             <ArrowDownTrayIcon className="w-4 h-4" />
-            {exporting ? "Exporting..." : "保存并导出 Event Feed"}
+            {exporting ? t("Exporting...", "正在导出…") : t("Save and export Event Feed", "保存并导出 Event Feed")}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
             className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 disabled:opacity-50"
           >
-            {saving ? "Saving..." : "保存奖项设置"}
+            {saving ? t("Saving...", "正在保存…") : t("Save awards", "保存奖项设置")}
           </button>
         </div>
       </div>
 
       {notEnded && (
         <div className="p-3 bg-amber-50 border-l-4 border-amber-400 rounded text-sm text-amber-800">
-          比赛尚未结束（当前状态：{initial.contest.status}）。榜单可能还会变化，
-          建议比赛结束后再设置奖项并导出。
+          {t("Contest in progress (current status:", "比赛尚未结束（当前状态：")}{initial.contest.status}{t("). Standings may change. Set awards and export after the contest ends.", "）。榜单可能还会变化， 建议比赛结束后再设置奖项并导出。")}
         </div>
       )}
 
       {/* 金银铜设置 */}
       <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6">
-        <h3 className="font-bold text-gray-800 mb-4">1. 金银铜奖设置</h3>
+        <h3 className="font-bold text-gray-800 mb-4">{t("1. Medal settings", "1. 金银铜奖设置")}</h3>
         <div className="flex flex-wrap items-center gap-6">
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-1.5 text-sm text-gray-700">
@@ -603,7 +586,7 @@ export default function AwardsClient({
                 onChange={() => setMedal({ ...medal, mode: "fixed" })}
                 className="text-blue-600 focus:ring-blue-500"
               />
-              固定数量
+              {t("Fixed count", "固定数量")}
             </label>
             <label className="flex items-center gap-1.5 text-sm text-gray-700">
               <input
@@ -613,12 +596,12 @@ export default function AwardsClient({
                 onChange={() => setMedal({ ...medal, mode: "ratio" })}
                 className="text-blue-600 focus:ring-blue-500"
               />
-              按比例（百分比）
+              {t("By percentage", "按比例（百分比）")}
             </label>
           </div>
           <div className="flex items-center gap-4">
             <div>
-              <label className={labelClass}>金奖</label>
+              <label className={labelClass}>{t("Gold", "金奖")}</label>
               <input
                 type="number"
                 min={0}
@@ -628,7 +611,7 @@ export default function AwardsClient({
               />
             </div>
             <div>
-              <label className={labelClass}>银奖</label>
+              <label className={labelClass}>{t("Silver", "银奖")}</label>
               <input
                 type="number"
                 min={0}
@@ -638,7 +621,7 @@ export default function AwardsClient({
               />
             </div>
             <div>
-              <label className={labelClass}>铜奖</label>
+              <label className={labelClass}>{t("Bronze", "铜奖")}</label>
               <input
                 type="number"
                 min={0}
@@ -649,24 +632,22 @@ export default function AwardsClient({
             </div>
           </div>
           <div className="text-sm text-gray-600">
-            正式队伍 <b className="text-gray-900">{official.length}</b> 支 →
-            将产生{" "}
-            <span className="font-bold text-amber-600">{counts.gold}</span> 金 /{" "}
-            <span className="font-bold text-gray-600">{counts.silver}</span> 银
-            / <span className="font-bold text-orange-600">{counts.bronze}</span>{" "}
-            铜
+            {t("Official teams", "正式队伍")} <b className="text-gray-900">{official.length}</b> {t("teams → produces", "支 → 将产生")}{" "}
+            <span className="font-bold text-amber-600">{medalists.gold.length}</span> {t("gold /", "金 /")}{" "}
+            <span className="font-bold text-gray-600">{medalists.silver.length}</span> {t("silver /", "银 /")} <span className="font-bold text-orange-600">{medalists.bronze.length}</span>{" "}
+            {t("bronze", "铜")}
           </div>
         </div>
 
         {/* 基础奖项名称（citation） */}
         <div className="mt-4 pt-4 border-t border-gray-100">
           <p className="text-xs font-bold text-gray-600 mb-2">
-            奖项名称（滚榜时展示，留空则使用默认英文名）
+            {t("Award titles shown in the resolver (blank uses the English default)", "奖项名称（滚榜时展示，留空则使用默认英文名）")}
           </p>
           <div className="flex flex-wrap gap-4">
             <input
               className={inputClass + " w-44"}
-              placeholder="Gold Medal"
+              placeholder={t("Gold Medal", "金牌")}
               value={baseCitations.gold}
               onChange={(e) =>
                 setBaseCitations({ ...baseCitations, gold: e.target.value })
@@ -674,7 +655,7 @@ export default function AwardsClient({
             />
             <input
               className={inputClass + " w-44"}
-              placeholder="Silver Medal"
+              placeholder={t("Silver Medal", "银牌")}
               value={baseCitations.silver}
               onChange={(e) =>
                 setBaseCitations({ ...baseCitations, silver: e.target.value })
@@ -682,7 +663,7 @@ export default function AwardsClient({
             />
             <input
               className={inputClass + " w-44"}
-              placeholder="Bronze Medal"
+              placeholder={t("Bronze Medal", "铜牌")}
               value={baseCitations.bronze}
               onChange={(e) =>
                 setBaseCitations({ ...baseCitations, bronze: e.target.value })
@@ -694,7 +675,7 @@ export default function AwardsClient({
 
       {/* 自动奖项 */}
       <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6 space-y-5">
-        <h3 className="font-bold text-gray-800">2. 自动奖项（可选）</h3>
+        <h3 className="font-bold text-gray-800">{t("2. Automatic awards (optional)", "2. 自动奖项（可选）")}</h3>
 
         {/* 快速解题奖：每题独立一条 */}
         <div className="p-4 border border-gray-200 rounded-lg">
@@ -705,15 +686,15 @@ export default function AwardsClient({
               onChange={(e) => setFtsEnabled(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            快速解题奖（每题一个奖项，打星队伍也参与评选；同一队伍多个一血由 Resolver 合并展示）
+            {t("First-to-solve awards (one per problem, including unofficial teams). The resolver groups awards for the same team.", "快速解题奖（每题一个奖项，打星队伍也参与评选；同一队伍多个一血由 Resolver 合并展示）")}
           </label>
           {ftsEnabled && (
             <div className="mt-3">
               <p className="text-xs font-bold text-gray-600 mb-1.5">
-                预览（每题一条奖项记录，导出时自动计算）
+                {t("Preview (one award per problem, calculated on export)", "预览（每题一条奖项记录，导出时自动计算）")}
               </p>
               {ftsPreview.length === 0 ? (
-                <p className="text-sm text-gray-400">暂无 AC 记录。</p>
+                <p className="text-sm text-gray-400">{t("No accepted submissions yet.", "暂无 AC 记录。")}</p>
               ) : (
                 <div className="space-y-1">
                   {ftsPreview.map((f) => (
@@ -746,11 +727,11 @@ export default function AwardsClient({
                 onChange={(e) => setExcellenceEnabled(e.target.checked)}
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              优秀奖（未获金银铜、但解出至少 1 题的队伍）
+              {t("Excellence award (teams with at least one solve and no medal)", "优秀奖（未获金银铜、但解出至少 1 题的队伍）")}
             </label>
             <input
               className={inputClass + " w-40"}
-              placeholder="优秀奖"
+              placeholder={t("Excellence award", "优秀奖")}
               disabled={!excellenceEnabled}
               value={excellenceCitation}
               onChange={(e) => setExcellenceCitation(e.target.value)}
@@ -759,15 +740,15 @@ export default function AwardsClient({
           {excellenceEnabled && (
             <div className="mt-3">
               <p className="text-xs font-bold text-gray-600 mb-1.5">
-                预览：将生成{" "}
+                {t("Preview:", "预览：将生成")}{" "}
                 <span className="text-blue-600">
                   {excellencePreview.length}
                 </span>{" "}
-                个奖（一个奖项事件包含全部队伍）
+                {t("awards (one event lists all recipients)", "个奖（一个奖项事件包含全部队伍）")}
               </p>
               {excellencePreview.length === 0 ? (
                 <p className="text-sm text-gray-400">
-                  没有未获金银铜且解出题目的队伍。
+                  {t("No teams that solved a problem are eligible without a medal.", "没有未获金银铜且解出题目的队伍。")}
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-2">
@@ -784,7 +765,7 @@ export default function AwardsClient({
                   ))}
                   {excellencePreview.length > 8 && (
                     <span className="text-xs text-gray-400 self-center">
-                      …等 {excellencePreview.length} 队
+                      {t("…and", "…等")} {excellencePreview.length} {t("teams", "队")}
                     </span>
                   )}
                 </div>
@@ -802,7 +783,7 @@ export default function AwardsClient({
               onChange={(e) => setTopThreeEnabled(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            冠军 / 亚军 / 季军（按学校去重：每个学校最多一个席位，取该校最好队伍）
+            {t("Top three teams (one spot per school, given to its highest-ranked team)", "冠军 / 亚军 / 季军（按学校去重：每个学校最多一个席位，取该校最好队伍）")}
           </label>
           {topThreeEnabled && (
             <div className="mt-3 space-y-2">
@@ -826,7 +807,7 @@ export default function AwardsClient({
                             ? ` (${seat.team.displayName})`
                             : ""
                         } · ${seat.team.school || "无学校"}`
-                      : "→ 学校数不足，暂无队伍"}
+                      : t("No recipient: too few schools", "→ 学校数不足，暂无队伍")}
                   </span>
                 </div>
               ))}
@@ -838,49 +819,49 @@ export default function AwardsClient({
       {/* 榜单预览 */}
       <div className="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-          <h3 className="font-bold text-gray-800">3. 榜单预览（实时反映上方设置）</h3>
+          <h3 className="font-bold text-gray-800">{t("3. Standings preview", "3. 榜单预览（实时反映上方设置）")}</h3>
           <span className="text-xs text-gray-400">
-            打星队伍不参与奖项 · 并列名次按排行榜页口径
+            {t("Unofficial teams are excluded from placement awards. Ties follow the standings.", "打星队伍不参与奖项 · 并列名次按排行榜页口径")}
           </span>
         </div>
         <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
           <table className="w-full text-sm text-left text-gray-600">
             <thead className="bg-gray-50 text-gray-700 font-bold border-b uppercase text-xs sticky top-0">
               <tr>
-                <th className="px-4 py-2.5">Rank</th>
-                <th className="px-4 py-2.5">Team</th>
-                <th className="px-4 py-2.5">School</th>
-                <th className="px-4 py-2.5">Solved</th>
-                <th className="px-4 py-2.5">Penalty</th>
-                <th className="px-4 py-2.5">Award</th>
+                <th className="px-4 py-2.5">{t("Rank", "名次")}</th>
+                <th className="px-4 py-2.5">{t("Team", "队伍")}</th>
+                <th className="px-4 py-2.5">{t("School", "学校")}</th>
+                <th className="px-4 py-2.5">{t("Solved", "解题")}</th>
+                <th className="px-4 py-2.5">{t("Penalty", "罚时")}</th>
+                <th className="px-4 py-2.5">{t("Award", "奖项")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {preview.map((t) => (
-                <tr key={t.username} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 font-mono">{t.rank}</td>
+              {preview.map((team) => (
+                <tr key={team.username} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 font-mono">{team.rank}</td>
                   <td className="px-4 py-2">
                     <span className="font-medium text-gray-900">
-                      {t.username}
-                      {t.isStar && (
+                      {team.username}
+                      {team.isStar && (
                         <span className="ml-1 text-xs text-gray-400">⭐</span>
                       )}
                     </span>
-                    {t.displayName && (
+                    {team.displayName && (
                       <span className="text-xs text-gray-400 ml-2">
-                        {t.displayName}
+                        {team.displayName}
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-xs">{t.school || "—"}</td>
-                  <td className="px-4 py-2 font-mono">{t.solved}</td>
-                  <td className="px-4 py-2 font-mono">{t.penalty}</td>
+                  <td className="px-4 py-2 text-xs">{team.school || "—"}</td>
+                  <td className="px-4 py-2 font-mono">{team.solved}</td>
+                  <td className="px-4 py-2 font-mono">{team.penalty}</td>
                   <td className="px-4 py-2">
-                    {t.medal ? (
-                      medalChip(t.medal)
-                    ) : t.isStar ? (
+                    {team.medal ? (
+                      <MedalChip type={team.medal} />
+                    ) : team.isStar ? (
                       <span className="text-xs text-gray-400">
-                        打星（不参与奖项）
+                        {t("Unofficial (excluded from placement awards)", "打星（不参与奖项）")}
                       </span>
                     ) : (
                       <span className="text-xs text-gray-300">—</span>
@@ -891,7 +872,7 @@ export default function AwardsClient({
               {preview.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center text-gray-400">
-                    No teams in this contest.
+                    {t("No teams in this contest.", "本场暂无队伍。")}
                   </td>
                 </tr>
               )}
@@ -903,19 +884,19 @@ export default function AwardsClient({
       {/* 自定义奖项 */}
       <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="font-bold text-gray-800">4. 自定义奖项（可选）</h3>
+          <h3 className="font-bold text-gray-800">{t("4. Custom awards (optional)", "4. 自定义奖项（可选）")}</h3>
           <button
             onClick={addCustom}
             className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-md border border-blue-200 hover:bg-blue-50"
           >
             <PlusIcon className="w-4 h-4" />
-            添加奖项
+            {t("Add award", "添加奖项")}
           </button>
         </div>
 
         {custom.length === 0 && (
           <p className="text-sm text-gray-400 mb-2">
-            例如：最佳女队、顽强拼搏奖……用搜索框查找并勾选队伍。
+            {t("Use search to select teams for awards such as Best Women's Team.", "例如：最佳女队、顽强拼搏奖……用搜索框查找并勾选队伍。")}
           </p>
         )}
 
@@ -926,10 +907,10 @@ export default function AwardsClient({
               className="flex flex-col md:flex-row gap-3 items-start p-3 border border-gray-200 rounded-lg bg-gray-50/50"
             >
               <div className="flex-1 min-w-0">
-                <label className={labelClass}>奖项名称（citation）</label>
+                <label className={labelClass}>{t("Award title (citation)", "奖项名称（citation）")}</label>
                 <input
                   className={inputClass + " w-full"}
-                  placeholder="例如：最快解题奖"
+                  placeholder={t("e.g. First to Solve", "例如：最快解题奖")}
                   value={a.citation}
                   onChange={(e) =>
                     updateCustom(index, { citation: e.target.value })
@@ -938,7 +919,7 @@ export default function AwardsClient({
               </div>
               <div className="flex-1 min-w-0">
                 <label className={labelClass}>
-                  获奖队伍（已选 {a.teamIds.length} 支）
+                  {t("Recipients (selected:", "获奖队伍（已选")} {a.teamIds.length} {t("teams)", "支）")}
                 </label>
                 <TeamMultiSelect
                   teams={teamOptions}
@@ -949,7 +930,7 @@ export default function AwardsClient({
               <button
                 onClick={() => removeCustom(index)}
                 className="mt-5 p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md"
-                title="删除该奖项"
+                title={t("Delete award", "删除该奖项")}
               >
                 <TrashIcon className="w-5 h-5" />
               </button>
@@ -967,21 +948,21 @@ export default function AwardsClient({
             onChange={(e) => setEnabled(e.target.checked)}
             className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
-          导出 Event Feed 时包含奖项（awards 事件）
+          {t("Include awards in the Event Feed", "导出 Event Feed 时包含奖项（awards 事件）")}
         </label>
 
         <div className="mt-3 text-sm text-gray-700">
           {awardSummary ? (
             <p>
-              当前配置将生成{" "}
+              {t("This configuration generates", "当前配置将生成")}{" "}
               <span className="font-bold text-blue-600">
                 {awardSummary.total}
               </span>{" "}
-              个奖项事件（{awardSummary.parts.join(" · ")}）
+              {t("award events (", "个奖项事件（")}{awardSummary.parts.join(" · ")}）
             </p>
           ) : (
             <p className="text-amber-600 font-bold">
-              奖项未启用，导出将不包含任何奖项
+              {t("Awards are disabled and will be omitted from the export.", "奖项未启用，导出将不包含任何奖项")}
             </p>
           )}
         </div>
@@ -989,27 +970,22 @@ export default function AwardsClient({
         <div className="mt-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded text-sm text-blue-900 space-y-1.5">
           <p className="flex items-center gap-1.5 font-bold">
             <InformationCircleIcon className="w-4 h-4" />
-            使用说明（ICPC Tools resolver 滚榜）
+            {t("ICPC Tools Resolver instructions", "使用说明（ICPC Tools resolver 滚榜）")}
           </p>
           <p>
-            1. 在本页设置奖项后点击「导出 Event Feed」——若有未保存的修改，
-            导出前会<b>自动先保存</b>；
+            {t("1. After setting the awards, select Export Event Feed. Any pending changes are", "1. 在本页设置奖项后点击「导出 Event Feed」——若有未保存的修改， 导出前会")}<b>{t("saved automatically before export", "自动先保存")}</b>；
           </p>
           <p>
-            2. 下载的文件名为 event-feed-contest-&lt;id&gt;-&lt;时间&gt;.ndjson，
-            请打开<b>刚下载的这份</b>（不要打开旧的同名文件）；
+            {t("2. The file is named event-feed-contest-<id>-<timestamp>.ndjson. Open", "2. 下载的文件名为 event-feed-contest-<id>-<时间>.ndjson， 请打开")}<b>{t("the new download", "刚下载的这份")}</b>{t(".", "。")}
           </p>
           <p>
-            3. 用 ICPC Tools resolver 打开该文件：奖项会在滚榜的
-            <b>最后阶段</b>逐个公布（金 → 银 → 铜 → 冠亚季 → 一血 → Solved
-            → 自定义），请耐心滚到最后；
+            {t("3. Open the file in ICPC Tools Resolver. Awards appear in the", "3. 用 ICPC Tools resolver 打开该文件：奖项会在滚榜的")}
+            <b>{t("final stage", "最后阶段")}</b>{t("in order, from medals to custom awards.", "按顺序公布，直到自定义奖项。")}
           </p>
           <p>
-            4. 想快速核对：用文本编辑器打开 ndjson，搜索{" "}
+            {t("4. To verify the export, open the NDJSON file in a text editor and search for", "4. 想快速核对：用文本编辑器打开 ndjson，搜索")}{" "}
             <code className="bg-blue-100 px-1 rounded">awards</code>{" "}
-            （奖项事件）或奖项名（如“冠军”）即可确认已导出。奖项事件格式与
-            ICPC Tools award 工具一致（带 parameters，金银铜各有
-            display_mode=list 副本）。
+            {t("or the award title. Award events use the ICPC Tools format with parameters and a display_mode=list copy for each medal type.", "（奖项事件）或奖项名（如“冠军”）即可确认已导出。奖项事件格式与 ICPC Tools award 工具一致（带 parameters，金银铜各有 display_mode=list 副本）。")}
           </p>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { requireContestAccess } from "@/lib/contest-access";
+import { usesDomjudge } from "@/lib/contest-interface";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import {
@@ -15,7 +16,8 @@ import VerdictBadge from "@/components/VerdictBadge";
 import Link from "next/link";
 import CodeViewer from "./CodeViewer";
 import { ContestConfig } from "@/app/(main)/page";
-import { getDictionary } from "@/lib/get-dictionary";
+import { getDictionary, getLanguage } from "@/lib/get-dictionary";
+import { formatMessage, getLocale } from "@/lib/dictionaries";
 import { getRunningVirtualParticipation } from "@/lib/virtual-participation";
 import { ContestRejudgeButton } from "../RejudgeControls";
 
@@ -158,7 +160,18 @@ export default async function SubmissionDetail({ params }: Props) {
     },
   });
 
-  const submitTime = new Date(submission.submittedAt).toLocaleString("zh-CN");
+  const [dict, lang, domjudge] = await Promise.all([getDictionary(), getLanguage(), usesDomjudge(cid)]);
+  const home = `/contest/${contestId}`;
+  let backHref = `${home}/status`;
+  if (domjudge) {
+    backHref = `${home}#dj-submissions`;
+  } else if (canRejudge) {
+    const filters = new URLSearchParams({ viewAll: "true" });
+    if (submission.user?.id) filters.set("userId", submission.user.id);
+    if (contestProblem?.displayId) filters.set("problem", contestProblem.displayId);
+    backHref += `?${filters}`;
+  }
+  const submitTime = new Date(submission.submittedAt).toLocaleString(getLocale(lang));
 
   const languageRecord: Record<string, string> = {
     cpp: "C++",
@@ -167,7 +180,6 @@ export default async function SubmissionDetail({ params }: Props) {
     c: "C",
   };
 
-  const dict = await getDictionary();
 
   return (
     <div className="bg-white w-full shadow-sm border border-gray-100 rounded-sm p-6">
@@ -183,12 +195,10 @@ export default async function SubmissionDetail({ params }: Props) {
           />
         )}
         <Link
-          href={canRejudge
-            ? `/contest/${contestId}/status?viewAll=true${submission.user?.id ? `&userId=${encodeURIComponent(submission.user.id)}` : ""}${contestProblem?.displayId ? `&problem=${encodeURIComponent(contestProblem.displayId)}` : ""}`
-            : `/contest/${contestId}/status`}
+          href={backHref}
           className="text-blue-600 hover:text-blue-800 hover:underline"
         >
-          ← Back to Status
+          ← {domjudge ? dict.nav.home : dict.submission.backToStatus}
         </Link>
       </div>
 
@@ -263,13 +273,13 @@ export default async function SubmissionDetail({ params }: Props) {
             <span className="font-bold text-gray-600">
               {dict.submission.codeLength}:
             </span>
-            <p className="text-gray-900">{submission.codeLength} bytes</p>
+            <p className="text-gray-900">{formatMessage(dict.submission.codeSize, { count: submission.codeLength })}</p>
           </div>
         </div>
 
         {canViewCode && submission.errorMessage && (
           <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-sm">
-            <span className="font-bold text-red-600">Error Message:</span>
+            <span className="font-bold text-red-600">{dict.submission.errorMessage}</span>
             <pre className="mt-2 text-sm text-red-700 whitespace-pre-wrap">
               {submission.errorMessage}
             </pre>
@@ -282,8 +292,7 @@ export default async function SubmissionDetail({ params }: Props) {
         <CodeViewer code={submission.code} language={submission.language} />
       ) : (
         <p className="text-sm text-gray-500">
-          Source code for virtual submissions is visible only to the submitter
-          and contest administrators.
+          {dict.submission.vpCodeRestricted}
         </p>
       )}
     </div>

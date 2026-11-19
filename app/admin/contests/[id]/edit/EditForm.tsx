@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useState } from "react";
 import { updateContest } from "./actions";
 import MarkdownEditor from "@/components/MarkdownEditor";
@@ -28,6 +30,7 @@ const formatDate = (date: Date) => {
 };
 
 export default function EditForm({ contest }: Props) {
+  const { t } = useAdminLocale();
   // 解析 Config
   const config = (contest.config as ContestConfig) || {};
   const initialMedal = config.medal || {
@@ -60,7 +63,7 @@ export default function EditForm({ contest }: Props) {
       }
 
       // 其他真正的错误才弹窗
-      toast.error("Update failed: " + e.message);
+      toast.error(t("Could not update the contest.", "更新比赛失败。"), { description: e.message });
       setIsSaving(false);
     }
   };
@@ -68,20 +71,20 @@ export default function EditForm({ contest }: Props) {
   return (
     <form
       action={handleSubmit}
-      className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+      className="grid grid-cols-1 xl:grid-cols-3 gap-4"
     >
       {/* === 左侧主栏 (2/3) === */}
-      <div className="lg:col-span-2 space-y-8">
+      <div className="min-w-0 xl:col-span-2 space-y-8">
         {/* 1. 基础信息 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
             <GlobeAltIcon className="w-5 h-5 text-blue-600" />
-            <h2 className="font-semibold text-gray-800">Basic Information</h2>
+            <h2 className="font-semibold text-gray-800">{t("Basic Information", "基本信息")}</h2>
           </div>
           <div className="p-6 space-y-6">
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-2">
-                Contest Title
+                {t("Contest Title", "比赛名称")}
               </label>
               <input
                 type="text"
@@ -95,7 +98,7 @@ export default function EditForm({ contest }: Props) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Start Time
+                  {t("Start Time", "开始时间")}
                 </label>
                 <input
                   type="datetime-local"
@@ -107,7 +110,7 @@ export default function EditForm({ contest }: Props) {
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
-                  End Time
+                  {t("End Time", "结束时间")}
                 </label>
                 <input
                   type="datetime-local"
@@ -121,7 +124,7 @@ export default function EditForm({ contest }: Props) {
 
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-2">
-                Description / Rules
+                {t("Description / Rules", "比赛介绍与规则")}
               </label>
               <div className="border border-gray-300 rounded-lg overflow-hidden">
                 <MarkdownEditor
@@ -139,11 +142,11 @@ export default function EditForm({ contest }: Props) {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
             <TrophyIcon className="w-5 h-5 text-yellow-500" />
-            <h2 className="font-semibold text-gray-800">Awards & Medals</h2>
+            <h2 className="font-semibold text-gray-800">{t("Awards & Medals", "奖项与奖牌")}</h2>
           </div>
           <div className="p-6 space-y-6">
             <div className="flex items-center gap-4 mb-4">
-              <span className="text-sm font-medium text-gray-700">Mode:</span>
+              <span className="text-sm font-medium text-gray-700">{t("Mode:", "方式：")}</span>
               <div className="flex bg-gray-100 p-1 rounded-lg">
                 <button
                   type="button"
@@ -154,7 +157,7 @@ export default function EditForm({ contest }: Props) {
                       : "text-gray-500 hover:text-gray-900"
                   }`}
                 >
-                  Ratio (%)
+                  {t("Ratio (%)", "按比例（%）")}
                 </button>
                 <button
                   type="button"
@@ -165,7 +168,7 @@ export default function EditForm({ contest }: Props) {
                       : "text-gray-500 hover:text-gray-900"
                   }`}
                 >
-                  Fixed Count
+                  {t("Fixed Count", "按固定数量")}
                 </button>
               </div>
               <input type="hidden" name="medalMode" value={medalMode} />
@@ -174,7 +177,7 @@ export default function EditForm({ contest }: Props) {
             <div className="grid grid-cols-3 gap-6">
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-yellow-600 uppercase">
-                  Gold
+                  {t("Gold", "金牌")}
                 </label>
                 <div className="relative">
                   <input
@@ -191,7 +194,7 @@ export default function EditForm({ contest }: Props) {
               </div>
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-gray-400 uppercase">
-                  Silver
+                  {t("Silver", "银牌")}
                 </label>
                 <div className="relative">
                   <input
@@ -208,7 +211,7 @@ export default function EditForm({ contest }: Props) {
               </div>
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-orange-600 uppercase">
-                  Bronze
+                  {t("Bronze", "铜牌")}
                 </label>
                 <div className="relative">
                   <input
@@ -234,13 +237,13 @@ export default function EditForm({ contest }: Props) {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
             <LockClosedIcon className="w-5 h-5 text-gray-600" />
-            <h2 className="font-semibold text-gray-800">Access Control</h2>
+            <h2 className="font-semibold text-gray-800">{t("Access Control", "访问权限")}</h2>
           </div>
           <div className="p-6 space-y-6">
             {/* Visibility Toggle */}
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-3">
-                Visibility
+                {t("Visibility", "可见性")}
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -251,12 +254,11 @@ export default function EditForm({ contest }: Props) {
                   className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
                 />
                 <span className="text-sm text-gray-700 font-medium">
-                  Show in Contest List (Publicly Visible)
+                  {t("Show in Contest List (Publicly Visible)", "在比赛列表中显示")}
                 </span>
               </label>
               <p className="text-xs text-gray-500 mt-1 ml-6">
-                Uncheck to create a hidden contest (accessible only via direct
-                link).
+                {t("Uncheck to create a hidden contest (accessible only via direct link).", "取消勾选后，参赛者可通过直接链接进入比赛。")}
               </p>
             </div>
 
@@ -278,10 +280,10 @@ export default function EditForm({ contest }: Props) {
                 />
                 <div>
                   <div className="font-bold text-gray-800 text-sm">
-                    Public Contest
+                    {t("Public Contest", "公开赛")}
                   </div>
                   <div className="text-xs text-gray-500">
-                    Visible to everyone
+                    {t("Visible to everyone", "所有人可浏览")}
                   </div>
                 </div>
               </label>
@@ -303,9 +305,9 @@ export default function EditForm({ contest }: Props) {
                 />
                 <div>
                   <div className="font-bold text-gray-800 text-sm">
-                    Private Contest
+                    {t("Private Contest", "私有赛")}
                   </div>
-                  <div className="text-xs text-gray-500">Password required</div>
+                  <div className="text-xs text-gray-500">{t("Password required", "需要比赛密码")}</div>
                 </div>
               </label>
             </div>
@@ -313,7 +315,7 @@ export default function EditForm({ contest }: Props) {
             {isPrivate && (
               <div className="animate-in fade-in slide-in-from-top-2 pt-2">
                 <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Contest Password
+                  {t("Contest Password", "比赛密码")}
                 </label>
                 <input
                   type="text"
@@ -331,22 +333,22 @@ export default function EditForm({ contest }: Props) {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
             <DocumentTextIcon className="w-5 h-5 text-red-600" />
-            <h2 className="font-semibold text-gray-800">Editorial PDF</h2>
+            <h2 className="font-semibold text-gray-800">{t("Editorial PDF", "题解 PDF")}</h2>
           </div>
           <div className="p-6 space-y-4">
             {config.editorialPdf ? (
               <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-                Current file: {config.editorialPdf.filename}
+                {t("Current file:", "当前文件：")} {config.editorialPdf.filename}
               </div>
             ) : (
               <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                No editorial PDF uploaded yet.
+                {t("No editorial PDF uploaded yet.", "暂未上传题解。")}
               </div>
             )}
 
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-2">
-                Upload PDF
+                {t("Upload PDF", "上传 PDF")}
               </label>
               <input
                 type="file"
@@ -355,7 +357,7 @@ export default function EditForm({ contest }: Props) {
                 className="block w-full text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-red-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-red-700 hover:file:bg-red-100"
               />
               <p className="mt-2 text-xs text-gray-500">
-                The file is shown to contestants after the contest ends.
+                {t("The file is shown to contestants after the contest ends.", "比赛结束后，参赛者可以查看此文件。")}
               </p>
             </div>
 
@@ -367,7 +369,7 @@ export default function EditForm({ contest }: Props) {
                   value="true"
                   className="w-4 h-4 text-red-600 focus:ring-red-500 rounded"
                 />
-                Remove current editorial PDF
+                {t("Remove current editorial PDF", "移除当前题解")}
               </label>
             )}
           </div>
@@ -376,12 +378,12 @@ export default function EditForm({ contest }: Props) {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
             <AdjustmentsHorizontalIcon className="w-5 h-5 text-purple-600" />
-            <h2 className="font-semibold text-gray-800">Scoreboard</h2>
+            <h2 className="font-semibold text-gray-800">{t("Scoreboard", "排行榜")}</h2>
           </div>
           <div className="p-6 space-y-6">
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-2">
-                Frozen Time (mins)
+                {t("Frozen Time (mins)", "封榜时间（分钟）")}
               </label>
               <div className="flex items-center gap-2">
                 <input
@@ -392,14 +394,14 @@ export default function EditForm({ contest }: Props) {
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
                 />
                 <span className="text-sm text-gray-500 whitespace-nowrap">
-                  before end
+                  {t("before end", "距离比赛结束")}
                 </span>
               </div>
             </div>
 
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-2">
-                Auto Unfreeze (hours)
+                {t("Auto Unfreeze (hours)", "自动解榜时间（小时）")}
               </label>
               <div className="flex items-center gap-2">
                 <input
@@ -410,7 +412,7 @@ export default function EditForm({ contest }: Props) {
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
                 />
                 <span className="text-sm text-gray-500 whitespace-nowrap">
-                  after end
+                  {t("after end", "比赛结束后")}
                 </span>
               </div>
             </div>
@@ -424,11 +426,11 @@ export default function EditForm({ contest }: Props) {
           className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg flex justify-center items-center gap-2 disabled:opacity-70"
         >
           {isSaving ? (
-            "Saving..."
+            t("Saving...", "正在保存…")
           ) : (
             <>
               <CheckCircleIcon className="w-6 h-6" />
-              Save Changes
+              {t("Save Changes", "保存修改")}
             </>
           )}
         </button>

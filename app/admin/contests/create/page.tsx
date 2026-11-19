@@ -1,19 +1,21 @@
 "use client";
 
+import { AdminPageHeader } from "@/components/admin/AdminPage";
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { createContest } from "../actions";
 import { useState } from "react";
 import {
-  ArrowLeftIcon,
   TrophyIcon,
   LockClosedIcon,
   GlobeAltIcon,
   AdjustmentsHorizontalIcon,
 } from "@heroicons/react/24/outline";
-import Link from "next/link";
 import MarkdownEditor from "@/components/MarkdownEditor";
 import { toast } from "sonner";
 
 export default function CreateContestPage() {
+  const { t } = useAdminLocale();
   const [isPrivate, setIsPrivate] = useState(false);
   const [medalMode, setMedalMode] = useState<"ratio" | "fixed">("ratio");
   const [description, setDescription] = useState("");
@@ -26,55 +28,39 @@ export default function CreateContestPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto pb-12">
-      {/* 顶部导航 */}
-      <div className="mb-8 flex items-center gap-4">
-        <Link
-          href="/admin/contests"
-          className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
-        >
-          <ArrowLeftIcon className="w-6 h-6" />
-        </Link>
-        <div>
-          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-            Create New Contest
-          </h1>
-          <p className="text-gray-500 mt-1">
-            Set up a new competitive programming contest.
-          </p>
-        </div>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-5 pb-8">
+      <AdminPageHeader title={t("Create New Contest", "创建比赛")} description={t("Set the contest schedule, access, scoreboard, and medals.", "设置比赛赛程、权限、封榜和奖牌。")} back={{ href: "/admin/contests", label: t("Back to contests", "返回比赛管理") }} />
 
       <form
         action={handleSubmit}
-        className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+        className="grid gap-4 xl:grid-cols-3"
       >
         {/* === 左侧主栏 (2/3 宽度) === */}
-        <div className="lg:col-span-2 space-y-8">
+        <div className="min-w-0 xl:col-span-2 space-y-8">
           {/* 1. 基础信息卡片 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
               <GlobeAltIcon className="w-5 h-5 text-blue-600" />
-              <h2 className="font-semibold text-gray-800">Basic Information</h2>
+              <h2 className="font-semibold text-gray-800">{t("Basic Information", "基本信息")}</h2>
             </div>
             <div className="p-6 space-y-6">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Contest Title <span className="text-red-500">*</span>
+                  {t("Contest Title", "比赛名称")} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   name="title"
                   required
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
-                  placeholder="e.g. The 5th XCPC Collegiate Programming Contest"
+                  placeholder={t("e.g. The 5th XCPC Collegiate Programming Contest", "例如：第五届大学生程序设计竞赛")}
                 />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Start Time <span className="text-red-500">*</span>
+                    {t("Start Time", "开始时间")} <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="datetime-local"
@@ -85,7 +71,7 @@ export default function CreateContestPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    End Time <span className="text-red-500">*</span>
+                    {t("End Time", "结束时间")} <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="datetime-local"
@@ -98,7 +84,7 @@ export default function CreateContestPage() {
 
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Description / Rules
+                  {t("Description / Rules", "比赛介绍与规则")}
                 </label>
                 {/* 使用 MarkdownEditor */}
                 <div className="border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">
@@ -118,12 +104,12 @@ export default function CreateContestPage() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
               <TrophyIcon className="w-5 h-5 text-yellow-500" />
-              <h2 className="font-semibold text-gray-800">Awards & Medals</h2>
+              <h2 className="font-semibold text-gray-800">{t("Awards & Medals", "奖项与奖牌")}</h2>
             </div>
             <div className="p-6 space-y-6">
               {/* 模式切换 */}
               <div className="flex items-center gap-4 mb-4">
-                <span className="text-sm font-medium text-gray-700">Mode:</span>
+                <span className="text-sm font-medium text-gray-700">{t("Mode:", "方式：")}</span>
                 <div className="flex bg-gray-100 p-1 rounded-lg">
                   <button
                     type="button"
@@ -134,7 +120,7 @@ export default function CreateContestPage() {
                         : "text-gray-500 hover:text-gray-900"
                     }`}
                   >
-                    Ratio (%)
+                    {t("Ratio (%)", "按比例（%）")}
                   </button>
                   <button
                     type="button"
@@ -145,7 +131,7 @@ export default function CreateContestPage() {
                         : "text-gray-500 hover:text-gray-900"
                     }`}
                   >
-                    Fixed Count
+                    {t("Fixed Count", "按固定数量")}
                   </button>
                 </div>
                 <input type="hidden" name="medalMode" value={medalMode} />
@@ -155,7 +141,7 @@ export default function CreateContestPage() {
               <div className="grid grid-cols-3 gap-6">
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-yellow-600 uppercase tracking-wide">
-                    Gold
+                    {t("Gold", "金牌")}
                   </label>
                   <div className="relative">
                     <input
@@ -172,7 +158,7 @@ export default function CreateContestPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-gray-400 uppercase tracking-wide">
-                    Silver
+                    {t("Silver", "银牌")}
                   </label>
                   <div className="relative">
                     <input
@@ -189,7 +175,7 @@ export default function CreateContestPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-orange-600 uppercase tracking-wide">
-                    Bronze
+                    {t("Bronze", "铜牌")}
                   </label>
                   <div className="relative">
                     <input
@@ -207,8 +193,8 @@ export default function CreateContestPage() {
               </div>
               <p className="text-xs text-gray-500">
                 {medalMode === "ratio"
-                  ? "Percentages are based on the total number of effective teams (at least 1 solved)."
-                  : "Fixed number of medals regardless of team count."}
+                  ? t("Percentages are based on the total number of effective teams (at least 1 solved).", "按至少解出一题的有效队伍数计算比例。")
+                  : t("Fixed number of medals regardless of team count.", "按设定数量分配奖牌。")}
               </p>
             </div>
           </div>
@@ -220,13 +206,13 @@ export default function CreateContestPage() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
               <LockClosedIcon className="w-5 h-5 text-gray-600" />
-              <h2 className="font-semibold text-gray-800">Access Control</h2>
+              <h2 className="font-semibold text-gray-800">{t("Access Control", "访问权限")}</h2>
             </div>
             <div className="p-6 space-y-6">
               {/* Visibility Toggle */}
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-3">
-                  Visibility
+                  {t("Visibility", "可见性")}
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -237,18 +223,17 @@ export default function CreateContestPage() {
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
                   />
                   <span className="text-sm text-gray-700 font-medium">
-                    Show in Contest List (Publicly Visible)
+                    {t("Show in Contest List (Publicly Visible)", "在比赛列表中显示")}
                   </span>
                 </label>
                 <p className="text-xs text-gray-500 mt-1 ml-6">
-                  Uncheck to create a hidden contest (accessible only via direct
-                  link).
+                  {t("Uncheck to create a hidden contest (accessible only via direct link).", "取消勾选后，参赛者可通过直接链接进入比赛。")}
                 </p>
               </div>
 
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-3">
-                  Contest Type
+                  {t("Contest Type", "比赛类型")}
                 </label>
                 <div className="space-y-3">
                   <label
@@ -268,10 +253,10 @@ export default function CreateContestPage() {
                     />
                     <div>
                       <div className="font-bold text-gray-800 text-sm">
-                        Public Contest
+                        {t("Public Contest", "公开赛")}
                       </div>
                       <div className="text-xs text-gray-500">
-                        Visible to everyone on the internet
+                        {t("Visible to everyone on the internet", "所有人可浏览")}
                       </div>
                     </div>
                   </label>
@@ -292,10 +277,10 @@ export default function CreateContestPage() {
                     />
                     <div>
                       <div className="font-bold text-gray-800 text-sm">
-                        Private Contest
+                        {t("Private Contest", "私有赛")}
                       </div>
                       <div className="text-xs text-gray-500">
-                        Password required to enter
+                        {t("Password required to enter", "输入比赛密码后进入")}
                       </div>
                     </div>
                   </label>
@@ -305,7 +290,7 @@ export default function CreateContestPage() {
               {isPrivate && (
                 <div className="animate-in fade-in slide-in-from-top-2 pt-2">
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Contest Password
+                    {t("Contest Password", "比赛密码")}
                   </label>
                   <input
                     type="text"
@@ -323,12 +308,12 @@ export default function CreateContestPage() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
               <AdjustmentsHorizontalIcon className="w-5 h-5 text-purple-600" />
-              <h2 className="font-semibold text-gray-800">Scoreboard</h2>
+              <h2 className="font-semibold text-gray-800">{t("Scoreboard", "排行榜")}</h2>
             </div>
             <div className="p-6 space-y-6">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Frozen Time (mins)
+                  {t("Frozen Time (mins)", "封榜时间（分钟）")}
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -339,17 +324,17 @@ export default function CreateContestPage() {
                     className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
                   />
                   <span className="text-sm text-gray-500 whitespace-nowrap">
-                    before end
+                    {t("before end", "距离比赛结束")}
                   </span>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  Scoreboard freezes to keep suspense.
+                  {t("Scoreboard freezes to keep suspense.", "封榜后，参赛者看到的是封榜时的排行榜。")}
                 </p>
               </div>
 
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Auto Unfreeze (hours)
+                  {t("Auto Unfreeze (hours)", "自动解榜时间（小时）")}
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -360,11 +345,11 @@ export default function CreateContestPage() {
                     className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
                   />
                   <span className="text-sm text-gray-500 whitespace-nowrap">
-                    after end
+                    {t("after end", "比赛结束后")}
                   </span>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  Automatically reveal full scoreboard.
+                  {t("Automatically reveal full scoreboard.", "到时自动公开完整榜单。")}
                 </p>
               </div>
             </div>
@@ -375,7 +360,7 @@ export default function CreateContestPage() {
             type="submit"
             className="w-full bg-gray-900 text-white py-3 rounded-xl font-bold text-lg hover:bg-black transition-transform hover:scale-[1.02] active:scale-[0.98] shadow-lg"
           >
-            Create Contest
+            {t("Create Contest", "创建比赛")}
           </button>
         </div>
       </form>

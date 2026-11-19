@@ -27,6 +27,7 @@ async function feedAwards(options: {
   solves?: typeof solves;
   enabled?: boolean;
   firstToSolve?: boolean;
+  medal?: medalUtils.ContestMedalConfig;
 } = {}): Promise<FeedAward[]> {
   const submissions = (options.solves ?? solves).map((solve) => ({
     problemId: solve.problemId,
@@ -42,14 +43,14 @@ async function feedAwards(options: {
       contest: { findUnique: async () => ({
         startTime,
         endTime: new Date(startTime.getTime() + 5 * 60 * 60_000),
-        config: { awards: {
+        config: { medal: options.medal, awards: {
           enabled: options.enabled ?? true,
           firstToSolve: options.firstToSolve ?? true,
         } },
       }) },
       contestProblem: { findMany: async () => problems },
       submission: { findMany: async () => submissions },
-      user: { findMany: async () => ["team-main", "team-star"].map((username) => ({
+      user: { findMany: async () => ["team-main", "team-star", "team-empty"].map((username) => ({
         username,
         displayName: null,
         school: null,
@@ -103,4 +104,13 @@ test("disabled first-to-solve awards and unsolved problems produce no award reco
   for (const options of [{ enabled: false }, { firstToSolve: false }, { solves: [] }]) {
     assert.deepEqual(await feedAwards(options), []);
   }
+});
+
+test("medal records and their list copies only include official teams with a solve", async () => {
+  const options = { firstToSolve: false, medal: { mode: "fixed", gold: 1, silver: 1, bronze: 1 } } as const;
+  assert.deepEqual(await feedAwards(options), [
+    { id: "gold-medal", citation: "Gold Medal", team_ids: ["team-main"] },
+    { id: "gold-medal-list", citation: "Gold Medal", team_ids: ["team-main"], display_mode: "list" },
+  ]);
+  assert.deepEqual(await feedAwards({ ...options, solves: [] }), []);
 });

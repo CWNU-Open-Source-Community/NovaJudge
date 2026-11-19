@@ -10,10 +10,12 @@ import {
 import { TrainingNode } from "@/lib/generated/prisma/client";
 import { Metadata } from "next";
 import { hasContestAccess } from "@/lib/contest-access";
+import { getDictionary } from "@/lib/get-dictionary";
+import { formatMessage } from "@/lib/dictionaries";
 
-export const metadata: Metadata = {
-  title: "训练中心",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getDictionary()).nav.train };
+}
 
 interface FileItem {
   id: string; // contestId
@@ -58,6 +60,7 @@ export default async function TrainingCenterPage({
   }
 
   const globalUserId = String(payload.userId);
+  const dict = await getDictionary();
 
   // 2. 获取当前目录下的所有节点
   const currentPath = path.replace(/\/$/, "") || "/";
@@ -65,7 +68,7 @@ export default async function TrainingCenterPage({
   let curName: string | null = null;
   // 初始化面包屑
   const breadcrumbs: { name: string; path: string }[] = [
-    { name: "Root", path: "/train" },
+    { name: dict.nav.train, path: "/train" },
   ];
 
   if (currentPath !== "/") {
@@ -214,7 +217,7 @@ export default async function TrainingCenterPage({
         if (!(await hasContestAccess(contest.id))) {
           return {
             id: contest.id.toString(),
-            name: `私有赛 #${contest.id} · 需验证密码`,
+            name: formatMessage(dict.contestAccess.heading, { id: contest.id }),
             type: "file",
             problems: [],
             solvedCount: 0,
@@ -275,7 +278,7 @@ export default async function TrainingCenterPage({
                       : "text-gray-600"
                   }`}
                 >
-                  {crumb.name === "Root" ? "训练中心" : crumb.name}
+                  {crumb.name}
                 </Link>
               </div>
             ))}
@@ -286,7 +289,7 @@ export default async function TrainingCenterPage({
             {items.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-400">
                 <FolderIcon className="w-16 h-16 mb-4 opacity-20" />
-                <p>此文件夹为空</p>
+                <p>{dict.training.empty}</p>
               </div>
             ) : (
               <table className="min-w-full divide-y divide-gray-200">
@@ -296,19 +299,19 @@ export default async function TrainingCenterPage({
                       scope="col"
                       className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                     >
-                      类别
+                      {dict.training.item}
                     </th>
                     <th
                       scope="col"
                       className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-48"
                     >
-                      #(比赛数量)
+                      {dict.training.contests}
                     </th>
                     <th
                       scope="col"
                       className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-64"
                     >
-                      #(过题情况)
+                      {dict.training.progress}
                     </th>
                   </tr>
                 </thead>
@@ -352,7 +355,7 @@ export default async function TrainingCenterPage({
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">
                         {item.type === "file" && item.locked ? (
-                          <span className="text-gray-400">需验证比赛密码</span>
+                          <span className="text-gray-400">{dict.contestList.passwordRequired}</span>
                         ) : item.type === "file" ? (
                           <div className="flex items-center justify-end gap-2">
                             <div className="flex gap-0.5">
@@ -370,7 +373,7 @@ export default async function TrainingCenterPage({
                                           : "bg-gray-400"
                                     }
                                   `}
-                                  title={`Problem ${p.letter}: ${p.status}`}
+                                  title={formatMessage(dict.training.problemStatus, { problem: p.letter, status: dict.training[p.status] })}
                                 >
                                   {p.letter}
                                 </span>
@@ -405,8 +408,8 @@ export default async function TrainingCenterPage({
 
           {/* 3. 底部状态栏 */}
           <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-500 flex justify-between">
-            <span>{items.length} 个项目</span>
-            <span>当前路径: {curName || "Root"}</span>
+            <span>{formatMessage(dict.training.itemCount, { count: items.length })}</span>
+            <span>{formatMessage(dict.training.currentFolder, { folder: curName || dict.nav.train })}</span>
           </div>
         </div>
       </div>

@@ -1,3 +1,5 @@
+import { createAdminLocale } from "@/lib/admin-locale";
+import { getLanguage } from "@/lib/get-dictionary";
 import { getAwardsPageData } from "./actions";
 import AwardsClient from "./AwardsClient";
 import { TrophyIcon } from "@heroicons/react/24/outline";
@@ -9,6 +11,7 @@ export default async function ContestAwardsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const { t } = createAdminLocale(await getLanguage());
   const { id } = await params;
   const contestId = Number(id);
   const data = await getAwardsPageData(contestId);
@@ -17,7 +20,7 @@ export default async function ContestAwardsPage({
     return (
       <div className="max-w-3xl mx-auto mt-16 p-8 bg-white border border-gray-200 rounded-xl text-center">
         <TrophyIcon className="w-10 h-10 text-red-400 mx-auto mb-3" />
-        <p className="text-red-600 font-bold">{data.error || "Not found"}</p>
+        <p className="text-red-600 font-bold">{data.error || t("Not found", "未找到")}</p>
       </div>
     );
   }

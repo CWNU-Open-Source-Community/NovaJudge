@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { TrashIcon } from "@heroicons/react/24/outline";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -17,6 +19,7 @@ export default function DeleteContestButton({
   contestTitle,
   onDeleted,
 }: DeleteContestButtonProps) {
+  const { t } = useAdminLocale();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -31,10 +34,10 @@ export default function DeleteContestButton({
       }
 
       onDeleted(contestId);
-      toast.success(`Deleted contest #${contestId}`);
+      toast.success(t(`Deleted contest #${contestId}.`, `已删除比赛 #${contestId}。`));
       setIsConfirmOpen(false);
     } catch {
-      toast.error("Failed to delete contest");
+      toast.error(t("Failed to delete contest", "删除比赛失败"));
     } finally {
       setIsDeleting(false);
     }
@@ -42,11 +45,11 @@ export default function DeleteContestButton({
 
   return (
     <>
-      <ConfirmModal
+      <ConfirmModal cancelText={t("Cancel", "取消")}
         isOpen={isConfirmOpen}
-        title="Delete Contest"
-        message={`Delete contest #${contestId} "${contestTitle}"? This will permanently remove its teams, contest-problem links, submissions, balloons, print jobs, and clarifications. Problems in the problem bank will not be deleted.`}
-        confirmText={isDeleting ? "Deleting..." : "Delete"}
+        title={t("Delete Contest", "删除比赛")}
+        message={t(`Delete contest #${contestId}, "${contestTitle}"? This permanently removes the contest's teams, problem links, submissions, balloons, print jobs, and clarifications. Its problems remain in the problem bank.`, `确认删除比赛 #${contestId}「${contestTitle}」？比赛账号、题目关联、提交、气球队列、打印任务和答疑将永久删除，题库中的原题会保留。`)}
+        confirmText={isDeleting ? t("Deleting...", "正在删除…") : t("Delete", "删除")}
         onConfirm={confirmDelete}
         onCancel={() => setIsConfirmOpen(false)}
         isDestructive
@@ -56,7 +59,7 @@ export default function DeleteContestButton({
         onClick={() => setIsConfirmOpen(true)}
         disabled={isDeleting}
         className="text-red-400 hover:text-red-600 disabled:text-gray-300"
-        title="Delete Contest"
+        title={t("Delete Contest", "删除比赛")}
       >
         <TrashIcon className="w-5 h-5" />
       </button>

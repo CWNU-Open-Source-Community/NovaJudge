@@ -7,11 +7,9 @@ import {
   toCCSVerdict,
   getRelativeTime,
 } from "./utils";
-import { getOrganizationMap } from "@/lib/org-mapper";
+import { getOrganizationDirectory } from "@/lib/org-mapper";
+import { matchOrganization, type OrganizationMap } from "@/lib/organizations";
 import { getOfficialSubmissionWhere } from "@/lib/official-submission";
-
-
-const organization_map = await getOrganizationMap();
 
 export async function getContest(id: number) {
   const contest = await prisma.contest.findUnique({
@@ -90,8 +88,8 @@ export async function getContestState(id: number) {
   return state;
 }
 
-export async function getTeams(contestId: number) {
-  const teams = await prisma.user.findMany({
+export async function getTeams(contestId: number, directory?: OrganizationMap) {
+  const [organizations, teams] = await Promise.all([directory ?? getOrganizationDirectory(), prisma.user.findMany({
     where: {
       contestId,
       role: "TEAM",
@@ -103,35 +101,38 @@ export async function getTeams(contestId: number) {
       category: true,
       school: true,
     },
-  });
+  })]);
 
-  return teams.map((team) => ({
-    id: team.username,
-    label: team.username,
-    name:
-      String(team.category === "1" ? "⭐" : "") + team.displayName ||
-      team.username,
-    group_ids: team.category ? [team.category] : [],
-    organization_id: organization_map[team.school!] || team.school || null,
-  }));
+  return teams.map((team) => {
+    const affiliation = matchOrganization(organizations, team.school);
+    return {
+      id: team.username,
+      label: team.username,
+      name: String(team.category === "1" ? "⭐" : "") + team.displayName || team.username,
+      group_ids: team.category ? [team.category] : [],
+      organization_id: affiliation?.id || affiliation?.name || team.school?.trim() || null,
+    };
+  });
 }
 
-export async function getOrganizations(contestId: number) {
-  const organizations = await prisma.user.groupBy({
+export async function getOrganizations(contestId: number, directory?: OrganizationMap) {
+  const [organizations, schools] = await Promise.all([directory ?? getOrganizationDirectory(), prisma.user.groupBy({
     by: ["school"],
     where: {
       contestId,
       role: "TEAM",
       school: { not: null },
     },
-  });
-
-  return organizations.map((o) => ({
-    id: organization_map[o.school!] || o.school!,
-    name: o.school!,
-    formal_name: o.school!,
-    country: null,
-  }));
+  })]);
+  const result = new Map<string, { id: string; name: string; formal_name: string; country: string | null }>();
+  for (const { school } of schools) {
+    if (!school?.trim()) continue;
+    const affiliation = matchOrganization(organizations, school);
+    const name = affiliation?.name || school.trim();
+    const id = affiliation?.id || name;
+    result.set(id, { id, name, formal_name: name, country: affiliation?.country || null });
+  }
+  return [...result.values()];
 }
 
 export async function getGroups(contestId: number) {

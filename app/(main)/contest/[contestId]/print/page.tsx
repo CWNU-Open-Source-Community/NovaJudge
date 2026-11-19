@@ -3,6 +3,7 @@ import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { ContestRole, PrintJobStatus } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import PrintQueueClient from "./PrintQueueClient";
+import { getDictionary } from "@/lib/get-dictionary";
 
 interface Props {
   params: Promise<{ contestId: string }>;
@@ -26,12 +27,13 @@ export default async function PrintQueuePage({ params }: Props) {
         payload.role === ContestRole.PRINT));
 
   if (!isAuthorized) {
+    const dict = await getDictionary();
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
         <h1 className="text-4xl font-bold text-gray-800 mb-4">403</h1>
-        <p className="text-xl text-gray-600 mb-8">Access Denied</p>
+        <p className="text-xl text-gray-600 mb-8">{dict.common.accessDenied}</p>
         <p className="text-gray-500 max-w-md">
-          Only contest staff can access the print queue.
+          {dict.print.restricted}
         </p>
       </div>
     );

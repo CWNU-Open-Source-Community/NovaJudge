@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -82,6 +84,7 @@ function ResultCard({
   result: SampleDebugResult;
   isCommunication: boolean;
 }) {
+  const { t } = useAdminLocale();
   const verdictStyle = VERDICT_STYLES[result.verdict];
 
   return (
@@ -89,7 +92,7 @@ function ResultCard({
       <div className="px-4 py-3 border-b bg-gray-50 flex flex-wrap items-center gap-3 justify-between">
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold text-gray-800">
-            Sample {result.sampleIndex}
+            {t("Sample", "样例")} {result.sampleIndex}
           </span>
           <span
             className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${verdictStyle.className}`}
@@ -98,44 +101,44 @@ function ResultCard({
           </span>
         </div>
         <div className="text-xs text-gray-500 flex items-center gap-3">
-          <span>Time: {result.timeUsedMs ?? "-"} ms</span>
-          <span>Memory: {result.memoryUsedKb ?? "-"} KB</span>
+          <span>{t("Time:", "耗时：")} {result.timeUsedMs ?? "-"} ms</span>
+          <span>{t("Memory:", "内存：")} {result.memoryUsedKb ?? "-"} KB</span>
         </div>
       </div>
 
       <div className="p-4 space-y-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-            {isCommunication ? "第一轮实际输入" : "Input"}
+            {isCommunication ? t("Actual first-run input", "第一轮实际输入") : t("Input", "输入")}
           </p>
           <CodeBlock code={result.input} />
         </div>
         {(!isCommunication || result.expectedOutput) && <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-            {isCommunication ? "裁判参考答案（仅管理员可见）" : "Expected Output"}
+            {isCommunication ? t("Reference answer (admins only)", "裁判参考答案（仅管理员可见）") : t("Expected Output", "预期输出")}
           </p>
           <CodeBlock code={result.expectedOutput} />
         </div>}
         {isCommunication && result.communication && (
           <details className="rounded border border-blue-200 bg-blue-50 p-3">
             <summary className="cursor-pointer text-sm font-semibold text-blue-900">
-              实际通信过程
+              {t("Communication trace", "实际通信过程")}
             </summary>
             <div className="mt-3 space-y-4">
               <p className="text-xs text-gray-600">
-                First run: {result.communication.firstTimeUsedMs} ms
+                {t("First run:", "第一轮：")} {result.communication.firstTimeUsedMs} ms
                 {" · "}
-                Second run: {result.communication.secondTimeUsedMs} ms
+                {t("Second run:", "第二轮：")} {result.communication.secondTimeUsedMs} ms
               </p>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                  第一轮实际输出
+                  {t("Actual first-run output", "第一轮实际输出")}
                 </p>
                 <CodeBlock code={result.communication.firstOutput} />
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                  裁判生成的第二轮实际输入
+                  {t("Second-run input from the judge", "裁判生成的第二轮实际输入")}
                 </p>
                 <CodeBlock code={result.communication.secondInput} />
               </div>
@@ -144,14 +147,14 @@ function ResultCard({
         )}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-            {isCommunication ? "第二轮实际输出" : "Actual Output"}
+            {isCommunication ? t("Actual second-run output", "第二轮实际输出") : t("Actual Output", "实际输出")}
           </p>
           <CodeBlock code={result.actualOutput} />
         </div>
         {result.message && (
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-              {isCommunication ? "Judge Verdict / Diagnostics" : "Message"}
+              {isCommunication ? t("Judge Verdict / Diagnostics", "判题结果与诊断") : t("Message", "消息")}
             </p>
             <CodeBlock code={result.message} />
           </div>
@@ -162,6 +165,7 @@ function ResultCard({
 }
 
 export default function TestInterface({ problem }: { problem: ProblemDetail }) {
+  const { t } = useAdminLocale();
   const isCommunication = problem.type === "communication";
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState("cpp");
@@ -201,7 +205,7 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
 
   const handleSubmit = async () => {
     if (!code.trim()) {
-      toast.error("Code cannot be empty");
+      toast.error(t("Code cannot be empty", "请输入代码"));
       return;
     }
     setIsSubmitting(true);
@@ -213,11 +217,11 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
       }
       if (res.success) {
         setLastId(res.submissionId);
-        toast.success("Submitted successfully!");
+        toast.success(t("Submitted successfully!", "提交成功"));
         router.push("/admin/submissions");
       }
     } catch (e) {
-      toast.error("Submission failed: " + e);
+      toast.error(t("Submission failed", "提交失败"), { description: String(e) });
     } finally {
       setIsSubmitting(false);
     }
@@ -225,7 +229,7 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
 
   const handleDebug = async () => {
     if (!code.trim()) {
-      toast.error("Code cannot be empty");
+      toast.error(t("Code cannot be empty", "请输入代码"));
       return;
     }
 
@@ -241,43 +245,39 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
         setIsDrawerOpen(true);
         if (res.data.compile.ok) {
           if (res.data.summary.total === 0) {
-            toast.message(res.data.message || "No samples available");
+            toast.message(res.data.message || t("No samples available", "暂无可调试的样例"));
           } else {
             toast.success(
-              `Debug finished: ${res.data.summary.passed}/${res.data.summary.total} passed`,
+              t(`Debugging finished. ${res.data.summary.passed}/${res.data.summary.total} passed.`, `调试完成，${res.data.summary.passed}/${res.data.summary.total} 个样例通过。`),
             );
           }
         } else {
-          toast.error(res.data.compile.message || "Debug failed");
+          toast.error(res.data.compile.message || t("Debug failed", "调试失败"));
         }
       }
     } catch (e) {
-      toast.error("Debug failed: " + e);
+      toast.error(t("Debug failed", "调试失败"), { description: String(e) });
     } finally {
       setIsDebugging(false);
     }
   };
 
   return (
-    <div className="h-[calc(100vh-6rem)] flex flex-col lg:flex-row gap-4">
-      <div className="flex-1 relative bg-white border border-gray-200 rounded-lg shadow-sm overflow-y-auto p-6 min-h-0">
-        <div className="absolute inset-0 overflow-y-auto p-6">
+    <div className="flex min-w-0 flex-col gap-4 xl:h-[calc(100dvh-7.75rem)] xl:flex-row">
+      <div className="admin-card relative min-h-0 flex-1 overflow-y-auto">
+        <div className="p-4 sm:p-6 xl:absolute xl:inset-0 xl:overflow-y-auto">
           <h1 className="text-3xl font-serif font-bold text-gray-900 mb-8 text-center border-b pb-4">
             {problem.title}
           </h1>
 
           {isCommunication && (
             <div className="mb-6 space-y-2 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-              <p className="font-semibold">通信题 / Communication (Run twice)</p>
+              <p className="font-semibold">{t("Communication (Run twice)", "两轮通信题")}</p>
               <p>
-                The same program runs twice with separate time and memory
-                limits and no shared memory or files. Follow the statement for
-                the permitted message and each run&apos;s input and output.
+                {t("The same program runs twice with separate time and memory limits and no shared memory or files. Follow the statement for the permitted message and each run's input and output.", "同一份程序在独立环境中运行两次，分别计算时间和内存。消息限制和每轮输入输出以题面为准。")}
               </p>
               <p>
-                每轮的输入输出与交互方式以题面为准。调试按题目的裁判配置执行两轮程序，
-                使用实际输出生成下一轮输入，并检查最终结果。Polygon 导入题使用包内标记的样例测试；
-                公开对话和两轮示例保留在题面中。
+                {t("Debugging follows the judge configuration, using actual output to prepare the next input and check the result. Polygon imports use the test cases marked as samples. The statement shows the public examples.", "每轮的输入输出与交互方式以题面为准。调试按题目的裁判配置执行两轮程序， 使用实际输出生成下一轮输入，并检查最终结果。Polygon 导入题使用包内标记的样例测试； 公开对话和两轮示例保留在题面中。")}
               </p>
             </div>
           )}
@@ -309,7 +309,7 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
                     {sample.output && (
                       <details className="rounded border border-gray-200 bg-gray-50 p-3">
                         <summary className="cursor-pointer text-sm font-medium text-gray-600">
-                          裁判参考答案（仅管理员可见）
+                          {t("Reference answer (admins only)", "裁判参考答案（仅管理员可见）")}
                         </summary>
                         <div className="mt-3"><CodeBlock code={sample.output} /></div>
                       </details>
@@ -322,14 +322,14 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
                 <div key={`sample-${index}`} className="grid grid-cols-1 gap-6">
                   <div>
                     <SectionTitle>
-                      Sample Input
+                      {t("Sample Input", "样例输入")}
                       {suffix}
                     </SectionTitle>
                     <CodeBlock code={sample.input} />
                   </div>
                   <div>
                     <SectionTitle>
-                      Sample Output
+                      {t("Sample Output", "样例输出")}
                       {suffix}
                     </SectionTitle>
                     <CodeBlock code={sample.output} />
@@ -339,7 +339,7 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
             })}
             {problem.hint && (
               <div>
-                <SectionTitle>Hint</SectionTitle>
+                <SectionTitle>{t("Hint", "提示")}</SectionTitle>
                 <article className="prose prose-sm md:prose-base max-w-none">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
@@ -354,10 +354,10 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden min-h-0">
+      <div className="admin-card flex min-h-[32rem] min-w-0 flex-1 flex-col overflow-hidden xl:min-h-0">
         <div className="bg-gray-50 border-b px-4 py-2 flex flex-wrap justify-between items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-gray-700">Code Editor</span>
+            <span className="font-bold text-gray-700">{t("Code Editor", "代码编辑器")}</span>
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
@@ -376,10 +376,10 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
             >
               {isDebugging ? (
-                "Debugging..."
+                t("Debugging...", "正在调试…")
               ) : (
                 <>
-                  <BeakerIcon className="w-4 h-4" /> Debug All Samples
+                  <BeakerIcon className="w-4 h-4" /> {t("Debug All Samples", "调试全部样例")}
                 </>
               )}
             </button>
@@ -389,17 +389,17 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
               className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
             >
               {isSubmitting ? (
-                "Submitting..."
+                t("Submitting...", "正在提交…")
               ) : (
                 <>
-                  <PlayIcon className="w-4 h-4" /> Submit
+                  <PlayIcon className="w-4 h-4" /> {t("Submit", "提交")}
                 </>
               )}
             </button>
           </div>
         </div>
 
-        <div className="relative flex-1 min-h-0 bg-white">
+        <div className="relative min-h-72 flex-1 bg-white xl:min-h-0">
           <div
             className={`absolute inset-x-0 top-0 p-3 transition-[bottom] duration-300 ease-out ${
               isDrawerOpen ? "bottom-88 md:bottom-96" : "bottom-14"
@@ -427,17 +427,16 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
               <div className="flex items-center justify-between gap-3">
                 <div className="text-left">
                   <h2 className="text-sm font-bold text-gray-800">
-                    Sample Debug Results
+                    {t("Sample Debug Results", "样例调试结果")}
                   </h2>
                   <p className="text-xs text-gray-500 mt-1">
-                    Click to {isDrawerOpen ? "hide" : "show"} per-sample outputs
-                    and verdicts.
+                    {t("Click to", "点击")} {isDrawerOpen ? t("hide", "隐藏") : t("show", "显示")} {t("per-sample outputs and verdicts.", "每个样例的输出和结果。")}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
                   {debugResult && debugResult.compile.ok && (
                     <div className="text-sm font-semibold text-gray-700">
-                      Passed {debugResult.summary.passed}/
+                      {t("Passed", "通过")} {debugResult.summary.passed}/
                       {debugResult.summary.total}
                     </div>
                   )}
@@ -454,16 +453,15 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
               <div className="space-y-4">
                 {!debugResult && (
                   <div className="border border-dashed border-gray-300 rounded-lg bg-white px-4 py-8 text-center text-sm text-gray-500">
-                    Click{" "}
-                    <span className="font-semibold">Debug All Samples</span> to
-                    see per-sample outputs and verdicts here.
+                    {t("Click", "点击")}{" "}
+                    <span className="font-semibold">{t("Debug All Samples", "调试全部样例")}</span> {t("to see per-sample outputs and verdicts here.", "后可查看每个样例的输出和结果。")}
                   </div>
                 )}
 
                 {debugResult && !debugResult.compile.ok && (
                   <div className="border border-red-200 bg-red-50 rounded-lg p-4">
                     <p className="text-sm font-semibold text-red-700 mb-2">
-                      Compile / Debug Error
+                      {t("Compile / Debug Error", "编译或调试错误")}
                     </p>
                     <CodeBlock
                       code={debugResult.compile.message || "Unknown error"}
@@ -493,7 +491,7 @@ export default function TestInterface({ problem }: { problem: ProblemDetail }) {
         {lastId && (
           <div className="bg-green-50 text-green-700 text-xs px-4 py-2 border-t border-green-100 flex items-center">
             <CheckCircleIcon className="w-4 h-4 mr-1" />
-            Last Submission: {lastId} (Check Global Submissions for result)
+            {t("Last Submission:", "最近提交：")} {lastId} {t("(Check Global Submissions for result)", "（可在全站提交记录查看结果）")}
           </div>
         )}
       </div>

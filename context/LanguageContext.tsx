@@ -1,12 +1,11 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { en, zh, Dictionary } from "@/lib/dictionaries";
+import { en, zh, getLocale, type Dictionary, type Language } from "@/lib/dictionaries";
 import { useRouter } from "next/navigation";
-type Lang = "en" | "zh";
 
 interface LanguageContextType {
-  lang: Lang;
+  lang: Language;
   dict: Dictionary;
   toggleLanguage: () => void;
 }
@@ -31,9 +30,8 @@ function getCookie(name: string) {
 }
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLang] = useState<Lang>("zh"); // 默认中文
+  const [lang, setLang] = useState<Language>("zh"); // 默认中文
   const router = useRouter();
-  // 初始化时从 LocalStorage 读取
   useEffect(() => {
     // 初始化时优先读 Cookie
     const saved = getCookie("app-lang");
@@ -42,6 +40,10 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       setLang(saved);
     }
   }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = getLocale(lang);
+  }, [lang]);
 
   const toggleLanguage = () => {
     const newLang = lang === "zh" ? "en" : "zh";

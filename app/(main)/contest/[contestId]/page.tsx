@@ -1,4 +1,6 @@
 import { requireContestAccess } from "@/lib/contest-access";
+import { usesDomjudge } from "@/lib/contest-interface";
+import DomjudgeTeamHome from "@/components/contest/DomjudgeTeamHome";
 // app/contest/[contestId]/page.tsx
 
 import { getCurrentSuper, getCurrentUser } from "@/lib/auth";
@@ -20,7 +22,8 @@ import {
   TrophyIcon,
 } from "@heroicons/react/24/outline";
 import { ContestStatus, ContestType } from "@/lib/generated/prisma/client";
-import { getDictionary } from "@/lib/get-dictionary";
+import { getDictionary, getLanguage } from "@/lib/get-dictionary";
+import { getLocale, type Dictionary } from "@/lib/dictionaries";
 import { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -40,7 +43,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   if (!contest) {
     return {
-      title: "比赛未找到",
+      title: (await getDictionary()).contestList.notFound,
     };
   }
   return {
@@ -60,14 +63,14 @@ interface PageProps extends Props {
   }>;
 }
 
-function getContestLoginErrorMessage(error?: string) {
+function getContestLoginErrorMessage(dict: Dictionary, error?: string) {
   switch (error) {
     case "missing_credentials":
-      return "请输入用户名和密码。";
+      return dict.auth.missingCredentials;
     case "invalid_credentials":
-      return "用户名或密码错误，请重新输入。";
+      return dict.auth.invalidCredentials;
     case "proctoring_required":
-      return "该账号已绑定监考，请通过监考客户端登录并访问本场比赛。";
+      return dict.auth.proctoringRequired;
     default:
       return null;
   }
@@ -81,7 +84,6 @@ export default async function ContestLogin({
   const { error, autoLogin } = await searchParams;
   const id = Number(contestId);
   await requireContestAccess(id);
-  const loginErrorMessage = getContestLoginErrorMessage(error);
 
   const contest = await prisma.contest.findUnique({
     where: { id },
@@ -115,6 +117,10 @@ export default async function ContestLogin({
     redirect(`/api/contests/${id}/auto-login`);
   }
 
+  if (user?.role === "TEAM" && await usesDomjudge(id)) {
+    return <DomjudgeTeamHome contest={contest} team={user} />;
+  }
+
   const now = new Date();
   const contestEnded =
     contest.status === ContestStatus.ENDED || now >= contest.endTime;
@@ -128,7 +134,10 @@ export default async function ContestLogin({
     latestVp.startedAt <= now &&
     latestVp.endedAt >= now;
 
-  const dict = await getDictionary();
+  const [dict, lang] = await Promise.all([getDictionary(), getLanguage()]);
+  const locale = getLocale(lang);
+  const loginErrorMessage = getContestLoginErrorMessage(dict, error);
+  const role = user?.role || glabel_user?.role;
   const latestVpAttemptText = latestVp
     ? dict.virtualParticipation.attempt.replace(
         "{attempt}",
@@ -136,7 +145,7 @@ export default async function ContestLogin({
       )
     : "";
   const formatVpTime = (date: Date) =>
-    date.toLocaleString("zh-CN", {
+    date.toLocaleString(locale, {
       hour12: false,
       year: "numeric",
       month: "2-digit",
@@ -146,7 +155,7 @@ export default async function ContestLogin({
     });
 
   return (
-    <div className="flex flex-col max-w-7xl mx-auto md:flex-row gap-12 mt-10">
+    <div className="contest-information flex flex-col max-w-7xl mx-auto md:flex-row gap-12 mt-10">
       {/* 左侧：显示当前 Contest ID 对应的比赛信息 */}
       <div className="flex-1 min-w-3xl hidden md:block">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -179,7 +188,7 @@ export default async function ContestLogin({
                             : "bg-blue-500"
                       }`}
                     />
-                    {contest.status}
+                    {dict.contest[contest.status]}
                   </span>
                 </div>
                 <h1 className="text-2xl md:text-3xl font-serif font-bold text-gray-900 leading-snug">
@@ -198,7 +207,7 @@ export default async function ContestLogin({
                   {dict.contestList.startTime}
                 </p>
                 <p className="text-sm font-medium text-gray-900 font-mono">
-                  {contest.startTime.toLocaleString("zh-CN", {
+                  {contest.startTime.toLocaleString(locale, {
                     hour12: false,
                     year: "numeric",
                     month: "2-digit",
@@ -255,7 +264,7 @@ export default async function ContestLogin({
         {!user && !globalSession ? (
           <div className="bg-white p-8 shadow-sm border border-gray-100 rounded-sm">
             <h2 className="text-2xl font-serif font-bold text-gray-900 mb-6 border-b pb-4">
-              Sign In
+              {dict.auth.signIn}
             </h2>
             {loginErrorMessage && (
               <div className="mb-5 rounded-sm border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -270,38 +279,40 @@ export default async function ContestLogin({
               className="space-y-5"
             >
               <div>
-                <label className="block text-sm font-bold text-gray-600 mb-2">
-                  Username
+                <label htmlFor="contest-username" className="block text-sm font-bold text-gray-600 mb-2">
+                  {dict.auth.username}
                 </label>
                 <input
+                  id="contest-username"
                   type="text"
-                  placeholder="Username"
+                  placeholder={dict.auth.usernamePlaceholder}
                   defaultValue=""
                   name="username"
                   className="w-full bg-blue-50/30 border border-blue-200 text-gray-900 text-sm rounded-sm focus:ring-blue-500 focus:border-blue-500 block p-2.5"
                 />
               </div>
               <div>
-                <label className="block text-sm font-bold text-gray-600 mb-2">
-                  Password
+                <label htmlFor="contest-user-password" className="block text-sm font-bold text-gray-600 mb-2">
+                  {dict.auth.password}
                 </label>
                 <input
+                  id="contest-user-password"
                   type="password"
-                  placeholder="Password"
+                  placeholder={dict.auth.passwordPlaceholder}
                   defaultValue=""
                   name="password"
                   className="w-full bg-blue-50/30 border border-blue-200 text-gray-900 text-sm rounded-sm focus:ring-blue-500 focus:border-blue-500 block p-2.5"
                 />
               </div>
               <p className="text-xs text-gray-500 text-center">
-                Signing in to Contest{" "}
+                {dict.auth.signingInToContest}{" "}
                 <span className="font-bold text-gray-800">{contestId}</span>
               </p>
               <button
                 type="submit"
                 className="w-full text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-sm text-sm px-5 py-3 shadow-md cursor-pointer"
               >
-                Sign In
+                {dict.auth.signIn}
               </button>
             </form>
           </div>
@@ -324,7 +335,7 @@ export default async function ContestLogin({
                 </svg>
               </div>
               <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                超级管理员
+                {dict.nav.superAdmin}
               </h2>
               <div className="w-16 h-1 bg-purple-400 mx-auto mb-4"></div>
             </div>
@@ -339,7 +350,7 @@ export default async function ContestLogin({
               </div>
               <div className="mt-6 pt-6 border-t border-gray-100">
                 <div className="text-center text-sm text-gray-500">
-                  拥有完全访问权限
+                  {dict.contest.fullAccess}
                 </div>
               </div>
             </div>
@@ -363,7 +374,7 @@ export default async function ContestLogin({
                 </svg>
               </div>
               <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                参赛信息
+                {dict.contest.participantInfo}
               </h2>
               <div className="w-16 h-1 bg-blue-400 mx-auto mb-4"></div>
             </div>
@@ -389,12 +400,12 @@ export default async function ContestLogin({
                   </div>
                   <div className="ml-3 flex-1">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                      队伍名称
+                      {dict.common.teamName}
                     </p>
                     <p className="text-base font-bold text-gray-900">
                       {user?.displayName ||
                         glabel_user?.displayName ||
-                        "未设置"}
+                        dict.contest.unset}
                     </p>
                   </div>
                 </div>
@@ -420,10 +431,10 @@ export default async function ContestLogin({
                   </div>
                   <div className="ml-3 flex-1">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                      队员
+                      {dict.contest.members}
                     </p>
                     <p className="text-sm text-gray-800">
-                      {user?.members || glabel_user?.displayName || "未设置"}
+                      {user?.members || glabel_user?.displayName || dict.contest.unset}
                     </p>
                   </div>
                 </div>
@@ -449,10 +460,10 @@ export default async function ContestLogin({
                   </div>
                   <div className="ml-3 flex-1">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                      组织
+                      {dict.contest.organization}
                     </p>
                     <p className="text-sm text-gray-800">
-                      {user?.school || "未设置"}
+                      {user?.school || dict.contest.unset}
                     </p>
                   </div>
                 </div>
@@ -463,7 +474,7 @@ export default async function ContestLogin({
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <div className="text-center">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                      座位号
+                      {dict.common.seat}
                     </p>
                     <p className="text-lg font-bold text-gray-900">
                       {user?.seat || "-"}
@@ -473,10 +484,10 @@ export default async function ContestLogin({
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <div className="text-center">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                      角色
+                      {dict.contest.role}
                     </p>
                     <p className="text-lg font-bold text-gray-900">
-                      {user?.role || glabel_user?.role || "-"}
+                      {role ? (dict.contestRole[role as keyof Dictionary["contestRole"]] ?? role) : "-"}
                     </p>
                   </div>
                 </div>
@@ -503,7 +514,7 @@ export default async function ContestLogin({
                     </div>
                     <div className="ml-3 flex-1">
                       <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">
-                        指导教练
+                        {dict.contest.coach}
                       </p>
                       <p className="text-sm font-medium text-amber-900">
                         {user.coach}
@@ -619,4 +630,5 @@ export default async function ContestLogin({
       </div>
     </div>
   );
+
 }

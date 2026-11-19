@@ -6,6 +6,7 @@ import {
   type Submission,
 } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import type { Dictionary } from "@/lib/dictionaries";
 import { enqueueJudge } from "@/lib/queue";
 import { redis } from "@/lib/redis";
 import { getJwtSecretKey } from "@/lib/auth";
@@ -21,6 +22,12 @@ type ContestFreezeConfig = {
 };
 
 const QUEUE_TIMEOUT_MS = 5000;
+
+export class ContestSubmissionError extends Error {
+  constructor(readonly code: keyof Dictionary["submissionErrors"], message: string) {
+    super(message);
+  }
+}
 
 export type SubmissionActor =
   | {
@@ -110,7 +117,7 @@ export async function createContestSubmission({
   });
 
   if (!contestProblem) {
-    throw new Error("Problem not found in this contest");
+    throw new ContestSubmissionError("problemNotFound", "Problem not found in this contest");
   }
 
   const now = new Date();
@@ -120,7 +127,7 @@ export async function createContestSubmission({
       contestAccessToken, contest, getJwtSecretKey(),
     );
     if (!tokenAllowed && !(await hasContestAccess(contestId))) {
-      throw new Error("请先输入比赛密码");
+      throw new ContestSubmissionError("passwordRequired", "请先输入比赛密码");
     }
   }
   const config = contest.config as ContestFreezeConfig | null;
@@ -146,15 +153,16 @@ export async function createContestSubmission({
       contestUser.contestId !== contestId ||
       contestUser.role !== ContestRole.TEAM
     ) {
-      throw new Error("Only teams in this contest can submit code.");
+      throw new ContestSubmissionError("teamRequired", "Only teams in this contest can submit code.");
     }
 
     if (now < contest.startTime) {
-      throw new Error("The contest has not started yet.");
+      throw new ContestSubmissionError("notStarted", "The contest has not started yet.");
     }
 
     if (isEnded && isFrozen) {
-      throw new Error(
+      throw new ContestSubmissionError(
+        "frozen",
         "Submissions are disabled while the ended contest is still frozen.",
       );
     }
@@ -169,11 +177,11 @@ export async function createContestSubmission({
     });
 
     if (!globalUser || globalUser.isBanned) {
-      throw new Error("Global user is unavailable.");
+      throw new ContestSubmissionError("globalAccountUnavailable", "Global user is unavailable.");
     }
 
     if (!isEnded) {
-      throw new Error("Global submissions are available after the contest ends.");
+      throw new ContestSubmissionError("globalAfterContest", "Global submissions are available after the contest ends.");
     }
 
     const isExternalUser = globalUser.externalId !== null;
@@ -187,9 +195,9 @@ export async function createContestSubmission({
       virtualParticipationId = vp.id;
     } else if (!isExternalUser) {
       if (!isVpEnabled(contest.config)) {
-        throw new Error("Virtual participation is not enabled for this contest.");
+        throw new ContestSubmissionError("vpDisabled", "Virtual participation is not enabled for this contest.");
       }
-      throw new Error("Start virtual participation before submitting.");
+      throw new ContestSubmissionError("startVp", "Start virtual participation before submitting.");
     }
   }
 

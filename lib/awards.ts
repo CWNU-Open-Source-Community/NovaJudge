@@ -2,7 +2,8 @@ import { prisma } from "./prisma";
 import { Verdict } from "./generated/prisma/enums";
 import { getOfficialSubmissionWhere } from "./official-submission";
 import {
-  getMedalCounts,
+  compareTeamScores,
+  getMedalists,
   formatFtsCitation,
   getSchoolDeduplicationKey,
   DEFAULT_MEDAL,
@@ -267,12 +268,7 @@ export async function computeContestStandings(
     };
   });
 
-  rows.sort(
-    (a, b) =>
-      b.solved - a.solved ||
-      a.penalty - b.penalty ||
-      a.username.localeCompare(b.username),
-  );
+  rows.sort(compareTeamScores);
   return rows;
 }
 
@@ -290,7 +286,7 @@ export async function getFeedAwards(contestId: number): Promise<FeedAward[]> {
   ]);
 
   const official = standings.filter((t) => !t.isStar);
-  const counts = getMedalCounts(official.length, medal);
+  const { gold: goldTeams, silver: silverTeams, bronze: bronzeTeams } = getMedalists(official, medal);
 
   const awards: FeedAward[] = [];
 
@@ -307,13 +303,6 @@ export async function getFeedAwards(contestId: number): Promise<FeedAward[]> {
       display_mode: "list",
     });
   };
-
-  const goldTeams = official.slice(0, counts.gold);
-  const silverTeams = official.slice(counts.gold, counts.gold + counts.silver);
-  const bronzeTeams = official.slice(
-    counts.gold + counts.silver,
-    counts.gold + counts.silver + counts.bronze,
-  );
 
   pushMedal("gold-medal", cfg.base?.gold || "Gold Medal", goldTeams);
   pushMedal("silver-medal", cfg.base?.silver || "Silver Medal", silverTeams);

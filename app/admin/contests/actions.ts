@@ -6,6 +6,7 @@ import { ContestType, ContestStatus } from "@/lib/generated/prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSuperAdmin } from "@/lib/admin-auth";
+import { removeContestStatements } from "@/lib/contest-statements";
 
 // 创建比赛
 export async function createContest(formData: FormData) {
@@ -162,6 +163,8 @@ export async function deleteContest(id: number) {
       await tx.trainingNode.deleteMany({ where: { contestId: id } });
       await tx.contest.delete({ where: { id } });
     });
+    await removeContestStatements(id).catch(error =>
+      console.error("Could not clean up the deleted contest's PDFs.", error));
 
     revalidatePath("/admin/contests");
     revalidatePath("/");

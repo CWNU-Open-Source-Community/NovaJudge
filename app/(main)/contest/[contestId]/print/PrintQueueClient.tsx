@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useLanguage } from "@/context/LanguageContext";
+import { formatMessage, getLocale } from "@/lib/dictionaries";
 import {
   PrintJobStatus,
   type PrintJobStatus as PrintJobStatusType,
@@ -44,11 +46,6 @@ type RecentJob = {
   };
 };
 
-function formatTime(date: Date | null) {
-  if (!date) return "-";
-  return new Date(date).toLocaleString("zh-CN", { hour12: false });
-}
-
 export default function PrintQueueClient({
   contestId,
   jobs,
@@ -61,6 +58,11 @@ export default function PrintQueueClient({
   recentPrinted: RecentJob[];
 }) {
   const router = useRouter();
+  const { dict, lang } = useLanguage();
+  const { common, print, printStatus } = dict;
+  const formatTime = (date: Date | null) => date
+    ? new Date(date).toLocaleString(getLocale(lang), { hour12: false })
+    : "-";
   const previewFrameRef = useRef<HTMLIFrameElement>(null);
   const [printingJobId, setPrintingJobId] = useState<number | null>(null);
   const [previewJobId, setPreviewJobId] = useState<number | null>(null);
@@ -105,10 +107,10 @@ export default function PrintQueueClient({
         <div>
           <h1 className="text-3xl font-bold text-gray-900 font-serif flex items-center gap-2">
             <PrinterIcon className="w-8 h-8 text-slate-700" />
-            Print Queue
+            {dict.nav.printQueue}
           </h1>
           <p className="text-sm text-gray-500 mt-2">
-            This page refreshes automatically. Preview a job, then print it.
+            {print.queueHelp}
           </p>
         </div>
         <div className="grid grid-cols-4 gap-2 text-center">
@@ -116,25 +118,25 @@ export default function PrintQueueClient({
             <div className="text-xl font-bold text-gray-900">
               {counts.pending}
             </div>
-            <div className="text-xs text-gray-500">Pending</div>
+            <div className="text-xs text-gray-500">{printStatus.PENDING}</div>
           </div>
           <div className="border border-gray-200 bg-white px-4 py-2 rounded-sm">
             <div className="text-xl font-bold text-blue-700">
               {counts.printing}
             </div>
-            <div className="text-xs text-gray-500">Printing</div>
+            <div className="text-xs text-gray-500">{printStatus.PRINTING}</div>
           </div>
           <div className="border border-gray-200 bg-white px-4 py-2 rounded-sm">
             <div className="text-xl font-bold text-red-700">
               {counts.failed}
             </div>
-            <div className="text-xs text-gray-500">Failed</div>
+            <div className="text-xs text-gray-500">{printStatus.FAILED}</div>
           </div>
           <div className="border border-gray-200 bg-white px-4 py-2 rounded-sm">
             <div className="text-xl font-bold text-gray-500">
-              {isPending ? "..." : "On"}
+              {isPending ? "…" : print.on}
             </div>
-            <div className="text-xs text-gray-500">Polling</div>
+            <div className="text-xs text-gray-500">{print.autoRefresh}</div>
           </div>
         </div>
       </div>
@@ -142,15 +144,15 @@ export default function PrintQueueClient({
       <div className="bg-white border border-gray-200 rounded-sm overflow-x-auto mb-10">
         <div className="min-w-245">
           <div className="grid grid-cols-[88px_1fr_120px_130px_1fr] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase">
-            <div>Job</div>
-            <div>Team</div>
-            <div>Seat</div>
-            <div>Status</div>
-            <div>Actions</div>
+            <div>{print.job}</div>
+            <div>{common.team}</div>
+            <div>{common.seat}</div>
+            <div>{dict.contestList.status}</div>
+            <div>{common.actions}</div>
           </div>
           {jobs.length === 0 ? (
             <div className="py-12 text-center text-gray-400 text-sm">
-              No active print jobs.
+              {print.noActive}
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
@@ -165,11 +167,11 @@ export default function PrintQueueClient({
                       {job.user.displayName || job.user.username}
                     </div>
                     <div className="text-xs text-gray-500 font-mono">
-                      ID: {job.user.username} / {job.language}
+                      {common.id} · {job.user.username} / {job.language}
                     </div>
                     {job.sourceFilename && (
                       <div className="text-xs text-gray-400 truncate">
-                        File: {job.sourceFilename}
+                        {common.file} · {job.sourceFilename}
                       </div>
                     )}
                     {job.errorMessage && (
@@ -184,7 +186,7 @@ export default function PrintQueueClient({
                   </div>
                   <div>
                     <span className="inline-flex items-center px-2 py-1 rounded-sm text-xs font-bold bg-gray-100 text-gray-700">
-                      {job.status}
+                      {printStatus[job.status]}
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -194,7 +196,7 @@ export default function PrintQueueClient({
                       className="inline-flex items-center gap-1 px-4 py-2 text-sm font-bold text-white bg-slate-700 hover:bg-slate-800 rounded-sm"
                     >
                       <PrinterIcon className="w-4 h-4" />
-                      Preview
+                      {print.preview}
                     </button>
                     <form
                       action={markPrintJobFailed.bind(null, contestId, job.id)}
@@ -202,17 +204,18 @@ export default function PrintQueueClient({
                     >
                       <input
                         name="reason"
-                        placeholder="reason"
+                        placeholder={print.reason}
+                        aria-label={print.reason}
                         className="w-24 border border-gray-300 rounded-sm px-2 text-sm"
                       />
                       <button className="px-3 py-2 text-sm font-bold text-red-700 bg-red-50 hover:bg-red-100 rounded-sm">
-                        Fail
+                        {print.markFailed}
                       </button>
                     </form>
                     <form action={cancelPrintJob.bind(null, contestId, job.id)}>
                       <button className="inline-flex items-center gap-1 px-3 py-2 text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-sm">
                         <XCircleIcon className="w-4 h-4" />
-                        Cancel
+                        {common.cancel}
                       </button>
                     </form>
                   </div>
@@ -228,10 +231,10 @@ export default function PrintQueueClient({
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 px-5 py-4 border-b border-gray-200 bg-gray-50">
             <div>
               <h2 className="text-lg font-bold text-gray-900">
-                Preview #{selectedJob.id}
+                {formatMessage(print.previewTitle, { id: selectedJob.id })}
               </h2>
               <p className="text-sm text-gray-500">
-                {selectedJob.user.displayName || selectedJob.user.username} / Seat{" "}
+                {selectedJob.user.displayName || selectedJob.user.username} / {common.seat}{" "}
                 {selectedJob.user.seat || "-"} /{" "}
                 {selectedJob.sourceFilename || selectedJob.language}
               </p>
@@ -244,31 +247,32 @@ export default function PrintQueueClient({
                 className="inline-flex items-center gap-1 px-4 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed rounded-sm"
               >
                 <PrinterIcon className="w-4 h-4" />
-                {printingJobId === selectedJob.id ? "Printing..." : "Print"}
+                {printingJobId === selectedJob.id ? print.printing : dict.nav.print}
               </button>
               <button
                 type="button"
                 onClick={() => setPreviewJobId(null)}
                 className="px-4 py-2 text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-sm"
               >
-                Close Preview
+                {print.closePreview}
               </button>
             </div>
           </div>
           <iframe
+            key={lang}
             ref={previewFrameRef}
             src={`/contest/${contestId}/print/${selectedJob.id}?preview=1`}
             className="w-full h-[760px] bg-white"
-            title={`Print preview ${selectedJob.id}`}
+            title={formatMessage(print.previewTitle, { id: selectedJob.id })}
           />
         </section>
       )}
 
-      <h2 className="text-xl font-bold text-gray-800 mb-4">Rejected</h2>
+      <h2 className="text-xl font-bold text-gray-800 mb-4">{print.rejected}</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-10">
         {rejectedJobs.length === 0 ? (
           <div className="col-span-full bg-white border border-gray-200 rounded-sm px-4 py-8 text-center text-sm text-gray-400">
-            No rejected print jobs.
+            {print.noRejected}
           </div>
         ) : (
           rejectedJobs.map((job) => (
@@ -282,17 +286,17 @@ export default function PrintQueueClient({
                     #{job.id} / {job.user.displayName || job.user.username}
                   </div>
                   <div className="text-xs text-gray-500">
-                    ID: {job.user.username} / Seat {job.user.seat || "-"} /{" "}
+                    {common.id} · {job.user.username} / {common.seat} {job.user.seat || "-"} /{" "}
                     {job.sourceFilename || job.language || "-"}
                   </div>
                 </div>
                 <div className="text-xs text-red-700 font-bold bg-red-100 px-2 py-1 rounded-sm">
-                  FAILED
+                  {printStatus.FAILED}
                 </div>
               </div>
               <div className="mt-2 text-sm text-red-700 flex gap-1">
                 <ExclamationTriangleIcon className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{job.errorMessage || "Rejected without reason."}</span>
+                <span>{job.errorMessage === "Print failed." ? print.defaultFailure : job.errorMessage || print.rejectedWithoutReason}</span>
               </div>
               <div className="text-xs text-gray-400 mt-2">
                 {job.updatedAt ? formatTime(new Date(job.updatedAt)) : "-"}
@@ -302,7 +306,7 @@ export default function PrintQueueClient({
         )}
       </div>
 
-      <h2 className="text-xl font-bold text-gray-800 mb-4">Recently Printed</h2>
+      <h2 className="text-xl font-bold text-gray-800 mb-4">{print.recentlyPrinted}</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {recentPrinted.map((job) => (
           <div
@@ -314,7 +318,7 @@ export default function PrintQueueClient({
                 #{job.id} / {job.user.displayName || job.user.username}
               </div>
               <div className="text-xs text-gray-500">
-                ID: {job.user.username} / Seat {job.user.seat || "-"}
+                {common.id} · {job.user.username} / {common.seat} {job.user.seat || "-"}
               </div>
             </div>
             <div className="text-xs text-gray-400">

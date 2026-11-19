@@ -6,6 +6,7 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { ContestRole, ClariCategory } from "@/lib/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { getDictionary } from "@/lib/get-dictionary";
 
 async function getClarificationViewer(contestId: number) {
   const [session, admin] = await Promise.all([
@@ -131,7 +132,8 @@ export async function submitQuestion(formData: FormData) {
     const displayId = formData.get("displayId") as string; // 'A', 'B' or 'General'
 
     const { userId } = await getClarificationViewer(contestId);
-    if (!userId || !content || !title) return { error: "Missing required fields" };
+    if (!userId) return { error: "questionSignIn" } as const;
+    if (!content || !title) return { error: "questionRequired" } as const;
 
     // 根据 displayId 找 problemId
     let problemId = null;
@@ -161,9 +163,9 @@ export async function submitQuestion(formData: FormData) {
 
     revalidatePath(`/contest/${contestId}/clarifications`);
     return { success: true };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (e: any) {
-    return { error: e.message || "Failed to submit question" };
+  } catch (error) {
+    console.error("Could not submit clarification question", error);
+    return { error: "questionFailed" } as const;
   }
 }
 
@@ -175,23 +177,29 @@ export async function submitReply(formData: FormData) {
     const content = formData.get("content") as string;
     const { userId, isAdmin } = await getClarificationViewer(contestId);
 
-    if (!userId || !content) throw new Error("Please sign in to this contest before replying.");
+    if (!userId) return { error: "replySignIn" } as const;
+    if (!content) return { error: "replyRequired" } as const;
 
     const thread = await prisma.clarification.findFirst({
       where: { id: clariId, contestId },
       select: { userId: true, isPublic: true },
     });
     if (!thread || (!thread.isPublic && !isAdmin && thread.userId !== userId)) {
-      throw new Error("You cannot reply to this clarification.");
+      return { error: "replyForbidden" } as const;
     }
 
-    await prisma.reply.create({
-      data: {
-        clarificationId: clariId,
-        userId,
-        content,
-      },
-    });
+    try {
+      await prisma.reply.create({
+        data: {
+          clarificationId: clariId,
+          userId,
+          content,
+        },
+      });
+    } catch (error) {
+      console.error("Could not submit clarification reply", error);
+      return { error: "replyFailed" } as const;
+    }
 
     revalidatePath(`/contest/${contestId}/clarifications/${clariId}`);
     return;
@@ -228,7 +236,7 @@ export async function toggleClarificationVisibility(
 ) {
   await requireContestAccess(contestId);
   const { isAdmin } = await getClarificationViewer(contestId);
-  if (!isAdmin) throw new Error("Only contest judges can change clarification visibility.");
+  if (!isAdmin) throw new Error((await getDictionary()).clarifications.visibilityDenied);
 
   await prisma.clarification.updateMany({
     where: { id: clariId, contestId },

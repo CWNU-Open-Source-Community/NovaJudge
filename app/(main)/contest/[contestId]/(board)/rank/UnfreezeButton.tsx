@@ -1,5 +1,7 @@
 "use client";
 
+import { useLanguage } from "@/context/LanguageContext";
+
 import { useState } from "react";
 import { unfreezeContest } from "./actions";
 import { useRouter } from "next/navigation";
@@ -9,6 +11,7 @@ import { toast } from "sonner";
 import ConfirmModal from "@/components/admin/ConfirmModal";
 
 export default function UnfreezeButton({ contest }: { contest: Pick<Contest, "id" | "config"> }) {
+  const { dict: { rank, rejudge, common } } = useLanguage();
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -23,14 +26,14 @@ export default function UnfreezeButton({ contest }: { contest: Pick<Contest, "id
     try {
       const res = await unfreezeContest(contest.id);
       if (res.success) {
-        toast.success("Board unfrozen successfully!");
+        toast.success(rank.unfrozen);
         router.refresh();
       } else {
-        toast.error(res.error || "Failed to unfreeze");
+        toast.error(res.error ?? rank.unfreezeFailed);
       }
     } catch (e) {
       console.log(e);
-      toast.error("Error occurred");
+      toast.error(rank.unfreezeFailed);
     } finally {
       setLoading(false);
     }
@@ -40,9 +43,10 @@ export default function UnfreezeButton({ contest }: { contest: Pick<Contest, "id
     <>
       <ConfirmModal
         isOpen={isConfirmOpen}
-        title="Unfreeze Scoreboard"
-        message="Are you sure you want to unfreeze the scoreboard? This will reveal the final standings."
-        confirmText="Unfreeze"
+        title={rank.unfreezeTitle}
+        message={rank.unfreezeDescription}
+        confirmText={rank.unfreeze}
+        cancelText={common.cancel}
         onConfirm={confirmUnfreeze}
         onCancel={() => setIsConfirmOpen(false)}
       />
@@ -53,7 +57,7 @@ export default function UnfreezeButton({ contest }: { contest: Pick<Contest, "id
         }
         className="ml-4 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded shadow transition-colors disabled:opacity-50 flex items-center gap-1 cursor-pointer"
       >
-        {loading ? "Processing..." : "🔓 Unfreeze Board"}
+        {loading ? rejudge.processing : `🔓 ${rank.unfreeze}`}
       </button>
     </>
   );

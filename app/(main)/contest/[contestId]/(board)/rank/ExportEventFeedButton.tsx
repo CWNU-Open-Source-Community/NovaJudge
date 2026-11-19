@@ -1,5 +1,7 @@
 "use client";
 
+import { useLanguage } from "@/context/LanguageContext";
+
 import { useState } from "react";
 import {
   ArrowDownTrayIcon,
@@ -12,6 +14,7 @@ interface Props {
 }
 
 export default function ExportEventFeedButton({ contestId }: Props) {
+  const { dict: { rank } } = useLanguage();
   const [loadingFeed, setLoadingFeed] = useState(false);
   const [loadingGhost, setLoadingGhost] = useState(false);
 
@@ -33,11 +36,11 @@ export default function ExportEventFeedButton({ contestId }: Props) {
         await new Promise((resolve) => setTimeout(resolve, 0));
 
         const username = prompt(
-          "Authentication required. Please enter CCS username (admin):",
+          rank.ccsUsername,
           "admin",
         );
         if (!username) return;
-        const password = prompt("Please enter CCS password:");
+        const password = prompt(rank.ccsPassword);
         if (!password) return;
 
         setLoading(true);
@@ -51,7 +54,8 @@ export default function ExportEventFeedButton({ contestId }: Props) {
 
       if (!response.ok) {
         if (response.status === 401) {
-          throw new Error("Unauthorized: Invalid credentials");
+          toast.error(rank.ccsInvalid);
+          return;
         }
         throw new Error(`Failed to fetch: ${response.statusText}`);
       }
@@ -67,9 +71,7 @@ export default function ExportEventFeedButton({ contestId }: Props) {
       document.body.removeChild(a);
     } catch (error) {
       console.error("Export failed:", error);
-      toast.error(
-        `Export failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+      toast.error(rank.exportFailed);
     } finally {
       setLoading(false);
     }
@@ -91,10 +93,10 @@ export default function ExportEventFeedButton({ contestId }: Props) {
         }
         disabled={loadingFeed}
         className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-sm"
-        title="Export Event Feed JSON"
+        title={rank.eventFeedLabel}
       >
         <ArrowDownTrayIcon className="w-4 h-4" />
-        {loadingFeed ? "Exporting..." : "Event Feed"}
+        {loadingFeed ? rank.exporting : "Event Feed"}
       </button>
 
       <button
@@ -107,10 +109,10 @@ export default function ExportEventFeedButton({ contestId }: Props) {
         }
         disabled={loadingGhost}
         className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-sm"
-        title="Export Codeforces Gym Ghost File"
+        title={rank.ghostLabel}
       >
         <CodeBracketIcon className="w-4 h-4" />
-        {loadingGhost ? "Exporting..." : "Ghost DAT"}
+        {loadingGhost ? rank.exporting : "Ghost DAT"}
       </button>
     </div>
   );

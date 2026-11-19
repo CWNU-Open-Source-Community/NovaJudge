@@ -1,5 +1,7 @@
 "use client";
 
+import { useLanguage } from "@/context/LanguageContext";
+
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function IncludeVpToggle({
@@ -8,6 +10,7 @@ export default function IncludeVpToggle({
   defaultChecked: boolean;
 }) {
   const router = useRouter();
+  const { dict: { rank } } = useLanguage();
   const searchParams = useSearchParams();
   const checked = searchParams.has("includeVp")
     ? searchParams.get("includeVp") !== "0"
@@ -27,7 +30,7 @@ export default function IncludeVpToggle({
         onChange={(event) => handleChange(event.target.checked)}
         className="h-4 w-4 rounded border-gray-300 text-blue-600"
       />
-      <span>VP 计入排名</span>
+      <span>{rank.includeVp}</span>
     </label>
   );
 }

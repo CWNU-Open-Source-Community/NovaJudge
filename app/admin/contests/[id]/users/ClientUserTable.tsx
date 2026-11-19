@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useState } from "react";
 import { deleteUser, deleteUsers } from "./actions";
 import EditUserModal from "./EditUserModal";
@@ -16,21 +18,22 @@ import { toast } from "sonner";
 
 // 辅助组件：显示队伍类型
 function TeamCategoryBadge({ category }: { category: string | null }) {
+  const { t } = useAdminLocale();
   if (category === "1")
     return (
       <span className="bg-purple-100 text-purple-700 border border-purple-200 px-2 py-0.5 rounded text-[10px] font-bold">
-        ★ Star
+        {t("★ Star", "★ 打星队")}
       </span>
     );
   if (category === "2")
     return (
       <span className="bg-pink-100 text-pink-700 border border-pink-200 px-2 py-0.5 rounded text-[10px] font-bold">
-        Girls
+        {t("Girls", "女生队")}
       </span>
     );
   return (
     <span className="bg-gray-100 text-gray-600 border border-gray-200 px-2 py-0.5 rounded text-[10px]">
-      Official
+      {t("Official", "正式队")}
     </span>
   );
 }
@@ -44,6 +47,7 @@ export default function ClientUserTable({
   contestId: number;
   activeTab: "TEAM" | "STAFF";
 }) {
+  const { t } = useAdminLocale();
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [showPasswords, setShowPasswords] = useState(false); // 控制是否显示密码
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
@@ -58,9 +62,9 @@ export default function ClientUserTable({
     try {
       await deleteUsers(Array.from(selectedUserIds), contestId);
       setSelectedUserIds(new Set());
-      toast.success(`Successfully deleted ${selectedUserIds.size} users.`);
+      toast.success(t(`Deleted ${selectedUserIds.size} users.`, `已删除 ${selectedUserIds.size} 个账号。`));
     } catch (error) {
-      toast.error("Failed to delete users: " + error);
+      toast.error(t("Failed to delete users", "批量删除账号失败"), { description: String(error) });
     }
   };
 
@@ -90,9 +94,9 @@ export default function ClientUserTable({
     try {
       await deleteUser(deletingUser.id, contestId);
       setDeletingUser(null);
-      toast.success("User deleted successfully!");
+      toast.success(t("User deleted successfully!", "账号已删除"));
     } catch (error) {
-      toast.error("Failed to delete user: " + error);
+      toast.error(t("Failed to delete user", "删除账号失败"), { description: String(error) });
     }
   };
 
@@ -151,34 +155,34 @@ export default function ClientUserTable({
   };
 
   return (
-    <div className="bg-white shadow rounded-lg border border-gray-200 overflow-hidden">
-      <ConfirmModal
+    <div className="admin-card overflow-hidden">
+      <ConfirmModal cancelText={t("Cancel", "取消")}
         isOpen={!!deletingUser}
-        title="Delete User"
-        message={`Are you sure you want to delete user ${deletingUser?.username}?`}
-        confirmText="Delete"
+        title={t("Delete User", "删除账号")}
+        message={t(`Delete user ${deletingUser?.username}?`, `确认删除账号 ${deletingUser?.username}？`)}
+        confirmText={t("Delete", "删除")}
         onConfirm={handleDelete}
         onCancel={() => setDeletingUser(null)}
         isDestructive
       />
-      <ConfirmModal
+      <ConfirmModal cancelText={t("Cancel", "取消")}
         isOpen={isBulkDeleteConfirmOpen}
-        title="Delete Users"
-        message={`Are you sure you want to delete ${selectedUserIds.size} selected users? This action cannot be undone.`}
-        confirmText="Delete Selected"
+        title={t("Delete Users", "批量删除账号")}
+        message={t(`Permanently delete ${selectedUserIds.size} selected users?`, `确认永久删除选中的 ${selectedUserIds.size} 个账号？`)}
+        confirmText={t("Delete Selected", "删除选中项")}
         onConfirm={handleBulkDelete}
         onCancel={() => setIsBulkDeleteConfirmOpen(false)}
         isDestructive
       />
       <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <h3 className="font-bold text-gray-700">User List</h3>
+          <h3 className="font-bold text-gray-700">{t("User List", "账号列表")}</h3>
           <span className="text-xs text-gray-500 bg-white border px-2 py-1 rounded">
-            Total: {initialUsers.length}
+            {t("Total:", "总计：")} {initialUsers.length}
           </span>
           {selectedUserIds.size > 0 && (
             <span className="text-xs text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded font-medium">
-              Selected: {selectedUserIds.size}
+              {t("Selected:", "已选：")} {selectedUserIds.size}
             </span>
           )}
         </div>
@@ -190,7 +194,7 @@ export default function ClientUserTable({
               className="flex items-center gap-1 text-sm font-medium text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded hover:bg-red-100 transition-colors cursor-pointer"
             >
               <TrashIcon className="w-4 h-4" />
-              Delete Selected
+              {t("Delete Selected", "删除选中项")}
             </button>
           )}
 
@@ -204,7 +208,7 @@ export default function ClientUserTable({
             ) : (
               <EyeIcon className="w-4 h-4" />
             )}
-            {showPasswords ? "Hide" : "Show Passwords"}
+            {showPasswords ? t("Hide", "隐藏") : t("Show Passwords", "显示密码")}
           </button>
 
           {/* 导出按钮 */}
@@ -213,12 +217,12 @@ export default function ClientUserTable({
             className="flex items-center gap-1 text-sm font-medium text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded hover:bg-green-100 transition-colors cursor-pointer"
           >
             <ArrowDownTrayIcon className="w-4 h-4" />
-            Export CSV
+            {t("Export CSV", "导出 CSV")}
           </button>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="admin-table-scroll" role="region" tabIndex={0} aria-label={t("Contest accounts", "比赛账号列表")}>
         <table className="w-full text-sm text-left whitespace-nowrap">
           <thead className="bg-gray-50 text-gray-600 font-medium border-b uppercase text-xs">
             <tr>
@@ -233,28 +237,28 @@ export default function ClientUserTable({
                   onChange={(e) => handleSelectAll(e.target.checked)}
                 />
               </th>
-              <th className="px-6 py-3">Username</th>
-              <th className="px-6 py-3">Display Name</th>
+              <th className="px-6 py-3">{t("Username", "用户名")}</th>
+              <th className="px-6 py-3">{t("Display Name", "显示名称")}</th>
 
               {/* 密码列 */}
-              <th className="px-6 py-3 w-32">Password</th>
+              <th className="px-6 py-3 w-32">{t("Password", "密码")}</th>
 
               {activeTab === "TEAM" ? (
                 <>
-                  <th className="px-6 py-3">Type</th>
-                  <th className="px-6 py-3">School</th>
-                  <th className="px-6 py-3">Coach</th>
-                  <th className="px-6 py-3">Seat</th>
-                  <th className="px-6 py-3">Auto Login IP</th>
-                  <th className="px-6 py-3">Last Login IP</th>
+                  <th className="px-6 py-3">{t("Type", "类型")}</th>
+                  <th className="px-6 py-3">{t("School", "学校")}</th>
+                  <th className="px-6 py-3">{t("Coach", "教练")}</th>
+                  <th className="px-6 py-3">{t("Seat", "座位")}</th>
+                  <th className="px-6 py-3">{t("Auto Login IP", "自动登录 IP")}</th>
+                  <th className="px-6 py-3">{t("Last Login IP", "上次登录 IP")}</th>
                 </>
               ) : (
                 <>
-                  <th className="px-6 py-3">Role</th>
-                  <th className="px-6 py-3">Last Login IP</th>
+                  <th className="px-6 py-3">{t("Role", "角色")}</th>
+                  <th className="px-6 py-3">{t("Last Login IP", "上次登录 IP")}</th>
                 </>
               )}
-              <th className="px-6 py-3 text-right">Action</th>
+              <th className="px-6 py-3 text-right">{t("Action", "操作")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -350,7 +354,7 @@ export default function ClientUserTable({
                   <button
                     onClick={() => setEditingUser(user)}
                     className="text-blue-500 hover:text-blue-700 p-1.5 rounded hover:bg-blue-50 transition-colors cursor-pointer"
-                    title="Edit User"
+                    title={t("Edit User", "编辑账号")}
                   >
                     <PencilSquareIcon className="w-4 h-4" />
                   </button>
@@ -358,7 +362,7 @@ export default function ClientUserTable({
                   <button
                     onClick={() => setDeletingUser(user)}
                     className="text-gray-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50 transition-colors cursor-pointer"
-                    title="Delete User"
+                    title={t("Delete User", "删除账号")}
                   >
                     <TrashIcon className="w-4 h-4" />
                   </button>
@@ -371,7 +375,7 @@ export default function ClientUserTable({
                   colSpan={activeTab === "TEAM" ? 11 : 7}
                   className="px-6 py-8 text-center text-gray-400 italic"
                 >
-                  No users found. Import them above.
+                  {t("No users found. Import them above.", "暂无账号，可以在上方导入。")}
                 </td>
               </tr>
             )}

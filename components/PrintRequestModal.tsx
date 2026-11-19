@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLanguage } from "@/context/LanguageContext";
+import { en, formatMessage, getLocale } from "@/lib/dictionaries";
+import { useContestInterface } from "./contest/ContestInterface";
+import type { PrintJobStatus } from "@/lib/generated/prisma/enums";
 import { toast } from "sonner";
 import { createPrintJob } from "@/app/(main)/contest/[contestId]/print/actions";
 import { XMarkIcon } from "@heroicons/react/24/outline";
@@ -18,7 +22,7 @@ type PrintHistoryJob = {
   id: number;
   language: string;
   sourceFilename: string | null;
-  status: string;
+  status: PrintJobStatus;
   errorMessage: string | null;
   createdAt: string;
   printedAt: string | null;
@@ -45,42 +49,52 @@ export default function PrintRequestModal({
   contestId: number;
   onClose: () => void;
 }) {
+  const siteLanguage = useLanguage();
+  const domjudge = useContestInterface() === "domjudge";
+  const lang = domjudge ? "en" : siteLanguage.lang;
+  const dict = domjudge ? en : siteLanguage.dict;
+  const { print, common } = dict;
   const [language, setLanguage] = useState("cpp");
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [history, setHistory] = useState<PrintHistoryJob[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-  const loadHistory = async () => {
+  const [historyError, setHistoryError] = useState(false);
+
+  const loadHistory = useCallback(async () => {
     setIsLoadingHistory(true);
     try {
       const response = await fetch(`/api/contests/${contestId}/print-jobs/mine`, {
         cache: "no-store",
       });
+      if (!response.ok) throw new Error("Could not load print requests");
       const data = await response.json();
       setHistory(Array.isArray(data.jobs) ? data.jobs : []);
+      setHistoryError(false);
+    } catch {
+      setHistoryError(true);
     } finally {
       setIsLoadingHistory(false);
     }
-  };
+  }, [contestId]);
 
   useEffect(() => {
     void loadHistory();
     const timer = window.setInterval(() => void loadHistory(), 5000);
     return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contestId]);
+  }, [loadHistory]);
 
   const fileError = useMemo(() => {
     if (!file) return "";
     if (!hasAllowedExtension(file.name)) {
-      return `Only ${ALLOWED_EXTENSIONS.join(", ")} files can be printed.`;
+      return formatMessage(print.allowedError, { extensions: ALLOWED_EXTENSIONS.join(", ") });
     }
     if (file.size > MAX_PRINT_BYTES) {
-      return "File is too large to print.";
+      return print.fileTooLarge;
     }
     return "";
-  }, [file]);
+  }, [file, print]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selected = event.target.files?.[0] || null;
@@ -91,7 +105,7 @@ export default function PrintRequestModal({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!file) {
-      toast.error("Please choose a source file.");
+      toast.error(print.chooseFile);
       return;
     }
     if (fileError) {
@@ -103,7 +117,7 @@ export default function PrintRequestModal({
     try {
       const code = await file.text();
       if (code.includes("\0")) {
-        toast.error("Binary files cannot be printed.");
+        toast.error(print.binaryFile);
         return;
       }
 
@@ -113,9 +127,11 @@ export default function PrintRequestModal({
         return;
       }
 
-      toast.success("Print request sent.");
+      toast.success(print.sent);
       setFile(null);
       await loadHistory();
+    } catch {
+      toast.error(print.createFailed);
     } finally {
       setIsSubmitting(false);
     }
@@ -125,12 +141,12 @@ export default function PrintRequestModal({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-2xl bg-white border border-gray-200 shadow-xl rounded-sm">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-900">Print Source File</h2>
+          <h2 className="text-lg font-bold text-gray-900">{print.requestTitle}</h2>
           <button
             type="button"
             onClick={onClose}
             className="p-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-sm"
-            aria-label="Close"
+            aria-label={common.close}
           >
             <XMarkIcon className="w-5 h-5" />
           </button>
@@ -139,7 +155,7 @@ export default function PrintRequestModal({
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">
-              Language
+              {common.language}
             </label>
             <select
               value={language}
@@ -156,7 +172,7 @@ export default function PrintRequestModal({
 
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">
-              Source File
+              {print.sourceFile}
             </label>
             <input
               type="file"
@@ -165,7 +181,7 @@ export default function PrintRequestModal({
               className="block w-full text-sm text-gray-700 file:mr-4 file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-bold file:text-slate-700 hover:file:bg-slate-200"
             />
             <p className="mt-2 text-xs text-gray-500">
-              Allowed: {ALLOWED_EXTENSIONS.join(", ")}
+              {formatMessage(print.allowed, { extensions: ALLOWED_EXTENSIONS.join(", ") })}
             </p>
             {fileError && (
               <p className="mt-2 text-xs font-bold text-red-600">{fileError}</p>
@@ -178,31 +194,32 @@ export default function PrintRequestModal({
               onClick={onClose}
               className="px-4 py-2 text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-sm"
             >
-              Cancel
+              {common.cancel}
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !file || !!fileError}
               className="px-4 py-2 text-sm font-bold text-white bg-slate-800 hover:bg-slate-900 disabled:opacity-60 disabled:cursor-not-allowed rounded-sm"
             >
-              {isSubmitting ? "Sending..." : "Send to Print"}
+              {isSubmitting ? print.requestSending : print.requestSend}
             </button>
           </div>
         </form>
 
         <div className="border-t border-gray-100 px-5 py-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-gray-800">My Print Requests</h3>
+            <h3 className="text-sm font-bold text-gray-800">{print.history}</h3>
             <button
               type="button"
               onClick={() => void loadHistory()}
               className="text-xs font-bold text-slate-600 hover:text-slate-900"
             >
-              {isLoadingHistory ? "Refreshing..." : "Refresh"}
+              {isLoadingHistory ? common.refreshing : common.refresh}
             </button>
           </div>
+          {historyError && <p role="alert" className="mb-2 text-sm text-red-600">{print.historyFailed}</p>}
           {history.length === 0 ? (
-            <p className="text-sm text-gray-400">No print requests yet.</p>
+            <p className="text-sm text-gray-400">{isLoadingHistory ? common.loading : historyError ? null : print.noRequests}</p>
           ) : (
             <div className="space-y-2 max-h-56 overflow-y-auto">
               {history.map((job) => (
@@ -216,7 +233,7 @@ export default function PrintRequestModal({
                         #{job.id} / {job.sourceFilename || job.language}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {new Date(job.createdAt).toLocaleString("zh-CN", {
+                        {new Date(job.createdAt).toLocaleString(getLocale(lang), {
                           hour12: false,
                         })}
                       </div>
@@ -230,12 +247,12 @@ export default function PrintRequestModal({
                             : "bg-gray-100 text-gray-700"
                       }`}
                     >
-                      {job.status}
+                      {dict.printStatus[job.status] ?? job.status}
                     </span>
                   </div>
                   {job.status === "FAILED" && job.errorMessage && (
                     <p className="mt-2 text-xs font-bold text-red-600">
-                      Rejected: {job.errorMessage}
+                      {formatMessage(print.reasonText, { reason: job.errorMessage === "Print failed." ? print.defaultFailure : job.errorMessage })}
                     </p>
                   )}
                 </div>

@@ -1,5 +1,8 @@
 "use client";
 
+import { AdminPageHeader } from "@/components/admin/AdminPage";
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useRef, useState } from "react";
 import Link from "next/link";
 import MarkdownEditor from "@/components/MarkdownEditor";
@@ -33,6 +36,7 @@ export default function ProblemEditor({
   initialData,
   isEdit = false,
 }: ProblemEditorProps) {
+  const { t } = useAdminLocale();
   const [loading, setLoading] = useState(false);
 
   // 基础字段状态
@@ -162,36 +166,19 @@ export default function ProblemEditor({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 max-w-5xl mx-auto pb-20">
-      {/* 顶部操作栏 */}
-      <div className="flex justify-between items-center border-b pb-4">
-        <h1 className="text-2xl font-bold text-gray-800">
-          {isEdit ? `Edit Problem #${initialData?.id}` : "Create New Problem"}
-        </h1>
-        <div className="space-x-4">
-          <Link
-            href="/admin/problems"
-            className="text-gray-500 hover:text-gray-700"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-blue-600 text-white px-6 py-2 rounded shadow hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "Saving..." : "Save Problem"}
-          </button>
-        </div>
-      </div>
+    <form onSubmit={handleSubmit} className="mx-auto max-w-6xl space-y-5 pb-8">
+      <AdminPageHeader title={isEdit ? t("Edit problem #" + initialData?.id, "编辑题目 #" + initialData?.id) : t("Create New Problem", "创建题目")}>
+        <Link href="/admin/problems" className="admin-button">{t("Cancel", "取消")}</Link>
+        <button type="submit" disabled={loading} className="admin-button admin-button-primary">{loading ? t("Saving…", "正在保存…") : t("Save Problem", "保存题目")}</button>
+      </AdminPageHeader>
 
       {/* 1. 基本信息 */}
       <div className="bg-white p-6 rounded shadow-sm border border-gray-200">
-        <h2 className="text-lg font-bold mb-4 text-gray-700">Basic Info</h2>
+        <h2 className="text-lg font-bold mb-4 text-gray-700">{t("Basic Info", "基本信息")}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Title
+              {t("Title", "标题")}
             </label>
             <input
               required
@@ -202,7 +189,7 @@ export default function ProblemEditor({
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Time Limit (ms)
+              {t("Time Limit (ms)", "时间限制（毫秒）")}
             </label>
             <input
               type="number"
@@ -213,7 +200,7 @@ export default function ProblemEditor({
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Memory Limit (MB)
+              {t("Memory Limit (MB)", "内存限制（MB）")}
             </label>
             <input
               type="number"
@@ -224,38 +211,31 @@ export default function ProblemEditor({
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Judge Type
+              {t("Judge Type", "判题类型")}
             </label>
             <select
               value={type}
               onChange={(e) => changeType(e.target.value)}
               className="w-full border border-gray-300 rounded p-2 bg-white"
             >
-              <option value="default">Default (Standard IO)</option>
-              <option value="spj">Special Judge</option>
-              <option value="interactive">Interactive</option>
+              <option value="default">{t("Default (Standard IO)", "标准输入输出")}</option>
+              <option value="spj">{t("Special Judge", "自定义判定")}</option>
+              <option value="interactive">{t("Interactive", "交互题")}</option>
               <option value="communication">
-                Communication (Run twice)
+                {t("Communication (Run twice)", "两轮通信")}
               </option>
             </select>
           </div>
           {type === "communication" && (
             <div className="md:col-span-2 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 space-y-2">
               <p>
-                The same solution runs twice, with input/output or interaction as defined by the problem.
-                Each run starts fresh, with separate time and memory limits;
-                memory and files are not shared between runs.
+                {t("The same solution runs twice, with input/output or interaction as defined by the problem. Each run starts fresh, with separate time and memory limits; memory and files are not shared between runs.", "同一份选手程序会运行两次。每轮从独立环境开始，分别计算时间和内存，输入输出与交互方式以题面为准。")}
               </p>
               <p>
-                The runs communicate only through the limited message defined
-                by the problem. Describe the format for each run, how to identify
-                the run, and the message restrictions in the statement.
+                {t("The runs communicate only through the limited message defined by the problem. Describe the format for each run, how to identify the run, and the message restrictions in the statement.", "请在题面说明每轮的数据格式、轮次标识和允许传递的消息。")}
               </p>
               <p>
-                For native communication problems, save the problem, then upload <code>communicator.cpp</code> and
-                the test data in Data Management to prepare the second input and
-                judge the result. Polygon imports include their own checker/interactor configuration;
-                keep that configuration in Data Management.
+                {t("For native communication problems, save the problem, then upload", "使用原生通信题时，先保存题目，再上传")} <code>communicator.cpp</code> {t("and the test data in Data Management to prepare the second input and judge the result. Polygon imports include their own checker/interactor configuration; keep that configuration in Data Management.", "和测试数据，由裁判程序准备下一轮输入并判定结果。Polygon 导入题请保留原有 checker 和 interactor 配置。")}
               </p>
             </div>
           )}
@@ -266,16 +246,16 @@ export default function ProblemEditor({
       <div className="bg-white p-6 rounded shadow-sm border border-gray-200">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-bold text-gray-700">
-            Description Sections
+            {t("Description Sections", "题面章节")}
           </h2>
           <button
             type="button"
             onClick={() =>
-              setSections([...sections, { title: "New Section", content: "" }])
+              setSections([...sections, { title: t("New Section", "新章节"), content: "" }])
             }
             className="text-sm text-blue-600 hover:text-blue-800"
           >
-            + Add Section
+            {t("+ Add Section", "添加章节")}
           </button>
         </div>
 
@@ -292,7 +272,7 @@ export default function ProblemEditor({
                 }
                 className="absolute top-2 right-2 text-red-400 hover:text-red-600 z-10 bg-white px-2 py-1 rounded shadow-sm text-xs font-bold cursor-pointer"
               >
-                Remove Block
+                {t("Remove Block", "删除章节")}
               </button>
 
               <div className="mb-4">
@@ -300,7 +280,7 @@ export default function ProblemEditor({
                   value={sec.title}
                   onChange={(e) => updateSection(idx, "title", e.target.value)}
                   className="block w-full text-lg font-bold bg-transparent border-b border-gray-300 focus:border-blue-500 outline-none pb-2"
-                  placeholder="Section Title (e.g. Input)"
+                  placeholder={t("Section Title (e.g. Input)", "章节标题（如输入格式）")}
                 />
               </div>
 
@@ -317,7 +297,7 @@ export default function ProblemEditor({
       {/* 提示 Hint */}
       <div className="bg-white p-6 rounded shadow-sm border border-gray-200">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold text-gray-700">Hint</h2>
+          <h2 className="text-lg font-bold text-gray-700">{t("Hint", "提示")}</h2>
         </div>
         <MarkdownEditor
           value={hint}
@@ -329,7 +309,7 @@ export default function ProblemEditor({
       {/* 3. 样例 (Samples) */}
       <div className="bg-white p-6 rounded shadow-sm border border-gray-200">
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-          <h2 className="text-lg font-bold text-gray-700">Samples</h2>
+          <h2 className="text-lg font-bold text-gray-700">{t("Samples", "样例")}</h2>
           <div className="flex flex-wrap gap-4">
           {type === "communication" && (
             <button
@@ -337,7 +317,7 @@ export default function ProblemEditor({
               onClick={insertCommunicationExample}
               className="text-sm text-blue-600 hover:text-blue-800 cursor-pointer"
             >
-              + 插入 first/second 示例
+              {t("Insert first/second markers", "+ 插入 first/second 示例")}
             </button>
           )}
           <button
@@ -348,7 +328,7 @@ export default function ProblemEditor({
             ])}
             className="text-sm text-blue-600 hover:text-blue-800 cursor-pointer"
           >
-            {type === "communication" ? "+ 添加两轮样例" : "+ Add Sample"}
+            {type === "communication" ? t("Add two-run sample", "+ 添加两轮样例") : t("+ Add Sample", "添加样例")}
           </button>
           </div>
         </div>
@@ -357,14 +337,11 @@ export default function ProblemEditor({
           {type === "communication" && (
             <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 space-y-2">
               <p>
-                每个样例展示同一个测试点的两次运行。若题目约定使用
-                <code className="mx-1">first</code> 和 <code className="mx-1">second</code>，
-                请把它们写在对应输入的第一行，系统不会自动添加。
+                {t("Each sample shows two runs for one test case. If the problem uses", "每个样例展示同一个测试点的两次运行。若题目约定使用")}
+                <code className="mx-1">first</code> {t("and", "和")} <code className="mx-1">second</code>{t("put these markers on the first line of their respective inputs.", "， 请把它们写在对应输入的第一行，系统不会自动添加。")}
               </p>
               <p>
-                两轮输出与第二轮输入用于题面展示，只代表一种合法通信方案。
-                调试时从第一轮输入开始，通信裁判根据程序实际输出生成第二轮输入并判定结果，
-                不要求程序输出与这里的示例一致。
+                {t("The outputs and the second-run input are one valid example. Debugging starts from the first input. The judge creates the second input from the program's actual output and checks the result.", "两轮输出与第二轮输入用于题面展示，只代表一种合法通信方案。 调试时从第一轮输入开始，通信裁判根据程序实际输出生成第二轮输入并判定结果， 不要求程序输出与这里的示例一致。")}
               </p>
             </div>
           )}
@@ -374,22 +351,22 @@ export default function ProblemEditor({
               return (
                 <div key={idx} className="rounded border border-gray-200 bg-gray-50 p-4 space-y-4">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-semibold text-gray-800">样例 #{idx + 1}</h3>
+                    <h3 className="font-semibold text-gray-800">{t("Sample #", "样例 #")}{idx + 1}</h3>
                     <button
                       type="button"
                       onClick={() => setSamples((current) => current.filter((_, i) => i !== idx))}
-                      aria-label={`删除样例 ${idx + 1}`}
+                      aria-label={t(`Remove sample ${idx + 1}`, `删除样例 ${idx + 1}`)}
                       className="text-sm text-red-600 hover:text-red-800"
                     >
-                      删除样例
+                      {t("Remove sample", "删除样例")}
                     </button>
                   </div>
                   <fieldset className="space-y-3">
-                    <legend className="text-sm font-semibold text-gray-700">第一次运行</legend>
+                    <legend className="text-sm font-semibold text-gray-700">{t("First run", "第一次运行")}</legend>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label htmlFor={`sample-${idx}-first-input`} className="block text-xs font-semibold text-gray-600 mb-1">
-                          第一轮输入
+                          {t("First-run input", "第一轮输入")}
                         </label>
                         <textarea
                           id={`sample-${idx}-first-input`}
@@ -401,7 +378,7 @@ export default function ProblemEditor({
                       </div>
                       <div>
                         <label htmlFor={`sample-${idx}-first-output`} className="block text-xs font-semibold text-gray-600 mb-1">
-                          第一轮输出（示例消息）
+                          {t("First-run output (example message)", "第一轮输出（示例消息）")}
                         </label>
                         <textarea
                           id={`sample-${idx}-first-output`}
@@ -413,11 +390,11 @@ export default function ProblemEditor({
                     </div>
                   </fieldset>
                   <fieldset className="space-y-3">
-                    <legend className="text-sm font-semibold text-gray-700">第二次运行</legend>
+                    <legend className="text-sm font-semibold text-gray-700">{t("Second run", "第二次运行")}</legend>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label htmlFor={`sample-${idx}-second-input`} className="block text-xs font-semibold text-gray-600 mb-1">
-                          第二轮输入（示例）
+                          {t("Second-run input (example)", "第二轮输入（示例）")}
                         </label>
                         <textarea
                           id={`sample-${idx}-second-input`}
@@ -429,7 +406,7 @@ export default function ProblemEditor({
                       </div>
                       <div>
                         <label htmlFor={`sample-${idx}-second-output`} className="block text-xs font-semibold text-gray-600 mb-1">
-                          第二轮输出（示例）
+                          {t("Second-run output (example)", "第二轮输出（示例）")}
                         </label>
                         <textarea
                           id={`sample-${idx}-second-output`}
@@ -442,13 +419,13 @@ export default function ProblemEditor({
                   </fieldset>
                   <details className="rounded border border-gray-200 bg-white p-3">
                     <summary className="cursor-pointer text-sm font-medium text-gray-700">
-                      裁判参考答案（可选，仅管理员可见）
+                      {t("Reference answer (optional, admins only)", "裁判参考答案（可选，仅管理员可见）")}
                     </summary>
                     <p id={`sample-${idx}-reference-help`} className="mt-3 mb-2 text-xs text-gray-500">
-                      仅在通信裁判需要读取参考答案时填写；不使用参考答案时留空。此字段不会展示给选手。
+                      {t("Fill in a reference answer only if the communication checker uses one. Only administrators can see this field.", "仅在通信裁判需要读取参考答案时填写；不使用参考答案时留空。此字段不会展示给选手。")}
                     </p>
                     <label htmlFor={`sample-${idx}-reference`} className="block text-xs font-semibold text-gray-600 mb-1">
-                      裁判参考答案
+                      {t("Reference answer", "裁判参考答案")}
                     </label>
                     <textarea
                       id={`sample-${idx}-reference`}
@@ -466,7 +443,7 @@ export default function ProblemEditor({
             <div key={idx} className="flex gap-4 items-start">
               <div className="flex-1">
                 <label htmlFor={`sample-${idx}-input`} className="text-xs font-bold text-gray-500">
-                  Input #{idx + 1}
+                  {t("Input #", "输入 #")}{idx + 1}
                 </label>
                 <textarea
                   id={`sample-${idx}-input`}
@@ -477,7 +454,7 @@ export default function ProblemEditor({
               </div>
               <div className="flex-1">
                 <label htmlFor={`sample-${idx}-output`} className="text-xs font-bold text-gray-500">
-                  Output #{idx + 1}
+                  {t("Output #", "输出 #")}{idx + 1}
                 </label>
                 <textarea
                   id={`sample-${idx}-output`}

@@ -10,52 +10,49 @@ import {
   ClockIcon,
 } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
+import { getVerdictLabel } from "@/lib/dictionaries";
+import { notifyContestant } from "@/lib/domjudge-notifications";
+
+import { domjudgeResult } from "@/lib/domjudge-verdict";
+import DomjudgeSubmissionResult from "./contest/DomjudgeSubmissionResult";
 
 // 复用你的配置表
 const VERDICT_CONFIG: Record<
   string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  { text: string; color: string; icon?: any }
+  { color: string; icon?: any }
 > = {
-  [Verdict.PENDING]: { text: "Pending", color: "text-gray-500" },
-  [Verdict.JUDGING]: { text: "Judging", color: "text-blue-600" },
+  [Verdict.PENDING]: { color: "text-gray-500" },
+  [Verdict.JUDGING]: { color: "text-blue-600" },
   [Verdict.ACCEPTED]: {
-    text: "Accepted",
     color: "text-green-600 font-bold",
     icon: CheckCircleIcon,
   },
   [Verdict.WRONG_ANSWER]: {
-    text: "Wrong Answer",
     color: "text-red-600 font-bold",
     icon: XCircleIcon,
   },
   [Verdict.TIME_LIMIT_EXCEEDED]: {
-    text: "Time Limit Exceeded",
     color: "text-orange-600 font-bold",
     icon: ClockIcon,
   },
   [Verdict.MEMORY_LIMIT_EXCEEDED]: {
-    text: "Memory Limit Exceeded",
     color: "text-orange-600 font-bold",
     icon: ExclamationCircleIcon,
   },
   [Verdict.RUNTIME_ERROR]: {
-    text: "Runtime Error",
     color: "text-purple-600 font-bold",
     icon: ExclamationCircleIcon,
   },
   [Verdict.COMPILE_ERROR]: {
-    text: "Compile Error",
     color: "text-yellow-600 font-bold",
     icon: ExclamationCircleIcon,
   },
   [Verdict.PRESENTATION_ERROR]: {
-    text: "Presentation Error",
     color: "text-orange-500 font-bold",
     icon: ExclamationCircleIcon,
   },
   [Verdict.SYSTEM_ERROR]: {
-    text: "System Error",
     color: "text-gray-900 font-bold",
     icon: ExclamationCircleIcon,
   },
@@ -67,6 +64,7 @@ interface LiveVerdictProps {
   initialPassed?: number;
   initialTotal?: number;
   showTestDetails?: boolean;
+  domjudgeHref?: string;
 }
 
 export default function LiveVerdict({
@@ -75,6 +73,7 @@ export default function LiveVerdict({
   initialPassed = 0,
   initialTotal = 0,
   showTestDetails = true,
+  domjudgeHref,
 }: LiveVerdictProps) {
   const [status, setStatus] = useState(initialStatus);
   const [passed, setPassed] = useState(initialPassed);
@@ -159,6 +158,7 @@ export default function LiveVerdict({
           data.verdict !== Verdict.JUDGING
         ) {
           eventSource.close(); // 关闭连接
+          if (domjudgeHref) notifyContestant("Submission judged", domjudgeResult[data.verdict] ?? data.verdict, domjudgeHref);
           router.refresh(); // 刷新页面数据
         }
       } catch (err) {
@@ -166,51 +166,27 @@ export default function LiveVerdict({
       }
     };
 
-    eventSource.onerror = (err) => {
-      console.error("SSE error", err);
-      eventSource.close();
+    eventSource.onerror = () => {
+      // EventSource reconnects on transient errors. Recheck access if the server closed it permanently.
+      if (eventSource.readyState === EventSource.CLOSED) router.refresh();
     };
 
     // 组件卸载时关闭连接
     return () => {
       eventSource.close();
     };
-  }, [router, submissionId, initialStatus]); // 依赖项调整
+  }, [router, submissionId, initialStatus, domjudgeHref]);
 
   const config = VERDICT_CONFIG[status] || {
-    text: status,
     color: "text-gray-400",
   };
   const isLoading = status === Verdict.PENDING || status === Verdict.JUDGING;
+  if (domjudgeHref) {
+    return <DomjudgeSubmissionResult result={domjudgeResult[status] ?? status} announce={isLoading} />;
+  }
   const Icon = config.icon;
 
-  // 动态生成文本：如果是 Judging，显示进度
-  let displayText = config.text;
-  if (!showTestDetails && status === Verdict.JUDGING) {
-    displayText = "Judging ...";
-  } else if (showTestDetails && status === Verdict.JUDGING) {
-    displayText = `Running on test ${passed + 1} ...`;
-  } else if (showTestDetails && status === Verdict.WRONG_ANSWER) {
-    displayText = `${VERDICT_CONFIG[Verdict.WRONG_ANSWER].text} on test ${
-      passed + 1
-    }`;
-  } else if (showTestDetails && status === Verdict.TIME_LIMIT_EXCEEDED) {
-    displayText = `${
-      VERDICT_CONFIG[Verdict.TIME_LIMIT_EXCEEDED].text
-    } on test ${passed + 1}`;
-  } else if (showTestDetails && status === Verdict.MEMORY_LIMIT_EXCEEDED) {
-    displayText = `${
-      VERDICT_CONFIG[Verdict.MEMORY_LIMIT_EXCEEDED].text
-    } on test ${passed + 1}`;
-  } else if (showTestDetails && status === Verdict.PRESENTATION_ERROR) {
-    displayText = `${VERDICT_CONFIG[Verdict.PRESENTATION_ERROR].text} on test ${
-      passed + 1
-    }`;
-  } else if (showTestDetails && status === Verdict.RUNTIME_ERROR) {
-    displayText = `${VERDICT_CONFIG[Verdict.RUNTIME_ERROR].text} on test ${
-      passed + 1
-    }`;
-  }
+  const displayText = getVerdictLabel(status, showTestDetails ? passed + 1 : undefined);
 
   return (
     <span

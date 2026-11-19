@@ -1,5 +1,7 @@
 "use client";
 
+import { useLanguage } from "@/context/LanguageContext";
+
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 
@@ -10,6 +12,7 @@ interface RankSearchProps {
 
 export default function RankSearch({ schools, categories }: RankSearchProps) {
   const router = useRouter();
+  const { dict: { rank, common } } = useLanguage();
   const searchParams = useSearchParams();
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(
@@ -22,9 +25,9 @@ export default function RankSearch({ schools, categories }: RankSearchProps) {
   const currentCategory = searchParams.get("category") || "";
 
   const categoryMap: Record<string, string> = {
-    0: "正式队伍",
-    1: "打星队伍",
-    2: "女生队伍",
+    0: rank.officialTeam,
+    1: rank.unofficialTeam,
+    2: rank.womenTeam,
   };
 
   // 防抖搜索队伍名
@@ -75,30 +78,32 @@ export default function RankSearch({ schools, categories }: RankSearchProps) {
   }, [currentTeamName]);
 
   return (
-    <div className="relative">
+    <div className="contents sm:relative sm:block">
       <button
         onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
         className={`px-3 py-2 text-sm font-medium rounded-sm border transition-colors ${
           hasActiveFilters
             ? "bg-blue-100 border-blue-300 text-blue-700"
             : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
         }`}
       >
-        Search {hasActiveFilters && "✓"}
+        {common.search} {hasActiveFilters && "✓"}
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-sm shadow-lg z-10 p-4 space-y-4">
+        <div className="w-full space-y-4 rounded-sm border border-gray-200 bg-white p-4 shadow-lg sm:absolute sm:right-0 sm:top-full sm:z-30 sm:mt-2 sm:w-80">
           {/* 队伍名搜索 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Team Name
+              {common.teamName}
             </label>
             <input
               type="text"
               value={inputValue}
               onChange={(e) => handleTeamNameChange(e.target.value)}
-              placeholder="Search team name..."
+              placeholder={rank.searchTeam}
+              aria-label={rank.searchTeam}
               className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -106,14 +111,14 @@ export default function RankSearch({ schools, categories }: RankSearchProps) {
           {/* 学校筛选 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              School
+              {common.school}
             </label>
             <select
               value={currentSchool}
               onChange={(e) => handleFilterChange("school", e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">All Schools</option>
+              <option value="">{rank.allSchools}</option>
               {schools.map((s) => (
                 <option key={s} value={s}>
                   {s}
@@ -125,14 +130,14 @@ export default function RankSearch({ schools, categories }: RankSearchProps) {
           {/* 队伍类型筛选 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Category
+              {common.category}
             </label>
             <select
               value={currentCategory}
               onChange={(e) => handleFilterChange("category", e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">All Categories</option>
+              <option value="">{rank.allCategories}</option>
               {categories.map((c) => (
                 <option key={c} value={c}>
                   {categoryMap[c] || c}
@@ -154,7 +159,7 @@ export default function RankSearch({ schools, categories }: RankSearchProps) {
               }}
               className="w-full px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-sm hover:bg-gray-200 transition-colors"
             >
-              Clear Filters
+              {common.clearFilters}
             </button>
           )}
         </div>

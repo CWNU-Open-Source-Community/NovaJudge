@@ -1,4 +1,6 @@
 import { requireContestAccess } from "@/lib/contest-access";
+import { getDictionary } from "@/lib/get-dictionary";
+import { formatMessage } from "@/lib/dictionaries";
 import { getCurrentSuper, UserJwtPayload } from "@/lib/auth";
 import { ContestStatus } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -48,8 +50,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     select: { title: true },
   });
 
+  const { nav } = await getDictionary();
   return {
-    title: contest ? `Editorial - ${contest.title}` : "Editorial",
+    title: contest ? `${nav.editorial} - ${contest.title}` : nav.editorial,
   };
 }
 
@@ -87,13 +90,14 @@ export default async function EditorialPage({ params }: Props) {
     (await hasEditorialPdf(contestId));
 
   if (!available) notFound();
+  const dict = await getDictionary();
 
   return (
     <div className="bg-white w-full mx-auto shadow-sm border border-gray-100 rounded-sm p-4 md:p-6">
       <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
           <h2 className="text-2xl font-serif font-bold text-gray-800">
-            Editorial
+            {dict.nav.editorial}
           </h2>
           <p className="mt-1 text-sm text-gray-500">{contest.title}</p>
         </div>
@@ -103,13 +107,13 @@ export default async function EditorialPage({ params }: Props) {
           rel="noreferrer"
           className="text-sm font-bold text-blue-600 hover:text-blue-800 hover:underline"
         >
-          Open PDF
+          {dict.editorial.openPdf}
         </a>
       </div>
       <iframe
         src={`/api/contests/${contestId}/editorial`}
         className="h-[75vh] w-full rounded-sm border border-gray-200"
-        title={`${contest.title} Editorial PDF`}
+        title={formatMessage(dict.editorial.pdfTitle, { contest: contest.title })}
       />
     </div>
   );

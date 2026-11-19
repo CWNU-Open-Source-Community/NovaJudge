@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import { ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { toast } from "sonner";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface CodeBlockProps {
   code: string;
 }
 
 export default function CodeBlock({ code }: CodeBlockProps) {
+  const { dict } = useLanguage();
   const [copied, setCopied] = useState(false);
 
   const copyToClipboard = async (text: string) => {
@@ -51,14 +53,14 @@ export default function CodeBlock({ code }: CodeBlockProps) {
     
     if (success) {
       setCopied(true);
-      toast.success("Copied to clipboard");
+      toast.success(dict.common.copied);
       
       // 2秒后恢复图标状态
       setTimeout(() => {
         setCopied(false);
       }, 2000);
     } else {
-      toast.error("Failed to copy code");
+      toast.error(dict.common.copyFailed);
     }
   };
 
@@ -71,7 +73,7 @@ export default function CodeBlock({ code }: CodeBlockProps) {
       <button
         onClick={handleCopy}
         className="absolute top-2 right-2 p-1.5 rounded-md bg-white border border-gray-200 shadow-sm text-gray-500 hover:text-blue-600 hover:border-blue-300 transition-all duration-200 z-10 cursor-pointer"
-        title="Copy to clipboard"
+        title={dict.common.copyCode}
       >
         {copied ? (
           <CheckIcon className="w-4 h-4 text-green-600" />

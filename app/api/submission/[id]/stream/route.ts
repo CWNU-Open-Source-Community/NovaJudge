@@ -33,13 +33,27 @@ export async function GET(
 
   const redisKey = `submission:${submissionId}:progress`;
 
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  function stopPolling() {
+    stopped = true;
+    clearTimeout(timer);
+    if (onAbort) request.signal.removeEventListener("abort", onAbort);
+  }
   const stream = new ReadableStream({
-    async start(controller) {
+    start(controller) {
+      const finish = () => {
+        if (stopped) return;
+        stopPolling();
+        controller.close();
+      };
       const sendEvent = (data: {
         verdict: Verdict;
         passedTests: number;
         totalTests: number;
       }) => {
+        if (stopped) return;
         const payload = canViewTestDetails
           ? data
           : hideSubmissionProgress(data);
@@ -117,26 +131,18 @@ export async function GET(
         }
       };
 
-      // 立即执行一次
-      const shouldStop = await checkStatus();
-      if (shouldStop) {
-        controller.close();
-        return;
-      }
-
-      // 循环轮询 (同时查 DB 和 Redis)
-      const interval = setInterval(async () => {
-        const stop = await checkStatus();
-        if (stop) {
-          clearInterval(interval);
-          controller.close();
-        }
-      }, 200);
-
-      request.signal.addEventListener("abort", () => {
-        clearInterval(interval);
-      });
+      const poll = async () => {
+        const done = await checkStatus();
+        if (stopped) return;
+        if (done) finish();
+        else timer = setTimeout(poll, 200);
+      };
+      onAbort = finish;
+      if (request.signal.aborted) return finish();
+      request.signal.addEventListener("abort", onAbort, { once: true });
+      void poll();
     },
+    cancel: stopPolling,
   });
 
   return new Response(stream, {

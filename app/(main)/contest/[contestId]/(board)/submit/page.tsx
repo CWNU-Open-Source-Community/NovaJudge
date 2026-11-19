@@ -18,6 +18,10 @@ import {
   getRunningVirtualParticipation,
 } from "@/lib/virtual-participation";
 import { getOfficialSubmissionWhere } from "@/lib/official-submission";
+import { getDictionary } from "@/lib/get-dictionary";
+import { usesDomjudge } from "@/lib/contest-interface";
+import { getDomjudgeContest } from "@/lib/domjudge-contest";
+import DomjudgeSubmit from "@/components/contest/DomjudgeSubmit";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
@@ -29,23 +33,24 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
   });
 
+  const dict = await getDictionary();
   if (!contest) {
     return {
-      title: "比赛未找到",
+      title: dict.contestList.notFound,
     };
   }
   return {
-    title: `提交 - ${contest.title}`,
+    title: `${dict.submit.title} - ${contest.title}`,
   };
 }
 interface Props {
-  searchParams: Promise<{ problem?: string }>;
+  searchParams: Promise<{ problem?: string; entry?: string }>;
   params: Promise<{ contestId: string }>;
 }
 
 export default async function SubmitPage({ params, searchParams }: Props) {
   const { contestId } = await params;
-  const { problem: displayId } = await searchParams;
+  const { problem: displayId, entry } = await searchParams;
   if (!displayId) return notFound();
 
   const cid = Number(contestId);
@@ -66,6 +71,17 @@ export default async function SubmitPage({ params, searchParams }: Props) {
   });
   if (!contestProblem) return notFound();
   const { problem } = contestProblem;
+  const domjudge = await usesDomjudge(cid);
+  if (domjudge && contestProblem.contest.status === ContestStatus.PENDING) return notFound();
+  const dict = await getDictionary();
+  if (domjudge && entry === "file") {
+    const contest = await getDomjudgeContest(cid);
+    if (!contest) return notFound();
+    return <section className="dj-upload-page">
+      <h1>{dict.submit.title}</h1>
+      <DomjudgeSubmit contest={contest} initialProblem={displayId} />
+    </section>;
+  }
 
   const SuperAdmin = await getCurrentSuper();
   const user = await getCurrentUser();
@@ -197,6 +213,8 @@ export default async function SubmitPage({ params, searchParams }: Props) {
       </aside>
 
       <div className="flex-1 w-full min-w-0 space-y-4">
+        {domjudge && !isSubmitDisabled &&
+          <Link href={`/contest/${cid}/submit?problem=${encodeURIComponent(displayId)}&entry=file`} className="dj-secondary">{dict.domjudge.uploadFile}</Link>}
         <SubmitForm
           contestId={contestId}
           problemId={displayId}
@@ -208,9 +226,9 @@ export default async function SubmitPage({ params, searchParams }: Props) {
         >
           <CommandLineIcon className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" />
           <div>
-            <p className="text-sm font-bold text-gray-800">从 Windows 或 Mac 终端提交</p>
+            <p className="text-sm font-bold text-gray-800">{dict.submit.cliTitle}</p>
             <p className="text-sm text-gray-600 mt-1">
-              安装 submit 命令，无需额外环境。目标比赛由管理员统一指定，首次使用在网页绑定队伍账号。
+              {dict.submit.cliDescription}
             </p>
           </div>
         </Link>}

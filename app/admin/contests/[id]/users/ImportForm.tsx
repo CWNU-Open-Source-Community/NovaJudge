@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useState } from "react";
 import { importUsers } from "./actions";
 import { ArrowDownTrayIcon, TableCellsIcon } from "@heroicons/react/24/outline";
@@ -25,6 +27,7 @@ interface PreviewRow {
 }
 
 export default function ImportForm({ contestId, type }: ImportFormProps) {
+  const { t } = useAdminLocale();
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -79,9 +82,9 @@ export default function ImportForm({ contestId, type }: ImportFormProps) {
       await importUsers(contestId, preview, type);
       setText("");
       setPreview([]);
-      toast.success("Import successful!");
+      toast.success(t("Import successful!", "导入成功"));
     } catch (e) {
-      toast.error("Import failed: " + e);
+      toast.error(t("Import failed", "导入失败"), { description: String(e) });
     } finally {
       setIsSubmitting(false);
     }
@@ -97,40 +100,37 @@ export default function ImportForm({ contestId, type }: ImportFormProps) {
 
   return (
     <div className="space-y-4">
-      <ConfirmModal
+      <ConfirmModal cancelText={t("Cancel", "取消")}
         isOpen={isConfirmOpen}
-        title="Confirm Import"
-        message={`Are you sure you want to import ${preview.length} users? This action cannot be undone.`}
-        confirmText="Import"
+        title={t("Confirm Import", "确认导入")}
+        message={t(`Import ${preview.length} accounts?`, `确认导入 ${preview.length} 个账号？`)}
+        confirmText={t("Import", "导入")}
         onConfirm={handleConfirmImport}
         onCancel={() => setIsConfirmOpen(false)}
       />
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
         <p className="font-bold flex items-center gap-2">
           <TableCellsIcon className="w-5 h-5" />
-          Excel / CSV Paste Format
+          {t("Excel / CSV Paste Format", "表格粘贴格式")}
         </p>
         <div className="mt-2 font-mono bg-white p-2 rounded border border-blue-100 overflow-x-auto whitespace-nowrap">
           {type === "TEAM" ? (
             <span>
-              Username &emsp; Password &emsp; TeamName &emsp; School &emsp;
-              Members &emsp; Seat &emsp; Coach &emsp; Type(0/1/2) &emsp;
-              AutoLoginIP
+              {t("Username   Password   TeamName   School   Members   Seat   Coach   Type(0/1/2)   AutoLoginIP", "用户名　密码　队名　学校　队员　座位　教练　类型（0/1/2）　自动登录 IP")}
             </span>
           ) : (
             <span>
-              Username &emsp; Password &emsp; RealName &emsp;
-              Role(JUDGE/BALLOON/PRINT/ADMIN)
+              {t("Username   Password   RealName   Role(JUDGE/BALLOON/PRINT/ADMIN)", "用户名　密码　姓名　角色（JUDGE/BALLOON/PRINT/ADMIN）")}
             </span>
           )}
         </div>
         <div className="mt-2 text-xs opacity-75 space-y-1">
-          <p>* Columns are separated by Tab (default Excel copy format).</p>
+          <p>{t("* Columns are separated by Tab (default Excel copy format).", "用 Tab 分隔列，可直接从 Excel 复制粘贴。")}</p>
           <p className="font-bold text-blue-900">
-            * Leave Password empty to auto-generate.
+            {t("* Leave Password empty to auto-generate.", "密码留空时自动生成。")}
           </p>
           {type === "TEAM" && (
-            <p>* Type: 0 = Official, 1 = Star (Unofficial), 2 = Girls Team.</p>
+            <p>{t("* Type: 0 = Official, 1 = Star (Unofficial), 2 = Girls Team.", "类型可填 0（正式队）、1（打星队）或 2（女生队）。")}</p>
           )}
         </div>
       </div>
@@ -153,32 +153,32 @@ export default function ImportForm({ contestId, type }: ImportFormProps) {
         {/* 预览区 */}
         <div className="border border-gray-300 rounded-lg overflow-hidden flex flex-col h-64">
           <div className="bg-gray-50 px-4 py-2 border-b font-medium text-xs text-gray-500 flex justify-between items-center">
-            <span>Preview ({preview.length} rows)</span>
+            <span>{t("Preview (", "预览（")}{preview.length} {t("rows)", "行）")}</span>
             <button
               onClick={handleSubmit}
               disabled={preview.length === 0 || isSubmitting}
               className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1 transition-colors font-bold shadow-sm"
             >
               <ArrowDownTrayIcon className="w-4 h-4" />
-              {isSubmitting ? "Importing..." : "Import Users"}
+              {isSubmitting ? t("Importing...", "正在导入…") : t("Import Users", "导入账号")}
             </button>
           </div>
           <div className="flex-1 overflow-auto bg-white">
             <table className="w-full text-xs text-left whitespace-nowrap">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
-                  <th className="px-3 py-2">User</th>
-                  <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">{t("User", "用户")}</th>
+                  <th className="px-3 py-2">{t("Name", "名称")}</th>
                   {type === "TEAM" ? (
                     <>
-                      <th className="px-3 py-2">School</th>
-                      <th className="px-3 py-2">Seat</th>
-                      <th className="px-3 py-2">Coach</th>
-                      <th className="px-3 py-2">Type</th>
-                      <th className="px-3 py-2">Auto IP</th>
+                      <th className="px-3 py-2">{t("School", "学校")}</th>
+                      <th className="px-3 py-2">{t("Seat", "座位")}</th>
+                      <th className="px-3 py-2">{t("Coach", "教练")}</th>
+                      <th className="px-3 py-2">{t("Type", "类型")}</th>
+                      <th className="px-3 py-2">{t("Auto IP", "自动登录 IP")}</th>
                     </>
                   ) : (
-                    <th className="px-3 py-2">Role</th>
+                    <th className="px-3 py-2">{t("Role", "角色")}</th>
                   )}
                 </tr>
               </thead>
@@ -222,7 +222,7 @@ export default function ImportForm({ contestId, type }: ImportFormProps) {
                       colSpan={type === "TEAM" ? 7 : 3}
                       className="p-8 text-center text-gray-400"
                     >
-                      Paste data to preview
+                      {t("Paste data to preview", "粘贴数据后查看预览")}
                     </td>
                   </tr>
                 )}

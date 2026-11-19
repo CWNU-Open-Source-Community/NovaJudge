@@ -30,21 +30,7 @@ import {
 } from "@/lib/virtual-participation";
 import { getOfficialSubmissionWhere } from "@/lib/official-submission";
 
-type Problem = {
-  id: number;
-  title: string;
-  defaultTimeLimit: number;
-  defaultMemoryLimit: number;
-
-  sections: {
-    title: string;
-    content: string;
-  }[];
-
-  samples: ProblemSample[];
-
-  hint: string;
-};
+type StatementSection = { title: string; content: string };
 
 interface Props {
   params: Promise<{
@@ -77,7 +63,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   if (!contestProblem) {
     return {
-      title: "题目未找到",
+      title: (await getDictionary()).problemDetail.notFound,
     };
   }
   return {
@@ -224,14 +210,13 @@ export default async function ProblemDetail({ params }: Props) {
 
   const dict = await getDictionary();
 
+  const sections = Array.isArray(problem.sections) ? problem.sections as StatementSection[] : [];
+  const samples = Array.isArray(problem.samples) ? problem.samples as ProblemSample[] : [];
   const ccData = {
     name: `${problemId} - ${problem.title}`,
     timeLimit: problem.defaultTimeLimit,
     memoryLimit: problem.defaultMemoryLimit,
-    samples: getPublicProblemSamples(
-      problem.type,
-      (problem as unknown as Problem).samples,
-    ),
+    samples: getPublicProblemSamples(problem.type, samples),
   };
 
   const safeData =
@@ -271,7 +256,7 @@ export default async function ProblemDetail({ params }: Props) {
 
           <div className="space-y-8">
             {/* 1. 渲染常规文本段落 (Description, Input, Output) */}
-            {(problem as unknown as Problem).sections?.map((section, index) => (
+            {sections.map((section, index) => (
               <div key={`section-${index}`}>
                 <SectionTitle>{section.title}</SectionTitle>
                 <article className="prose prose-sm md:prose-base max-w-none prose-headings:font-bold prose-a:text-blue-600 prose-pre:bg-gray-100 prose-pre:text-gray-800 [&_mjx-container_svg]:inline-block">
@@ -286,22 +271,18 @@ export default async function ProblemDetail({ params }: Props) {
             ))}
             {/* 2. 渲染样例数组 */}
             {problem.type === "communication" &&
-              (problem as unknown as Problem).samples.length > 0 && (
+              samples.length > 0 && (
                 <p className="text-sm text-gray-600">
                   {dict.problemDetail.communicationSamples}
                 </p>
               )}
-            {(problem as unknown as Problem).samples.map((sample, index) => {
+            {samples.map((sample, index) => {
               if (problem.type === "communication") {
                 return (
                   <CommunicationSample
                     key={`sample-${index}`}
                     {...getCommunicationSampleDisplay(sample)}
-                    index={
-                      (problem as unknown as Problem).samples.length > 1
-                        ? index + 1
-                        : undefined
-                    }
+                    index={samples.length > 1 ? index + 1 : undefined}
                     labels={{
                       firstRun: dict.problemDetail.firstRun,
                       secondRun: dict.problemDetail.secondRun,
@@ -313,23 +294,20 @@ export default async function ProblemDetail({ params }: Props) {
               }
 
               // 如果只有一组样例，标题不显示序号；如果有多组，显示 1, 2, 3...
-              const suffix =
-                (problem as unknown as Problem).samples.length > 1
-                  ? ` ${index + 1}`
-                  : "";
+              const suffix = samples.length > 1 ? ` ${index + 1}` : "";
 
               return (
                 <div key={`sample-${index}`} className="grid grid-cols-1 gap-6">
                   <div>
                     <SectionTitle>
-                      Sample Input
+                      {dict.problemDetail.sampleInput}
                       {suffix}
                     </SectionTitle>
                     <CodeBlock code={sample.input} />
                   </div>
                   <div>
                     <SectionTitle>
-                      Sample Output
+                      {dict.problemDetail.sampleOutput}
                       {suffix}
                     </SectionTitle>
                     <CodeBlock code={sample.output} />
@@ -340,7 +318,7 @@ export default async function ProblemDetail({ params }: Props) {
             {/* 3. 渲染 Hint (如果有) */}
             {problem.hint && (
               <div>
-                <SectionTitle>Hint</SectionTitle>
+                <SectionTitle>{dict.problemDetail.hint}</SectionTitle>
                 <article className="prose prose-sm md:prose-base max-w-none [&_mjx-container_svg]:inline-block">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
@@ -358,7 +336,7 @@ export default async function ProblemDetail({ params }: Props) {
               <button
                 disabled
                 className="bg-gray-400 text-white font-medium rounded-sm text-sm px-8 py-3 shadow-md cursor-not-allowed opacity-60"
-                title="Cannot submit"
+                title={dict.submit.adminCannotSubmit}
               >
                 {dict.common.submit}
               </button>

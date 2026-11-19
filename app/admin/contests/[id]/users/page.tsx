@@ -1,3 +1,5 @@
+import { createAdminLocale } from "@/lib/admin-locale";
+import { getLanguage } from "@/lib/get-dictionary";
 import Link from "next/link";
 import { getContestUsers } from "./actions";
 import ImportForm from "./ImportForm";
@@ -15,6 +17,7 @@ export default async function ContestUsersPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tab?: string }>;
 }) {
+  const { t } = createAdminLocale(await getLanguage());
   const { id } = await params;
   const { tab } = await searchParams;
   const contestId = Number(id);
@@ -33,9 +36,9 @@ export default async function ContestUsersPage({
           <ArrowLeftIcon className="w-6 h-6" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Contest Users</h1>
+          <h1 className="text-2xl font-bold text-gray-800">{t("Contest Users", "比赛账号")}</h1>
           <p className="text-gray-500">
-            Manage participants and staff for Contest #{contestId}
+            {t("Manage participants and staff for Contest #", "管理比赛账号 #")}{contestId}
           </p>
         </div>
       </div>
@@ -51,7 +54,7 @@ export default async function ContestUsersPage({
           }`}
         >
           <UserGroupIcon className="w-5 h-5" />
-          Teams ({activeTab === "TEAM" ? users.length : "..."})
+          {t("Teams (", "队伍（")}{activeTab === "TEAM" ? users.length : "..."})
         </Link>
         <Link
           href={`?tab=staff`}
@@ -62,14 +65,14 @@ export default async function ContestUsersPage({
           }`}
         >
           <IdentificationIcon className="w-5 h-5" />
-          Staff & Judges ({activeTab === "STAFF" ? users.length : "..."})
+          {t("Staff & Judges (", "工作人员与裁判（")}{activeTab === "STAFF" ? users.length : "..."})
         </Link>
       </div>
 
       {/* 导入表单 */}
       <div className="bg-white shadow rounded-lg border border-gray-200 p-6 mb-8">
         <h3 className="text-lg font-bold text-gray-800 mb-4">
-          Batch Import {activeTab === "TEAM" ? "Teams" : "Staff"}
+          {t("Batch Import", "批量导入")} {activeTab === "TEAM" ? t("Teams", "队伍") : t("Staff", "工作人员")}
         </h3>
         <ImportForm contestId={contestId} type={activeTab} />
       </div>

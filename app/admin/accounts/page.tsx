@@ -1,11 +1,13 @@
 import Link from "next/link";
-import Pagination from "@/components/Pagination";
+import Pagination from "@/components/admin/AdminPagination";
+import { AdminPageHeader, AdminTable } from "@/components/admin/AdminPage";
+import { createAdminLocale } from "@/lib/admin-locale";
+import { getLanguage } from "@/lib/get-dictionary";
 import { getExternalAccounts } from "./actions";
 import AccountBanButton from "./AccountBanButton";
 import {
   MagnifyingGlassIcon,
   NoSymbolIcon,
-  UserGroupIcon,
 } from "@heroicons/react/24/outline";
 
 const EXTERNAL_ACCOUNTS_PAGE_SIZE = 20;
@@ -28,197 +30,92 @@ export default async function AccountsPage({
     status,
   });
 
+  const { t, locale } = createAdminLocale(await getLanguage());
+  const stats = [
+    { label: t("Total", "外部账号总数"), value: data.summary.total, color: "text-gray-900" },
+    { label: t("Active", "正常"), value: data.summary.active, color: "text-emerald-700" },
+    { label: t("Banned", "已封禁"), value: data.summary.banned, color: "text-red-700" },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            External Accounts
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm text-gray-600">
-            Manage users created through the external identity provider. Search
-            by username, real name, student ID, email, or external ID, and ban
-            or unban access when needed.
-          </p>
-        </div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-          封禁后，外部登录会被拒绝，现有 auth_token 会在后续请求中失效。
-        </div>
-      </div>
+    <div className="space-y-5">
+      <AdminPageHeader title={t("External Accounts", "外部账号")} description={t("Find accounts from the external identity provider and manage access.", "查找通过外部身份认证创建的账号，并管理访问权限。")} />
+      <dl className="grid grid-cols-3 gap-2.5 sm:gap-4">
+        {stats.map(({ label, value, color }) => (
+          <div key={label} className="admin-card p-3 sm:p-4">
+            <dt className="text-xs font-medium text-gray-600 sm:text-sm">{label}</dt>
+            <dd className={`mt-1.5 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${color}`}>{value.toLocaleString(locale)}</dd>
+          </div>
+        ))}
+      </dl>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-medium text-gray-500">
-            Total External Users
-          </div>
-          <div className="mt-3 text-3xl font-bold text-gray-900">
-            {data.summary.total}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
-          <div className="text-sm font-medium text-emerald-700">Active</div>
-          <div className="mt-3 text-3xl font-bold text-emerald-900">
-            {data.summary.active}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
-          <div className="text-sm font-medium text-red-700">Banned</div>
-          <div className="mt-3 text-3xl font-bold text-red-900">
-            {data.summary.banned}
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-        <form className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_auto_auto] md:items-end">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Search
-            </label>
-            <div className="relative">
-              <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                name="q"
-                defaultValue={data.query}
-                placeholder="username / display name / student ID / email / external ID"
-                className="w-full rounded-xl border border-gray-300 py-2.5 pl-10 pr-3 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Status
-            </label>
-            <select
-              name="status"
-              defaultValue={data.status}
-              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            >
-              <option value="all">All users</option>
-              <option value="active">Active only</option>
-              <option value="banned">Banned only</option>
+      <section className="admin-card overflow-hidden">
+        <form role="search" className="grid gap-3 p-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(8rem,12rem)] sm:p-4 xl:grid-cols-[minmax(0,1fr)_minmax(8rem,12rem)_auto] xl:items-end">
+          <label className="grid gap-1.5 text-sm font-medium text-gray-700">
+            {t("Search accounts", "搜索账号")}
+            <span className="relative">
+              <MagnifyingGlassIcon className="pointer-events-none absolute top-3 left-3 size-4 text-gray-500" aria-hidden="true" />
+              <input type="search" name="q" defaultValue={data.query} placeholder={t("Name, student ID, email, or external ID", "姓名、账号、学号、邮箱或外部 ID")} className="admin-input pl-9" />
+            </span>
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium text-gray-700">
+            {t("Status", "状态")}
+            <select name="status" defaultValue={data.status} className="admin-input">
+              <option value="all">{t("All accounts", "全部账号")}</option>
+              <option value="active">{t("Active only", "仅正常账号")}</option>
+              <option value="banned">{t("Banned only", "仅已封禁账号")}</option>
             </select>
+          </label>
+          <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-1">
+            <button type="submit" className="admin-button admin-button-primary">{t("Search", "搜索")}</button>
+            <Link href="/admin/accounts" className="admin-button">{t("Reset", "重置")}</Link>
           </div>
-
-          <button
-            type="submit"
-            className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-          >
-            Search
-          </button>
-
-          <Link
-            href="/admin/accounts"
-            className="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-          >
-            Reset
-          </Link>
         </form>
-      </div>
 
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        {data.accounts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-6 py-16 text-center text-gray-500">
-            <UserGroupIcon className="mb-4 h-12 w-12 text-gray-300" />
-            <div className="text-lg font-semibold text-gray-700">
-              No matching external users
-            </div>
-            <p className="mt-2 max-w-md text-sm">
-              Adjust your search keywords or status filter to find the account
-              you need.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm text-gray-600">
-              <thead className="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                <tr>
-                  <th className="px-6 py-4">User</th>
-                  <th className="px-6 py-4">Identity</th>
-                  <th className="px-6 py-4">External ID</th>
-                  <th className="px-6 py-4">Submissions</th>
-                  <th className="px-6 py-4">Created</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data.accounts.map((account) => (
-                  <tr key={account.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 align-top">
-                      <div className="font-semibold text-gray-900">
-                        {account.displayName || account.username}
-                      </div>
-                      <div className="mt-1 font-mono text-xs text-gray-500">
-                        @{account.username}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 align-top">
-                      <div className="space-y-1">
-                        <div>
-                          <span className="font-medium text-gray-700">
-                            Student ID:
-                          </span>{" "}
-                          {account.studentId || "-"}
-                        </div>
-                        <div className="break-all text-gray-500">
-                          {account.email || "-"}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 align-top font-mono text-xs text-gray-500">
-                      {account.externalId || "-"}
-                    </td>
-                    <td className="px-6 py-4 align-top">
-                      <div className="inline-flex min-w-14 items-center justify-center rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                        {account._count.submissions}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 align-top text-sm text-gray-500">
-                      {new Date(account.createdAt).toLocaleString("zh-CN")}
-                    </td>
-                    <td className="px-6 py-4 align-top">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
-                          account.isBanned
-                            ? "bg-red-100 text-red-700"
-                            : "bg-emerald-100 text-emerald-700"
-                        }`}
-                      >
-                        <NoSymbolIcon className="h-3.5 w-3.5" />
-                        {account.isBanned ? "Banned" : "Active"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 align-top text-right">
-                      <AccountBanButton
-                        userId={account.id}
-                        username={account.username}
-                        isBanned={account.isBanned}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between gap-4">
-        <div className="text-sm text-gray-500">
-          Showing{" "}
-          {(data.page - 1) * data.pageSize +
-            (data.accounts.length === 0 ? 0 : 1)}
-          -{(data.page - 1) * data.pageSize + data.accounts.length} of{" "}
-          {data.total}
-        </div>
-        <Pagination
-          totalItems={data.total}
-          pageSize={EXTERNAL_ACCOUNTS_PAGE_SIZE}
-        />
-      </div>
+        <AdminTable label={t("External accounts", "外部账号列表")} className="min-w-[41rem]">
+          <thead>
+            <tr>
+              <th scope="col">{t("User", "用户")}</th>
+              <th scope="col">{t("Identity", "身份信息")}</th>
+              <th scope="col">{t("External ID", "外部 ID")}</th>
+              <th scope="col">{t("Submissions", "提交")}</th>
+              <th scope="col">{t("Created", "创建时间")}</th>
+              <th scope="col">{t("Status", "状态")}</th>
+              <th scope="col" className="text-right">{t("Actions", "操作")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.accounts.map((account) => (
+              <tr key={account.id}>
+                <th scope="row" className="min-w-28 text-left align-top">
+                  <div className="wrap-break-word font-semibold text-gray-900">{account.displayName || account.username}</div>
+                  <div className="mt-1 wrap-break-word font-mono text-xs font-normal text-gray-600">@{account.username}</div>
+                </th>
+                <td className="align-top">
+                  <div className="text-xs text-gray-700">{t("Student ID", "学号")} {account.studentId || "—"}</div>
+                  <div className="mt-1 break-all text-xs text-gray-600">{account.email || "—"}</div>
+                </td>
+                <td className="align-top font-mono text-xs text-gray-600">{account.externalId || "—"}</td>
+                <td className="align-top tabular-nums">{account._count.submissions.toLocaleString(locale)}</td>
+                <td className="min-w-28 align-top text-xs text-gray-600">
+                  <time dateTime={account.createdAt.toISOString()}>{account.createdAt.toLocaleDateString(locale)}</time>
+                </td>
+                <td className="align-top">
+                  <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium ${account.isBanned ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>
+                    {account.isBanned && <NoSymbolIcon className="size-3.5" aria-hidden="true" />}
+                    {account.isBanned ? t("Banned", "已封禁") : t("Active", "正常")}
+                  </span>
+                </td>
+                <td className="text-right align-top">
+                  <AccountBanButton userId={account.id} username={account.username} isBanned={account.isBanned} />
+                </td>
+              </tr>
+            ))}
+            {data.accounts.length === 0 && <tr><td colSpan={7} className="text-center"><p className="py-7 text-sm text-gray-600">{t("No matching external accounts.", "没有符合条件的外部账号。")}</p></td></tr>}
+          </tbody>
+        </AdminTable>
+        <div className="admin-table-footer"><Pagination totalItems={data.total} pageSize={EXTERNAL_ACCOUNTS_PAGE_SIZE} /></div>
+      </section>
     </div>
   );
 }

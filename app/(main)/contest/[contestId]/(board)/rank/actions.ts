@@ -1,6 +1,7 @@
 "use server";
 
 import { requireContestAccess } from "@/lib/contest-access";
+import { getDictionary } from "@/lib/get-dictionary";
 
 import { getCurrentSuper, getCurrentUser } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
@@ -10,6 +11,7 @@ import { ContestConfig } from "@/app/(main)/page";
 
 export async function unfreezeContest(contestId: number) {
   await requireContestAccess(contestId);
+  const dict = await getDictionary();
   const globalUser = await getCurrentSuper();
   const isGlobalAdmin = !!globalUser?.isGlobalAdmin;
   let isContestAdmin = false;
@@ -31,7 +33,7 @@ export async function unfreezeContest(contestId: number) {
   }
 
   if (!isGlobalAdmin && !isContestAdmin) {
-    return { success: false, error: "Unauthorized" };
+    return { success: false, error: dict.rank.unfreezeForbidden };
   }
 
   try {
@@ -40,7 +42,7 @@ export async function unfreezeContest(contestId: number) {
       select: { config: true },
     });
 
-    if (!contest) return { success: false, error: "Contest not found" };
+    if (!contest) return { success: false, error: dict.contestList.notFound };
 
     const newConfig = {
       ...(contest.config as ContestConfig),
@@ -56,6 +58,6 @@ export async function unfreezeContest(contestId: number) {
     return { success: true };
   } catch (error) {
     console.error("Unfreeze error:", error);
-    return { success: false, error: "Failed to update contest" };
+    return { success: false, error: dict.rank.unfreezeFailed };
   }
 }

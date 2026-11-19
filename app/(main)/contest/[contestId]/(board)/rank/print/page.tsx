@@ -1,10 +1,14 @@
 import { requireContestAccess } from "@/lib/contest-access";
 import { ContestConfig } from "@/app/(main)/page";
+import { assignTeamMedals, setTeamRanks } from "@/lib/contest-team-standings";
+import { compareTeamScores } from "@/lib/medal-utils";
 import { ContestRole, Verdict } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import PrintButton from "./PrintButton";
 import { Metadata } from "next/types";
+import { getDictionary, getLanguage } from "@/lib/get-dictionary";
+import { getLocale } from "@/lib/dictionaries";
 
 type RankProblemCell = {
   accepted: boolean;
@@ -41,13 +45,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
   });
 
+  const dict = await getDictionary();
   if (!contest) {
     return {
-      title: "比赛未找到",
+      title: dict.contestList.notFound,
     };
   }
   return {
-    title: `排行榜 - ${contest.title}`,
+    title: `${dict.rank.title} - ${contest.title}`,
   };
 }
 
@@ -55,33 +60,6 @@ function formatTime(startTime: number, submissionTime: number) {
   const diffMs = submissionTime - startTime;
   const minutes = Math.floor(diffMs / 60000);
   return `${minutes}`;
-}
-
-function getMedalCounts(total: number, config: ContestConfig | null) {
-  const medal = config?.medal || {
-    mode: "ratio" as const,
-    gold: 0,
-    silver: 0,
-    bronze: 0,
-  };
-  const mode = medal.mode || "ratio";
-  const gold = Math.max(0, Number(medal.gold || 0));
-  const silver = Math.max(0, Number(medal.silver || 0));
-  const bronze = Math.max(0, Number(medal.bronze || 0));
-
-  if (mode === "fixed") {
-    return {
-      gold: Math.min(total, Math.floor(gold)),
-      silver: Math.min(total, Math.floor(silver)),
-      bronze: Math.min(total, Math.floor(bronze)),
-    };
-  }
-
-  return {
-    gold: Math.min(total, Math.ceil((total * gold) / 100)),
-    silver: Math.min(total, Math.ceil((total * silver) / 100)),
-    bronze: Math.min(total, Math.ceil((total * bronze) / 100)),
-  };
 }
 
 export default async function RankPrintPage({ params }: Props) {
@@ -92,6 +70,7 @@ export default async function RankPrintPage({ params }: Props) {
   });
 
   if (!contest) notFound();
+  const [dict, lang] = await Promise.all([getDictionary(), getLanguage()]);
 
   const contestProblems = await prisma.contestProblem.findMany({
     where: { contestId },
@@ -218,34 +197,9 @@ export default async function RankPrintPage({ params }: Props) {
     };
   });
 
-  rankings.sort((a, b) => {
-    if (a.solved !== b.solved) return b.solved - a.solved;
-    return a.penalty - b.penalty;
-  });
-
-  for (let i = 0; i < rankings.length; i++) {
-    if (rankings[i].category === "1") {
-      rankings[i].rank = "*";
-    } else if (
-      i > 0 &&
-      rankings[i].solved === rankings[i - 1].solved &&
-      rankings[i].penalty === rankings[i - 1].penalty
-    ) {
-      rankings[i].rank = rankings[i - 1].rank;
-    } else {
-      rankings[i].rank = i + 1;
-    }
-  }
-
-  const officialTeams = rankings.filter((team) => team.category !== "1");
-  const medalCounts = getMedalCounts(officialTeams.length, config);
-  officialTeams.forEach((team, index) => {
-    if (index < medalCounts.gold) team.medal = "Gold";
-    else if (index < medalCounts.gold + medalCounts.silver)
-      team.medal = "Silver";
-    else if (index < medalCounts.gold + medalCounts.silver + medalCounts.bronze)
-      team.medal = "Bronze";
-  });
+  rankings.sort(compareTeamScores);
+  setTeamRanks(rankings);
+  assignTeamMedals(rankings, config?.medal);
 
   const problemCount = Math.max(contestProblems.length, 1);
   const pageWidthMm = 186;
@@ -403,8 +357,8 @@ export default async function RankPrintPage({ params }: Props) {
           color: transparent;
         }
 
-        .rank-problem-accepted { background: #4caf50 !important; }
-        .rank-problem-first { background: #1b5e20 !important; }
+        .rank-problem-accepted { background: var(--rank-accepted) !important; color: #000; }
+        .rank-problem-first { background: var(--rank-first-solve) !important; color: #000; }
         .rank-problem-wrong { background: #d32f2f !important; }
 
         .rank-problem-cell small {
@@ -441,15 +395,15 @@ export default async function RankPrintPage({ params }: Props) {
         <div>
           <h1>{contest.title}</h1>
           <div className="rank-print-meta">
-            <span>ID: {contest.id}</span>
-            <span>Type: {contest.type}</span>
-            <span>Status: {contest.status}</span>
+            <span>{dict.common.id} · {contest.id}</span>
+            <span>{dict.contestList.type} · {contest.type === "PRIVATE" ? dict.contestList.private : dict.contestList.public}</span>
+            <span>{dict.contestList.status} · {dict.contest[contest.status]}</span>
           </div>
         </div>
         <div className="rank-print-time">
-          Generated
+          {dict.rank.generated}
           <br />
-          {new Date().toLocaleString("zh-CN")}
+          {new Date().toLocaleString(getLocale(lang))}
         </div>
       </header>
 
@@ -465,10 +419,10 @@ export default async function RankPrintPage({ params }: Props) {
         </colgroup>
         <thead>
           <tr>
-            <th>Rank</th>
-            <th>Team</th>
-            <th>Solved</th>
-            <th>Penalty</th>
+            <th>{dict.rank.place}</th>
+            <th>{dict.common.team}</th>
+            <th>{dict.rank.solved}</th>
+            <th>{dict.rank.penalty}</th>
             {contestProblems.map((problem, index) => (
               <th key={problem.problemId}>{String.fromCharCode(65 + index)}</th>
             ))}

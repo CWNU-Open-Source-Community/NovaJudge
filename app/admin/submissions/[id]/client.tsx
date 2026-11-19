@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import Link from "next/link";
 import CodeEditor from "@/components/CodeEditor";
 import ReactMarkdown from "react-markdown";
@@ -66,23 +68,24 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 );
 
 export default function SubmissionDetailClient({ submission, problem }: Props) {
+  const { t } = useAdminLocale();
   const submitter =
     submission.user?.username || submission.globalUser?.username || "Unknown";
 
   return (
-    <div className="h-[calc(100vh-6rem)] flex flex-col">
+    <div className="admin-card flex min-w-0 flex-col overflow-hidden xl:min-h-[calc(100dvh-7.75rem)]">
       {/* 顶部 Header */}
-      <div className="bg-white border-b px-6 py-3 flex justify-between items-center shrink-0">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3 sm:px-5">
         <div className="flex items-center gap-4">
           <Link
             href="/admin/submissions"
             className="text-gray-500 hover:text-gray-700 flex items-center gap-1 text-sm font-medium"
           >
-            <ArrowLeftIcon className="w-4 h-4" /> Back
+            <ArrowLeftIcon className="w-4 h-4" /> {t("Back", "返回")}
           </Link>
           <div className="h-4 w-px bg-gray-300"></div>
           <h1 className="text-lg font-bold text-gray-800">
-            Submission{" "}
+            {t("Submission", "提交")}{" "}
             <span className="font-mono text-gray-500 text-base">
               #{submission.id.slice(0, 8)}
             </span>
@@ -96,15 +99,15 @@ export default function SubmissionDetailClient({ submission, problem }: Props) {
         </div>
 
         <div className="flex items-center gap-6 text-sm text-gray-600">
-          <div className="flex items-center gap-1.5" title="Submitter">
+          <div className="flex items-center gap-1.5" title={t("Submitter", "提交者")}>
             <UserCircleIcon className="w-4 h-4" />
             <span className="font-medium">{submitter}</span>
           </div>
-          <div className="flex items-center gap-1.5" title="Time Used">
+          <div className="flex items-center gap-1.5" title={t("Time Used", "耗时")}>
             <ClockIcon className="w-4 h-4" />
             <span>{submission.timeUsed} ms</span>
           </div>
-          <div className="flex items-center gap-1.5" title="Memory Used">
+          <div className="flex items-center gap-1.5" title={t("Memory Used", "内存占用")}>
             <CpuChipIcon className="w-4 h-4" />
             <span>{submission.memoryUsed} KB</span>
           </div>
@@ -156,11 +159,11 @@ export default function SubmissionDetailClient({ submission, problem }: Props) {
               return (
                 <div key={`sample-${index}`} className="grid grid-cols-1 gap-6">
                   <div>
-                    <SectionTitle>Sample Input{suffix}</SectionTitle>
+                    <SectionTitle>{t("Sample Input", "样例输入")}{suffix}</SectionTitle>
                     <CodeBlock code={sample.input} />
                   </div>
                   <div>
-                    <SectionTitle>Sample Output{suffix}</SectionTitle>
+                    <SectionTitle>{t("Sample Output", "样例输出")}{suffix}</SectionTitle>
                     <CodeBlock code={sample.output} />
                   </div>
                 </div>
@@ -169,7 +172,7 @@ export default function SubmissionDetailClient({ submission, problem }: Props) {
             {/* 3. 渲染 Hint (如果有) */}
             {problem.hint && (
               <div>
-                <SectionTitle>Hint</SectionTitle>
+                <SectionTitle>{t("Hint", "提示")}</SectionTitle>
                 <article className="prose prose-sm md:prose-base max-w-none">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
@@ -186,8 +189,8 @@ export default function SubmissionDetailClient({ submission, problem }: Props) {
         {/* 右侧：代码 (50%) */}
         <div className="flex-1 flex flex-col min-w-0 bg-white">
           <div className="px-4 py-2 border-b bg-gray-50 text-xs font-mono text-gray-500 flex justify-between">
-            <span>Language: {submission.language}</span>
-            <span>Length: {submission.codeLength} Bytes</span>
+            <span>{t("Language:", "语言：")} {submission.language}</span>
+            <span>{t("Length:", "长度：")} {submission.codeLength} {t("Bytes", "字节")}</span>
           </div>
           <div className="flex-1 min-h-0 relative">
             <CodeEditor

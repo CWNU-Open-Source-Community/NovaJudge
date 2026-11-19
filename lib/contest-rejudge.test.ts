@@ -7,6 +7,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { Verdict } from "./generated/prisma/enums";
 import * as rejudgeTypes from "./contest-rejudge-types";
+import * as dictionaries from "./dictionaries";
 import type * as Auth from "./contest-management-auth";
 import type * as Query from "./contest-submission-query";
 import type * as Rejudge from "./contest-rejudge";
@@ -36,6 +37,7 @@ test("contest management uses the current database role, contest membership and 
     { role: "ADMIN", contestId: 7, allowed: false, expected: false },
   ]) {
     const auth = load<typeof Auth>("lib/contest-management-auth.ts", {
+      "./dictionaries": dictionaries,
       "./auth": { getCurrentSuper: async () => null, getCurrentUser: async () => ({ userId: "manager", role: "ADMIN", contestId: 7 }) },
       "./contest-access": { hasContestAccess: async () => scenario.allowed },
       "./prisma": { prisma: { user: { findUnique: async () => ({ id: "manager", ...scenario }) } } },
@@ -44,6 +46,7 @@ test("contest management uses the current database role, contest membership and 
     if (!scenario.expected) await assert.rejects(auth.requireContestManager(7));
   }
   const auth = load<typeof Auth>("lib/contest-management-auth.ts", {
+      "./dictionaries": dictionaries,
     "./auth": {
       getCurrentSuper: async () => ({ userId: "super", isGlobalAdmin: true }),
       getCurrentUser: () => assert.fail("A verified global administrator needs no contest login"),
@@ -56,6 +59,7 @@ test("contest management uses the current database role, contest membership and 
 
 test("a current ordinary global session cannot fall back to an old contest administrator cookie", async () => {
   const auth = load<typeof Auth>("lib/contest-management-auth.ts", {
+      "./dictionaries": dictionaries,
     "./auth": {
       getCurrentSuper: async () => ({ userId: "global-team", isGlobalAdmin: false }),
       getCurrentUser: () => assert.fail("The current global identity must remain authoritative"),
@@ -70,6 +74,7 @@ test("a current ordinary global session cannot fall back to an old contest admin
 test("contest managers require a verified current contest identity matching this contest", async () => {
   for (const current of [null, { userId: "manager", role: "ADMIN", contestId: 8 }]) {
     const auth = load<typeof Auth>("lib/contest-management-auth.ts", {
+      "./dictionaries": dictionaries,
       "./auth": { getCurrentSuper: async () => null, getCurrentUser: async () => current },
       "./contest-access": { hasContestAccess: async () => true },
       "./prisma": { prisma: { user: { findUnique: () => assert.fail("Invalid current identity cannot look up a manager") } } },
@@ -150,9 +155,11 @@ function harness() {
     },
   };
   const query = load<typeof Query>("lib/contest-submission-query.ts", {
+    "./dictionaries": dictionaries,
     "./generated/prisma/enums": { Verdict }, "./prisma": { prisma },
   });
   const service = load<typeof Rejudge>("lib/contest-rejudge.ts", {
+    "./dictionaries": dictionaries,
     "node:crypto": { randomUUID },
     "./generated/prisma/enums": { Verdict },
     "./contest-rejudge-types": rejudgeTypes,

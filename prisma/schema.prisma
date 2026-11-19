@@ -25,6 +25,20 @@ model SystemSetting {
   @@map("system_settings")
 }
 
+model OrganizationDirectory {
+  id      Int  @id @default(1)
+  entries Json
+
+  @@map("organization_directory")
+}
+
+model OrganizationLogo {
+  hash String @id
+  data Bytes
+
+  @@map("organization_logos")
+}
+
 enum ContestStatus {
   PENDING
   RUNNING

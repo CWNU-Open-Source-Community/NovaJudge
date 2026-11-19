@@ -4,6 +4,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --rank-accepted: #60e760;
+  --rank-first-solve: #1daa1d;
 }
 
 @layer base {

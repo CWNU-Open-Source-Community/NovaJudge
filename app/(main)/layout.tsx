@@ -2,38 +2,40 @@ import Navbar from "@/components/Navbar";
 import Link from "next/link";
 import { isCliEnabled } from "@/lib/cli-deployment";
 import { getSiteConfig } from "@/lib/site-config";
+import { getDictionary } from "@/lib/get-dictionary";
+import { getTeamInterface } from "@/lib/contest-interface";
+import { getDomjudgeContest } from "@/lib/domjudge-contest";
+import { SiteFrame } from "@/components/contest/ContestInterface";
+import "./contest/domjudge.css";
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   const site = getSiteConfig();
+  const [dict, team] = await Promise.all([getDictionary(), getTeamInterface()]);
+  const domjudge = team?.domjudge ? await getDomjudgeContest(team.contestId) : null;
   return (
-    <div className="min-h-screen flex flex-col">
+    <SiteFrame team={team} navigation={
       <Navbar
+        domjudge={domjudge ?? undefined}
         siteName={site.name}
         externalLoginLabel={site.externalLoginLabel}
         externalLoginUrl={site.externalLoginUrl}
       />
-
-      {/* 主内容区域 */}
-      <main className="flex justify-center w-full max-w-full mx-auto p-4 sm:p-6 lg:p-8 bg-zinc-100">
-        {children}
-      </main>
-
-      {/* 底部 Footer */}
+    } footer={
       <footer className="bg-white border-t border-gray-200">
         <div className="max-w-7xl mx-auto py-6 px-4 text-center">
           {isCliEnabled() && <Link
             href="/cli"
             className="inline-block mb-3 text-xs text-blue-600 hover:underline"
           >
-            安装 submit 命令行（Windows / macOS）
+            {dict.footer.installCli}
           </Link>}
           <p className="text-gray-500 text-xs">
             {site.footer && <>{site.footer}<br /></>}
-            Powered by{" "}
+            {dict.footer.poweredBy}{" "}
             <a
               className=" text-gray-800"
               href="https://github.com/CWNU-Open-Source-Community/NovaJudge"
@@ -41,10 +43,12 @@ export default function RootLayout({
             >
               NovaJudge
             </a>{" "}
-            Community © {new Date().getFullYear()}.
+            {dict.footer.community} © {new Date().getFullYear()}.
           </p>
         </div>
       </footer>
-    </div>
+    }>
+      {children}
+    </SiteFrame>
   );
 }

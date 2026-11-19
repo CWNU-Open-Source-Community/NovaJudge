@@ -18,7 +18,7 @@ function successful(result) {
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 }
 
-for (const edition of ["fresh", "public", "internal", "internal-history", "unrecognized"]) {
+for (const edition of ["fresh", "public", "internal", "internal-history", "unified", "unrecognized"]) {
   test(`${edition}: database adoption preserves records, settings, sequences and supports repeat deployments`, async () => {
     const schema = `nj_upgrade_test_${randomBytes(10).toString("hex")}`;
     const url = new URL(baseUrl);
@@ -31,7 +31,8 @@ for (const edition of ["fresh", "public", "internal", "internal-history", "unrec
       await client.query(`CREATE SCHEMA "${schema}"`);
       await client.query(`SET search_path TO "${schema}"`);
       if (edition !== "fresh") {
-        successful(runPrisma(["db", "push", "--schema", `prisma/legacy-schemas/${internal ? "internal" : "public"}.prisma`], env));
+        const snapshot = edition === "unified" ? "unified" : internal ? "internal" : "public";
+        successful(runPrisma(["db", "push", "--schema", `prisma/legacy-schemas/${snapshot}.prisma`], env));
         await client.query(`
           INSERT INTO global_users (id, username, role, "updatedAt") VALUES ('keep-user', 'existing-user', 'GLOBAL_USER', now());
           INSERT INTO problems (id, title, "defaultTimeLimit", "defaultMemoryLimit", sections, samples, "updatedAt")
@@ -95,7 +96,7 @@ for (const edition of ["fresh", "public", "internal", "internal-history", "unrec
       const history = (await client.query('SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name')).rows;
       assert.deepEqual(history.map((row) => row.migration_name), ["00000000000000_baseline",
         ...(edition === "internal-history" ? ["20261013000000_proctored_logins"] : []),
-        "20261117000000_unified_deployment"]);
+        "20261117000000_unified_deployment", "20261119000000_organization_directory"]);
     } finally {
       // Only the freshly generated test namespace can be removed.
       if (!/^nj_upgrade_test_[0-9a-f]{20}$/.test(schema)) throw new Error("Invalid cleanup target");

@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { AdminPageHeader, AdminTable } from "@/components/admin/AdminPage";
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   FolderIcon,
@@ -29,6 +32,7 @@ interface Contest {
 }
 
 export default function TrainingAdminPage() {
+  const { t } = useAdminLocale();
   const [nodes, setNodes] = useState<TrainingNode[]>([]);
   const [contests, setContests] = useState<Contest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +51,7 @@ export default function TrainingAdminPage() {
   });
 
   // Fetch data
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [nodesRes] = await Promise.all([
@@ -59,11 +63,11 @@ export default function TrainingAdminPage() {
       // 为了简单，我们先假设 /api/admin/contests/list 存在，或者直接在前端 fetch 列表
     } catch (e) {
       console.log(e);
-      toast.error("加载失败");
+      toast.error(t("Failed to load", "加载失败"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   // 临时补一个 fetchContests
   const fetchContests = async () => {
@@ -83,7 +87,7 @@ export default function TrainingAdminPage() {
   useEffect(() => {
     fetchData();
     fetchContests();
-  }, []);
+  }, [fetchData]);
 
   // Filter nodes by current parent
   const currentNodes = nodes.filter((n) => n.parentId === currentParentId);
@@ -118,24 +122,24 @@ export default function TrainingAdminPage() {
       });
 
       if (!res.ok) throw new Error("Failed");
-      toast.success("保存成功");
+      toast.success(t("Saved successfully", "保存成功"));
       setIsModalOpen(false);
       fetchData();
     } catch (e) {
       console.log(e);
-      toast.error("保存失败");
+      toast.error(t("Save failed", "保存失败"));
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("确定删除吗？如果是文件夹，里面的内容也会被删除！")) return;
+    if (!confirm(t("Delete this item? Deleting a folder also removes its contents.", "确定删除吗？如果是文件夹，里面的内容也会被删除！"))) return;
     try {
       await fetch(`/api/admin/training?id=${id}`, { method: "DELETE" });
-      toast.success("删除成功");
+      toast.success(t("Deleted successfully", "删除成功"));
       fetchData();
     } catch (e) {
       console.log(e);
-      toast.error("删除失败");
+      toast.error(t("Delete failed", "删除失败"));
     }
   };
 
@@ -157,32 +161,19 @@ export default function TrainingAdminPage() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">训练中心目录管理</h1>
-        <div className="flex gap-2">
-          <button
-            onClick={() => openCreateModal("FOLDER")}
-            className="flex items-center gap-1 bg-yellow-500 text-white px-3 py-2 rounded hover:bg-yellow-600"
-          >
-            <FolderIcon className="w-5 h-5" /> 新建文件夹
-          </button>
-          <button
-            onClick={() => openCreateModal("CONTEST")}
-            className="flex items-center gap-1 bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600"
-          >
-            <DocumentIcon className="w-5 h-5" /> 添加比赛
-          </button>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <AdminPageHeader title={t("Training catalog", "训练中心")} description={t("Organize training contests in folders.", "按目录组织训练比赛。")}>
+        <button type="button" onClick={() => openCreateModal("FOLDER")} className="admin-button"><FolderIcon className="size-4" aria-hidden="true" />{t("New folder", "新建文件夹")}</button>
+        <button type="button" onClick={() => openCreateModal("CONTEST")} className="admin-button admin-button-primary"><DocumentIcon className="size-4" aria-hidden="true" />{t("Add contest", "添加比赛")}</button>
+      </AdminPageHeader>
 
       {/* Breadcrumbs */}
-      <div className="flex items-center gap-2 mb-4 text-sm text-gray-600 bg-gray-50 p-2 rounded">
+      <div className="admin-card flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-gray-600">
         <button
           onClick={() => setCurrentParentId(null)}
           className="hover:text-blue-600 font-bold"
         >
-          根目录
+          {t("Root", "根目录")}
         </button>
         {breadcrumbs.map((crumb) => (
           <div key={crumb.id} className="flex items-center gap-2">
@@ -198,19 +189,19 @@ export default function TrainingAdminPage() {
       </div>
 
       {/* List */}
-      <div className="bg-white border rounded shadow">
+      <div className="admin-card overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-gray-500">加载中...</div>
+          <div className="p-8 text-center text-gray-500">{t("Loading…", "加载中...")}</div>
         ) : currentNodes.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">空文件夹</div>
+          <div className="p-8 text-center text-gray-500">{t("This folder is empty", "空文件夹")}</div>
         ) : (
-          <table className="w-full text-left text-sm">
+          <AdminTable label={t("Training items", "训练目录")} className="min-w-[27rem]">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-4 py-3 font-medium">名称</th>
-                <th className="px-4 py-3 font-medium">类型</th>
-                <th className="px-4 py-3 font-medium">关联比赛ID</th>
-                <th className="px-4 py-3 font-medium text-right">操作</th>
+                <th className="px-4 py-3 font-medium">{t("Name", "名称")}</th>
+                <th className="px-4 py-3 font-medium">{t("Type", "类型")}</th>
+                <th className="px-4 py-3 font-medium">{t("Contest ID", "关联比赛ID")}</th>
+                <th className="px-4 py-3 font-medium text-right">{t("Actions", "操作")}</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -236,7 +227,7 @@ export default function TrainingAdminPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-500">
-                    {node.type === "FOLDER" ? "文件夹" : "比赛链接"}
+                    {node.type === "FOLDER" ? t("Folder", "文件夹") : t("Contest link", "比赛链接")}
                   </td>
                   <td className="px-4 py-3 text-gray-500">
                     {node.contestId || "-"}
@@ -246,14 +237,14 @@ export default function TrainingAdminPage() {
                       <button
                         onClick={() => openEditModal(node)}
                         className="text-blue-600 hover:text-blue-800"
-                        title="编辑"
+                        title={t("Edit", "编辑")}
                       >
                         <PencilIcon className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDelete(node.id)}
                         className="text-red-600 hover:text-red-800"
-                        title="删除"
+                        title={t("Delete", "删除")}
                       >
                         <TrashIcon className="w-4 h-4" />
                       </button>
@@ -262,22 +253,22 @@ export default function TrainingAdminPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </AdminTable>
         )}
       </div>
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/50 p-4">
+          <div className="admin-card w-full max-w-md p-4 sm:p-6">
             <h2 className="text-xl font-bold mb-4">
-              {editingNode ? "编辑节点" : "新建节点"}
+              {editingNode ? t("Edit item", "编辑节点") : t("New item", "新建节点")}
             </h2>
 
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  名称
+                  {t("Name", "名称")}
                 </label>
                 <input
                   type="text"
@@ -286,7 +277,7 @@ export default function TrainingAdminPage() {
                     setFormData({ ...formData, name: e.target.value })
                   }
                   className="w-full border rounded px-3 py-2"
-                  placeholder="请输入名称"
+                  placeholder={t("Enter a name", "请输入名称")}
                 />
               </div>
 
@@ -294,7 +285,7 @@ export default function TrainingAdminPage() {
                 (!editingNode && newNodeType === "FOLDER")) && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    URL 别名 (Slug) - 可选
+                    {t("URL slug (optional)", "URL 别名 (Slug) - 可选")}
                   </label>
                   <input
                     type="text"
@@ -303,10 +294,10 @@ export default function TrainingAdminPage() {
                       setFormData({ ...formData, slug: e.target.value })
                     }
                     className="w-full border rounded px-3 py-2"
-                    placeholder="例如: 2023, acm-icpc"
+                    placeholder={t("e.g. 2023, acm-icpc", "例如: 2023, acm-icpc")}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    设置后 URL 将显示为 /train/别名，否则显示 /train/ID
+                    {t("The URL uses /train/slug when set, or /train/ID otherwise.", "设置后 URL 将显示为 /train/别名，否则显示 /train/ID")}
                   </p>
                 </div>
               )}
@@ -315,7 +306,7 @@ export default function TrainingAdminPage() {
                 (!editingNode && newNodeType === "CONTEST")) && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    选择比赛
+                    {t("Choose a contest", "选择比赛")}
                   </label>
                   <select
                     value={formData.contestId}
@@ -332,7 +323,7 @@ export default function TrainingAdminPage() {
                     }}
                     className="w-full border rounded px-3 py-2"
                   >
-                    <option value="">请选择比赛...</option>
+                    <option value="">{t("Select a contest…", "请选择比赛...")}</option>
                     {contests.map((c) => (
                       <option key={c.id} value={c.id}>
                         [{c.id}] {c.title}
@@ -348,13 +339,13 @@ export default function TrainingAdminPage() {
                 onClick={() => setIsModalOpen(false)}
                 className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
               >
-                取消
+                {t("Cancel", "取消")}
               </button>
               <button
                 onClick={handleSave}
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               >
-                保存
+                {t("Save", "保存")}
               </button>
             </div>
           </div>

@@ -1,28 +1,24 @@
+import { createAdminLocale } from "@/lib/admin-locale";
+import { getLanguage } from "@/lib/get-dictionary";
 import { getMonitorStats } from "@/lib/monitor";
 import JudgeWorkers from "../JudgeWorkers";
 import MonitorClient from "./MonitorClient";
-import { SignalIcon } from "@heroicons/react/24/outline";
+import { AdminPageHeader } from "@/components/admin/AdminPage";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Judge Monitor - NovaJudge Admin",
-};
+export async function generateMetadata() {
+  const { t } = createAdminLocale(await getLanguage());
+  return { title: t("Judge Monitor", "判题监控") };
+}
 
 export default async function JudgeMonitorPage() {
+  const { t } = createAdminLocale(await getLanguage());
   const stats = await getMonitorStats();
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
-          <SignalIcon className="w-8 h-8 text-blue-600" />
-          Judge Monitor
-        </h1>
-        <p className="text-gray-500 mt-2">
-          Real-time overview of the judge pipeline and contest activity.
-        </p>
-      </div>
+    <div className="space-y-5 sm:space-y-6">
+      <AdminPageHeader title={t("Judge Monitor", "判题监控")} description={t("Inspect the judge queue, submission activity, and verdicts.", "查看判题队列、提交走势和结果分布。")} />
 
       <MonitorClient initial={stats} />
       <JudgeWorkers initial={{ workers: stats.workers, queue: stats.queue }} />

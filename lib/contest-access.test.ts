@@ -6,6 +6,9 @@ import vm from "node:vm";
 import { NextResponse } from "next/server";
 import ts from "typescript";
 import * as tokens from "./contest-access-token";
+import { canViewBoardRuns, elapsedContestTime, scoreboardClock } from "./domjudge-scoreboard";
+import { scoreboardVerdict } from "./domjudge-verdict";
+import { getOfficialSubmissionWhere } from "./official-submission";
 
 type Contest = { id: number; type: string; password: string | null };
 type Access = {
@@ -23,9 +26,11 @@ const privateContest: Contest = { id: 1001, type: "PRIVATE", password: "private 
 
 function loadModule<T>(filename: string, dependencies: Record<string, unknown>) {
   const compiled = ts.transpileModule(readFileSync(path.resolve(filename), "utf8"), {
+    fileName: filename,
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2022,
+      jsx: ts.JsxEmit.ReactJSX,
       esModuleInterop: true,
     },
   });
@@ -38,6 +43,8 @@ function loadModule<T>(filename: string, dependencies: Record<string, unknown>) 
     Response,
     TextEncoder,
     ReadableStream,
+    setTimeout,
+    clearTimeout,
     setInterval,
     clearInterval,
   }, { filename });
@@ -93,6 +100,98 @@ test("public contests remain accessible while all ordinary sessions need a priva
   assert.equal(await harness({ user: { isGlobalAdmin: true } }).access.hasContestAccess(1001), true);
 });
 
+test("a saved DOMjudge preference only applies to the verified team's own contest", async () => {
+  const cases = [
+    { team: null, preference: "domjudge", enabled: false }, // guest or an active global session
+    { team: { role: "JUDGE", contestId: 1001 }, preference: "domjudge", enabled: false },
+    { team: { role: "TEAM", contestId: 1002 }, preference: "domjudge", enabled: false },
+    { team: { role: "TEAM", contestId: 1001 }, preference: undefined, enabled: false },
+    { team: { role: "TEAM", contestId: 1001 }, preference: "domjudge", enabled: true },
+  ];
+  for (const { team, preference, enabled } of cases) {
+    const { usesDomjudge } = loadModule<{ usesDomjudge(id: number): Promise<boolean> }>(
+      "lib/contest-interface.ts", {
+        react: { cache: <T>(fn: T) => fn },
+        "./auth": { getCurrentUser: async () => team },
+        "next/headers": { cookies: async () => ({ get: () => ({ value: preference }) }) },
+      },
+    );
+    assert.equal(await usesDomjudge(1001), enabled);
+  }
+});
+
+test("DOMjudge teams can read only their own cell histories until the final standings are released", async () => {
+  const start = Date.now() - 270 * 60_000;
+  const at = (minutes: number) => new Date(start + minutes * 60_000);
+  const contest = { id: 1001, title: "Contest", startTime: at(0), endTime: at(300), status: "RUNNING", config: { frozenDuration: 0 } };
+  let viewer: { contestId: number; userId: string; domjudge: boolean } | null = { contestId: 1001, userId: "home", domjudge: true };
+  let allowed = true;
+  let reads = 0;
+  const { getBoardRuns } = loadModule<typeof import("../app/(main)/contest/[contestId]/(board)/rank/domjudge-actions")>(
+    "app/(main)/contest/[contestId]/(board)/rank/domjudge-actions.ts", {
+      "@/lib/contest-interface": { getTeamInterface: async () => viewer },
+      "@/lib/contest-access": { getContestAccess: async () => ({ allowed }) },
+      "@/lib/domjudge-scoreboard": { canViewBoardRuns, elapsedContestTime, scoreboardClock },
+      "@/lib/official-submission": { getOfficialSubmissionWhere },
+      "@/lib/contest-languages": { contestLanguages: [{ value: "cpp", label: "C++" }] },
+      "@/lib/domjudge-verdict": { scoreboardVerdict },
+      "@/lib/prisma": { prisma: {
+        contest: { findUnique: async () => contest },
+        submission: { findMany: async ({ where, select }: { where: ReturnType<typeof getOfficialSubmissionWhere>; select: Record<string, boolean> }) => {
+          reads++;
+          assert.equal(where.contestId, 1001);
+          assert.equal(where.globalUserId, null);
+          assert.equal(where.virtualParticipationId, null);
+          assert.equal(where.problemId, 2);
+          assert.equal(where.user?.is?.contestId, 1001);
+          assert.equal(where.user?.is?.role, "TEAM");
+          assert.deepEqual(Object.keys(select).sort(), ["displayId", "language", "submittedAt", "verdict"]);
+          return [
+            { displayId: 20, language: "cpp", verdict: "JUDGING", submittedAt: at(241) },
+            { displayId: 19, language: "cpp", verdict: "ACCEPTED", submittedAt: at(240) },
+            { displayId: 18, language: "cpp", verdict: "TIME_LIMIT_EXCEEDED", submittedAt: at(238) },
+          ];
+        } },
+      } },
+    },
+  );
+  assert.equal(await getBoardRuns(1002, "home", 2), null);
+  assert.equal(reads, 0);
+  const history = async (team: string) => Array.from(await getBoardRuns(1001, team, 2) ?? [], run =>
+    [run.time, run.language, run.result, run.detailId]);
+  const expectDenied = async (team: string) => {
+    const before = reads;
+    assert.equal(await getBoardRuns(1001, team, 2), null);
+    assert.equal(reads, before);
+  };
+  await expectDenied("other");
+  assert.deepEqual(await history("home"), [
+    ["4:01", "C++", "pending", 20], ["4:00", "C++", "correct", 19], ["3:58", "C++", "rejected", 18],
+  ]);
+  contest.config.frozenDuration = 60;
+  await expectDenied("other");
+  assert.deepEqual(await history("home"), [
+    ["4:01", "C++", "pending", null], ["4:00", "C++", "pending", null], ["3:58", "C++", "rejected", 18],
+  ]);
+  contest.status = "ENDED";
+  await expectDenied("other");
+  contest.config.frozenDuration = 0;
+  assert.deepEqual(await history("other"), [
+    ["4:01", "C++", "pending", 20], ["4:00", "C++", "correct", 19], ["3:58", "C++", "timelimit", 18],
+  ]);
+  allowed = false;
+  await expectDenied("home");
+  allowed = true;
+  contest.status = "PENDING";
+  await expectDenied("home");
+  await expectDenied("other");
+  contest.status = "RUNNING";
+  viewer.domjudge = false;
+  await expectDenied("home");
+  viewer = null;
+  await expectDenied("home");
+});
+
 test("the access helper checks the current password and rejects cross-contest and malformed grants", async () => {
   const token = await tokens.signContestAccessToken(privateContest, secret);
   const h = harness({ cookies: { contest_access_1001: token } });
@@ -124,30 +223,97 @@ test("page and API gates deny before exposing contest contents", async () => {
 
 function unlock(h: ReturnType<typeof harness>) {
   return loadModule<{
-    unlockContest(id: number, previous: { error: string }, data: FormData): Promise<{ error: string }>;
+    unlockContest(id: number, previous: { error: string | null }, data: FormData): Promise<{ error: string }>;
   }>("app/(main)/contest/[contestId]/access/actions.ts", h.dependencies).unlockContest;
 }
+
+test("a DOMjudge upload from a stale team tab cannot submit as a global user", async () => {
+  let queued = false;
+  const { submitTeamFile } = loadModule<{
+    submitTeamFile(id: number, problem: string, language: string, code: string): Promise<{ error: string }>;
+  }>("app/(main)/contest/[contestId]/(board)/submit/actions.ts", {
+    "@/lib/contest-access": { requireContestAccess: async () => {} },
+    "@/lib/auth": {
+      getCurrentSuper: async () => ({ userId: "global", isGlobalAdmin: false }),
+      getCurrentUser: async () => ({ userId: "old-team", role: "TEAM", contestId: 1001 }),
+    },
+    "@/lib/contest-submission": { createContestSubmission: async () => { queued = true; } },
+  });
+  assert.equal((await submitTeamFile(1001, "A", "cpp", "int main() {}")).error, "teamRequired");
+  assert.equal(queued, false);
+});
+
+test("editor submissions return to the active interface's submissions view only after a successful save", async () => {
+  const { dependencies } = harness({ contest: { ...privateContest, type: "PUBLIC" } });
+  let domjudge = true;
+  let frozen = false;
+  let saved = 0;
+  const revalidated: string[] = [];
+  class FrozenSubmissionError extends Error { readonly code = "frozen"; }
+  const { submitCode } = loadModule<typeof import("../app/(main)/contest/[contestId]/(board)/submit/actions")>(
+    "app/(main)/contest/[contestId]/(board)/submit/actions.ts", {
+      ...dependencies,
+      "@/lib/auth": {
+        getCurrentSuper: async () => null,
+        getCurrentUser: async () => ({ userId: "team", role: "TEAM", contestId: 1001 }),
+      },
+      "@/lib/contest-interface": { usesDomjudge: async () => domjudge },
+      "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" } },
+      "@/lib/contest-submission": {
+        ContestSubmissionError: FrozenSubmissionError,
+        createContestSubmission: async () => { if (frozen) throw new FrozenSubmissionError(); saved++; },
+      },
+      "next/cache": { revalidatePath: (url: string) => revalidated.push(url) },
+    },
+  );
+  const submit = () => submitCode(1001, "A", "cpp", "int main() {}");
+  await assert.rejects(submit(), /REDIRECT:\/contest\/1001$/);
+  domjudge = false;
+  await assert.rejects(submit(), /REDIRECT:\/contest\/1001\/status$/);
+  domjudge = true;
+  frozen = true;
+  assert.equal((await submit()).error, "frozen");
+  assert.equal(saved, 2);
+  assert.deepEqual(revalidated, ["/contest/1001"]);
+});
+
+test("opening a filtered status list in DOMjudge returns to Home after the contest access check", async () => {
+  for (const type of ["PUBLIC", "PRIVATE"]) {
+    const { dependencies } = harness({ contest: { ...privateContest, type } });
+    const { default: Status } = loadModule<typeof import("../app/(main)/contest/[contestId]/(board)/status/page")>(
+      "app/(main)/contest/[contestId]/(board)/status/page.tsx", {
+        ...dependencies,
+        "@/lib/contest-interface": { usesDomjudge: async () => true },
+      },
+    );
+    const page = Status({
+      params: Promise.resolve({ contestId: "1001" }),
+      searchParams: Promise.resolve({ problem: "A", viewAll: "true" }),
+    });
+    await assert.rejects(page, type === "PUBLIC" ? /REDIRECT:\/contest\/1001$/ : /REDIRECT:\/contest\/1001\/access$/);
+  }
+});
 
 test("unlocking rejects incorrect, missing, and unconfigured passwords without writing a cookie", async () => {
   for (const password of ["wrong", "", `${privateContest.password} `]) {
     const h = harness();
     const data = new FormData();
     data.set("password", password);
-    assert.match((await unlock(h)(1001, { error: "" }, data)).error, /密码错误/);
+    assert.equal((await unlock(h)(1001, { error: null }, data)).error, "wrongPassword");
     assert.equal(h.writtenCookies.length, 0);
   }
   const noPassword = harness({ contest: { ...privateContest, password: null } });
-  assert.match((await unlock(noPassword)(1001, { error: "" }, new FormData())).error, /尚未配置/);
+  assert.equal((await unlock(noPassword)(1001, { error: null }, new FormData())).error, "unconfigured");
   assert.equal(noPassword.writtenCookies.length, 0);
   const missing = harness({ contest: null });
-  assert.match((await unlock(missing)(1001, { error: "" }, new FormData())).error, /不存在/);
+  assert.equal((await unlock(missing)(1001, { error: null }, new FormData())).error, "notFound");
 });
 
 test("a correct password issues a scoped signed HttpOnly cookie and unlocks the contest", async () => {
   const h = harness();
   const data = new FormData();
   data.set("password", privateContest.password!);
-  await assert.rejects(unlock(h)(1001, { error: "" }, data), /REDIRECT:\/contest\/1001$/);
+  await assert.rejects(unlock(h)(1001, { error: null }, data), /REDIRECT:\/contest\/1001$/);
   assert.equal(h.writtenCookies.length, 1);
   const cookie = h.writtenCookies[0];
   assert.equal(cookie.name, "contest_access_1001");
@@ -200,6 +366,44 @@ test("private submission polling and streams deny guessed IDs before Redis or ve
     assert.equal(response.status, 403, filename);
     assert.equal(protectedReads, 0, filename);
   }
+});
+
+test("a team source archive only reads submissions belonging to its verified contest account", async () => {
+  const h = harness({ contest: { ...privateContest, type: "PUBLIC" } });
+  for (const viewer of [null, { userId: "team", role: "TEAM", contestId: 1002 },
+    { userId: "judge", role: "JUDGE", contestId: 1001 }, { userId: "team", role: "TEAM", contestId: 1001 }]) {
+    let reads = 0;
+    const route = loadModule<Route>("app/api/contests/[contestId]/submissions/[id]/source/route.ts", {
+      ...h.dependencies,
+      "@/lib/auth": { getCurrentUser: async () => viewer },
+      "@/lib/prisma": { prisma: { submission: { findFirst: async ({ where }: { where: Record<string, unknown> }) => {
+        reads++;
+        assert.deepEqual({ ...where }, { id: "other-run", contestId: 1001, userId: "team", globalUserId: null, virtualParticipationId: null });
+        return null;
+      } } } },
+    });
+    const allowed = viewer?.contestId === 1001 && viewer.role === "TEAM";
+    const response = await route.GET(new Request("https://example.test"), { params: Promise.resolve({ contestId: "1001", id: "other-run" }) });
+    assert.equal(response.status, allowed ? 404 : 403);
+    assert.equal(reads, Number(allowed));
+  }
+});
+
+test("leaving a live verdict while a database read is in flight cancels the next poll", async () => {
+  let reads = 0;
+  let resolveRead!: (result: { verdict: string; passedTests: number; totalTests: number }) => void;
+  const inFlight = new Promise(resolve => { resolveRead = resolve; });
+  const route = loadModule<Route>("app/api/submission/[id]/stream/route.ts", {
+    "@/lib/auth": { getCurrentSuper: async () => null },
+    "@/lib/prisma": { prisma: { submission: { findUnique: async () => ++reads === 1 ? { contestId: null } : inFlight } } },
+    "@/lib/submission-visibility": { canViewSubmissionTestDetails: async () => true },
+    "@/lib/generated/prisma/enums": { Verdict: { PENDING: "PENDING", JUDGING: "JUDGING" } },
+  });
+  const response = await route.GET(new Request("https://example.test"), { params: Promise.resolve({ id: "run" }) });
+  await response.body!.cancel();
+  resolveRead({ verdict: "PENDING", passedTests: 0, totalTests: 0 });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  assert.equal(reads, 2);
 });
 
 test("private-only problem assets require a grant and never receive public cache headers", async () => {
