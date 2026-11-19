@@ -1,4 +1,5 @@
 import { getDictionary } from "@/lib/get-dictionary";
+import { usesDomjudge } from "@/lib/contest-interface";
 import Link from "next/link";
 
 interface ProblemInfoProps {
@@ -22,7 +23,7 @@ export default async function ProblemInfoCard({
   type = "problem",
   isAdmin = false,
 }: ProblemInfoProps) {
-  const dict = await getDictionary();
+  const [dict, domjudge] = await Promise.all([getDictionary(), usesDomjudge(Number(contestId))]);
   const memoryLimit = info.memoryLimit;
   return (
     <div className="bg-white border border-gray-200 shadow-sm rounded-sm overflow-hidden w-full lg:w-72 shrink-0">
@@ -31,7 +32,7 @@ export default async function ProblemInfoCard({
       </div>
       <ul className="text-sm divide-y divide-gray-100 font-serif">
         <li className="px-4 py-3 flex justify-between">
-          <span className="text-gray-500">Problem Id</span>
+          <span className="text-gray-500">{dict.problemDetail.id}</span>
           <span className="font-mono font-bold text-gray-800">{problemId}</span>
         </li>
         {info.problemType === "communication" && (
@@ -51,15 +52,15 @@ export default async function ProblemInfoCard({
         )}
         <li className="px-4 py-3">
           <div className="text-gray-500 mb-1">
-            {dict.problemDetail.timeLimit} (Java / Others)
+            {dict.problemDetail.timeLimit} ({dict.problemDetail.javaAndOthers})
           </div>
           <div className="font-bold text-gray-800 text-lg">
-            {2 * info.timeLimit} / <span className="time-limit">{info.timeLimit}</span> MS
+            {2 * info.timeLimit} / <span className="time-limit">{info.timeLimit}</span> ms
           </div>
         </li>
         <li className="px-4 py-3">
           <div className="text-gray-500 mb-1">
-            {dict.problemDetail.memoryLimit} (Java / Others)
+            {dict.problemDetail.memoryLimit} ({dict.problemDetail.javaAndOthers})
           </div>
           <div className="font-bold text-gray-800 text-lg">
             {2 * memoryLimit} / <span className="memory-limit">{memoryLimit}</span> MB
@@ -86,7 +87,7 @@ export default async function ProblemInfoCard({
             <button
               disabled
               className="w-full bg-gray-400 text-white text-center py-2 rounded-sm font-bold shadow-sm cursor-not-allowed opacity-60"
-              title="Cannot submit"
+              title={dict.submit.adminCannotSubmit}
             >
               {dict.common.submit}
             </button>
@@ -108,13 +109,12 @@ export default async function ProblemInfoCard({
           </Link>
         )}
 
-        {/* 第二个按钮：始终显示 Submissions */}
-        <Link
+        {!domjudge && <Link
           href={`/contest/${contestId}/status?problem=${problemId}`}
           className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-center py-2 rounded-sm font-medium transition-colors"
         >
           {dict.nav.status}
-        </Link>
+        </Link>}
       </div>
     </div>
   );

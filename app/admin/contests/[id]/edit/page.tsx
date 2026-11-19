@@ -1,7 +1,8 @@
+import { AdminPageHeader } from "@/components/admin/AdminPage";
+import { createAdminLocale } from "@/lib/admin-locale";
+import { getLanguage } from "@/lib/get-dictionary";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import EditForm from "./EditForm";
 
 export interface ContestConfig {
@@ -43,29 +44,14 @@ export default async function EditContestPage({
     where: { id: contestId },
   });
 
+  const { t } = createAdminLocale(await getLanguage());
   if (!contest) {
     notFound();
   }
 
   return (
-    <div className="max-w-6xl mx-auto pb-12">
-      {/* 顶部导航 */}
-      <div className="mb-8 flex items-center gap-4">
-        <Link
-          href="/admin/contests"
-          className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
-        >
-          <ArrowLeftIcon className="w-6 h-6" />
-        </Link>
-        <div>
-          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-            Edit Contest settings
-          </h1>
-          <p className="text-gray-500 mt-1">
-            Contest ID: <span className="font-mono">{contest.id}</span>
-          </p>
-        </div>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-5 pb-8">
+      <AdminPageHeader title={t("Edit contest", "编辑比赛")} description={contest.title + " · #" + contest.id} back={{ href: "/admin/contests", label: t("Back to contests", "返回比赛管理") }} />
 
       <EditForm contest={contest as unknown as Contest} />
     </div>

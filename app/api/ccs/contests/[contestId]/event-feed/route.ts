@@ -19,6 +19,7 @@ import {
 import { toCCSVerdict, toISO8601, getRelativeTime } from "@/lib/ccs/utils";
 import { Verdict } from "@/lib/generated/prisma/enums";
 import { getFeedAwards } from "@/lib/awards";
+import { getOrganizationDirectory } from "@/lib/org-mapper";
 import { redis } from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
@@ -72,8 +73,8 @@ export async function GET(
   >();
 
   // Initial fetch of full data
-  const teams = await getTeams(id);
-  const organizations = await getOrganizations(id);
+  const directory = await getOrganizationDirectory();
+  const [teams, organizations] = await Promise.all([getTeams(id, directory), getOrganizations(id, directory)]);
   const groups = await getGroups(id);
   const problems = await getProblems(id);
   const languages = await getLanguages(id);

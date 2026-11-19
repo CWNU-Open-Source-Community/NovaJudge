@@ -14,6 +14,13 @@ export const DEFAULT_MEDAL: ContestMedalConfig = {
   bronze: 0,
 };
 
+type TeamScore = { solved: number; penalty: number; username: string };
+
+/** Give tied teams a stable order when a medal quota ends inside a tie. */
+export function compareTeamScores(a: TeamScore, b: TeamScore) {
+  return b.solved - a.solved || a.penalty - b.penalty || a.username.localeCompare(b.username);
+}
+
 /**
  * 冠亚季按学校去重时使用的稳定键。
  *
@@ -31,7 +38,7 @@ export function getSchoolDeduplicationKey(team: {
 /** 与排行榜页一致的奖牌数量计算：ratio 为百分比，fixed 为固定数量 */
 export function getMedalCounts(
   total: number,
-  medal: ContestMedalConfig,
+  medal: Partial<ContestMedalConfig>,
 ): { gold: number; silver: number; bronze: number } {
   const cfg = medal || DEFAULT_MEDAL;
   const mode = cfg.mode || "ratio";
@@ -67,6 +74,20 @@ export function getMedalCounts(
     gold: allocatedGold,
     silver: allocatedSilver,
     bronze: allocatedBronze,
+  };
+}
+
+/** Calculate quotas from all official teams, then award them in scoreboard order to teams with a solve. */
+export function getMedalists<T extends { solved: number }>(
+  officialTeams: readonly T[],
+  config: Partial<ContestMedalConfig> = DEFAULT_MEDAL,
+) {
+  const { gold, silver, bronze } = getMedalCounts(officialTeams.length, config);
+  const eligible = officialTeams.filter(team => team.solved > 0);
+  return {
+    gold: eligible.slice(0, gold),
+    silver: eligible.slice(gold, gold + silver),
+    bronze: eligible.slice(gold + silver, gold + silver + bronze),
   };
 }
 

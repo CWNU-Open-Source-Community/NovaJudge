@@ -4,15 +4,10 @@ import { ContestRole, Verdict } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getOfficialSubmissionWhere } from "@/lib/official-submission";
 import { contestAccessResponse } from "@/lib/contest-access";
+import { assignTeamMedals } from "@/lib/contest-team-standings";
+import { compareTeamScores, type ContestMedalConfig } from "@/lib/medal-utils";
 
-type ContestExportConfig = {
-  medal?: {
-    mode?: "ratio" | "fixed";
-    gold?: number;
-    silver?: number;
-    bronze?: number;
-  };
-};
+type ContestExportConfig = { medal?: Partial<ContestMedalConfig> };
 
 type ProblemResult = {
   displayId: string;
@@ -65,28 +60,6 @@ function categoryLabel(category: string) {
 
 function isStarTeam(category: string) {
   return category === "1";
-}
-
-function getMedalCounts(total: number, config: ContestExportConfig | null) {
-  const medal = config?.medal || {};
-  const mode = medal.mode || "ratio";
-  const gold = Math.max(0, Number(medal.gold || 0));
-  const silver = Math.max(0, Number(medal.silver || 0));
-  const bronze = Math.max(0, Number(medal.bronze || 0));
-
-  if (mode === "fixed") {
-    return {
-      gold: Math.min(total, Math.floor(gold)),
-      silver: Math.min(total, Math.floor(silver)),
-      bronze: Math.min(total, Math.floor(bronze)),
-    };
-  }
-
-  return {
-    gold: Math.min(total, Math.ceil((total * gold) / 100)),
-    silver: Math.min(total, Math.ceil((total * silver) / 100)),
-    bronze: Math.min(total, Math.ceil((total * bronze) / 100)),
-  };
 }
 
 async function canExportRank(contestId: number) {
@@ -292,21 +265,7 @@ export async function GET(
     }
 
     const officialTeams = teamResults.filter((team) => !isStarTeam(team.category));
-    const medalCounts = getMedalCounts(
-      officialTeams.length,
-      contest.config as ContestExportConfig,
-    );
-
-    officialTeams.forEach((team, index) => {
-      if (index < medalCounts.gold) team.medal = "Gold";
-      else if (index < medalCounts.gold + medalCounts.silver)
-        team.medal = "Silver";
-      else if (
-        index <
-        medalCounts.gold + medalCounts.silver + medalCounts.bronze
-      )
-        team.medal = "Bronze";
-    });
+    assignTeamMedals([...officialTeams].sort(compareTeamScores), (contest.config as ContestExportConfig | null)?.medal);
 
     const awardRows: Array<[string, string, string, string, string]> = [];
     const addAward = (award: string, team: TeamResult, detail = "") => {

@@ -1,364 +1,207 @@
 import Link from "next/link";
-import { getContests } from "./contests/actions";
-import { getSystemStats, getSupportedLanguages, getJudgeWorkersOverview } from "./actions";
-import JudgeWorkers from "./JudgeWorkers";
 import {
-  PlusIcon,
-  TrophyIcon,
-  ServerIcon,
-  CpuChipIcon,
-  UsersIcon,
-  DocumentTextIcon,
-  ClockIcon,
+  ArrowDownTrayIcon,
+  ArrowRightIcon,
   ChartBarIcon,
+  ClockIcon,
   CommandLineIcon,
+  CpuChipIcon,
+  DocumentTextIcon,
+  PlusIcon,
+  ServerIcon,
+  TrophyIcon,
+  UsersIcon,
 } from "@heroicons/react/24/outline";
+import { AdminContestStatus, AdminPageHeader } from "@/components/admin/AdminPage";
+import { createAdminLocale } from "@/lib/admin-locale";
+import { getLanguage } from "@/lib/get-dictionary";
+import { getContests } from "./contests/actions";
+import { getJudgeWorkersOverview, getSupportedLanguages, getSystemStats } from "./actions";
+import JudgeWorkers from "./JudgeWorkers";
 
 export const dynamic = "force-dynamic";
 
-// 格式化字节大小
-function formatBytes(bytes: number, decimals = 2) {
-  if (!+bytes) return "0 Bytes";
-  const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ["Bytes", "KiB", "MiB", "GiB", "TiB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-}
-
-// 格式化运行时间
-function formatUptime(seconds: number) {
-  const d = Math.floor(seconds / (3600 * 24));
-  const h = Math.floor((seconds % (3600 * 24)) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return `${d}d ${h}h ${m}m`;
+function formatBytes(bytes: number, locale: string) {
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  const unit = bytes > 0 ? Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1) : 0;
+  return `${(bytes / 1024 ** unit).toLocaleString(locale, { maximumFractionDigits: 2 })} ${units[unit]}`;
 }
 
 export default async function AdminDashboard() {
-  const { contests } = await getContests(1, 5);
-  const stats = await getSystemStats();
-  const languages = await getSupportedLanguages();
-  const judgeWorkers = await getJudgeWorkersOverview();
+  const [{ contests }, stats, languages, judgeWorkers, language] = await Promise.all([
+    getContests(1, 5),
+    getSystemStats(),
+    getSupportedLanguages(),
+    getJudgeWorkersOverview(),
+    getLanguage(),
+  ]);
+  const { t, locale } = createAdminLocale(language);
+  const counts = [
+    { label: t("Contests", "比赛"), value: stats.counts.contests, icon: TrophyIcon, color: "bg-purple-50 text-purple-600" },
+    { label: t("Problems", "题目"), value: stats.counts.problems, icon: DocumentTextIcon, color: "bg-blue-50 text-blue-600" },
+    { label: t("Submissions", "提交"), value: stats.counts.submissions, icon: ChartBarIcon, color: "bg-green-50 text-green-600" },
+    { label: t("Site accounts", "站点账号"), value: stats.counts.users, icon: UsersIcon, color: "bg-orange-50 text-orange-600" },
+  ];
+  const isJudgeOnline = stats.judge.status === "online";
+  const memoryPercent = stats.system.memory.total > 0
+    ? Math.round(100 * stats.system.memory.used / stats.system.memory.total)
+    : 0;
+  const uptimeMinutes = Math.floor(stats.system.uptime / 60);
+  const days = Math.floor(uptimeMinutes / 1440);
+  const hours = Math.floor(uptimeMinutes / 60) % 24;
+  const minutes = uptimeMinutes % 60;
+  const dateFormat = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8">
-      {/* 顶部欢迎区 */}
-      <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
-            Dashboard
-          </h1>
-          <p className="text-gray-500 mt-2">
-            Overview of system status and recent activities.
-          </p>
-        </div>
-        <Link
-          href="/admin/contests/create"
-          className="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-lg shadow hover:bg-blue-700 transition-colors font-medium text-sm"
-        >
-          <PlusIcon className="w-5 h-5" />
-          Create Contest
+    <div className="space-y-5 sm:space-y-6">
+      <AdminPageHeader title={t("Dashboard", "仪表盘")} description={t("Contest activity and judging health at a glance.", "查看近期比赛、判题队列和服务器状态。")}>
+        <Link href="/admin/problems/import" className="admin-button">
+          <ArrowDownTrayIcon className="size-4" aria-hidden="true" />
+          {t("Import problems", "导入题目")}
         </Link>
-      </div>
+        <Link href="/admin/contests/create" className="admin-button admin-button-primary">
+          <PlusIcon className="size-4" aria-hidden="true" />
+          {t("Create contest", "创建比赛")}
+        </Link>
+      </AdminPageHeader>
 
-      {/* 核心指标卡片 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          {
-            label: "Contests",
-            value: stats.counts.contests,
-            icon: TrophyIcon,
-            color: "text-purple-600",
-            bg: "bg-purple-50",
-          },
-          {
-            label: "Problems",
-            value: stats.counts.problems,
-            icon: DocumentTextIcon,
-            color: "text-blue-600",
-            bg: "bg-blue-50",
-          },
-          {
-            label: "Submissions",
-            value: stats.counts.submissions,
-            icon: ChartBarIcon,
-            color: "text-green-600",
-            bg: "bg-green-50",
-          },
-          {
-            label: "Users",
-            value: stats.counts.users,
-            icon: UsersIcon,
-            color: "text-orange-600",
-            bg: "bg-orange-50",
-          },
-        ].map((item) => (
-          <div
-            key={item.label}
-            className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4"
-          >
-            <div className={`p-3 rounded-lg ${item.bg}`}>
-              <item.icon className={`w-6 h-6 ${item.color}`} />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-gray-500">
-                {item.label}
-              </div>
-              <div className="text-2xl font-bold text-gray-900">
-                {item.value}
-              </div>
+      <dl className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        {counts.map((item) => (
+          <div key={item.label} className="admin-card flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2 p-3.5 sm:p-4 xl:p-5">
+            <span className={`grid size-9 shrink-0 place-items-center rounded-lg sm:size-10 ${item.color}`}>
+              <item.icon className="size-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <dt className="text-xs font-medium text-gray-600 sm:text-sm">{item.label}</dt>
+              <dd className="mt-1 wrap-break-word text-xl font-semibold tracking-tight tabular-nums text-gray-900 sm:text-2xl">{item.value.toLocaleString(locale)}</dd>
             </div>
           </div>
         ))}
+      </dl>
+
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] xl:gap-5">
+        <section className="admin-card overflow-hidden" aria-labelledby="recent-contests-heading">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3.5 sm:px-5">
+            <h2 id="recent-contests-heading" className="text-base font-semibold text-gray-900">{t("Recent contests", "近期比赛")}</h2>
+            <Link href="/admin/contests" className="admin-text-link inline-flex items-center gap-1.5 text-sm">
+              {t("All contests", "全部比赛")}
+              <ArrowRightIcon className="size-3.5" aria-hidden="true" />
+            </Link>
+          </div>
+          {contests.length === 0 ? (
+            <div className="px-5 py-10 text-center text-sm text-gray-600">{t("No contests yet.", "目前没有比赛。")}</div>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {contests.map((contest) => (
+                <li key={contest.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 hover:bg-gray-50 sm:px-5">
+                  <div className="min-w-0 flex-1 basis-48">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <Link href={`/admin/contests/${contest.id}/edit`} className="admin-text-link wrap-break-word text-sm font-semibold">
+                        {contest.title}
+                      </Link>
+                      <AdminContestStatus status={contest.status} lang={language} />
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-gray-600">
+                      <span className="font-mono">#{contest.id}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <ClockIcon className="size-3.5 shrink-0" aria-hidden="true" />
+                        <time dateTime={contest.startTime.toISOString()}>{dateFormat.format(contest.startTime)}</time>
+                      </span>
+                      <span>{contest.type === "PUBLIC" ? t("Public", "公开") : t("Private", "私有")}</span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                    <Link href={`/admin/contests/${contest.id}/problems`} className="admin-button admin-button-small">{t("Problems", "题目")}</Link>
+                    <Link href={`/admin/contests/${contest.id}/users`} className="admin-button admin-button-small">{t("Users", "账号")}</Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <JudgeWorkers initial={judgeWorkers} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* 左侧：最近比赛列表 */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <TrophyIcon className="w-5 h-5 text-gray-500" />
-                Recent Contests
-              </h3>
-              <Link
-                href="/admin/contests"
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-              >
-                View All →
-              </Link>
-            </div>
-
-            {contests.length === 0 ? (
-              <div className="p-12 text-center text-gray-400">
-                No contests found.
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {contests.map((c) => (
-                  <div
-                    key={c.id}
-                    className="p-6 hover:bg-gray-50 transition-colors group"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`px-2 py-0.5 text-xs font-bold rounded uppercase ${
-                            c.status === "RUNNING"
-                              ? "bg-green-100 text-green-700"
-                              : c.status === "ENDED"
-                                ? "bg-gray-100 text-gray-600"
-                                : "bg-yellow-50 text-yellow-700"
-                          }`}
-                        >
-                          {c.status}
-                        </span>
-                        <h4 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
-                          {c.title}
-                        </h4>
-                      </div>
-                      <span className="text-xs font-mono text-gray-400">
-                        #{c.id}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
-                      <div className="flex items-center gap-1">
-                        <ClockIcon className="w-4 h-4" />
-                        {new Date(c.startTime).toLocaleString()}
-                      </div>
-                      <span className="text-gray-300">|</span>
-                      <span>{c.type}</span>
-                    </div>
-
-                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      <Link
-                        href={`/admin/contests/${c.id}/problems`}
-                        className="text-xs font-medium px-3 py-1.5 bg-white border border-gray-200 rounded hover:border-blue-300 hover:text-blue-600 transition-colors"
-                      >
-                        Problems
-                      </Link>
-                      <Link
-                        href={`/admin/contests/${c.id}/users`}
-                        className="text-xs font-medium px-3 py-1.5 bg-white border border-gray-200 rounded hover:border-purple-300 hover:text-purple-600 transition-colors"
-                      >
-                        Users
-                      </Link>
-                      <Link
-                        href={`/admin/contests/${c.id}/edit`}
-                        className="text-xs font-medium px-3 py-1.5 bg-white border border-gray-200 rounded hover:border-gray-400 hover:text-gray-900 transition-colors"
-                      >
-                        Settings
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 右侧：系统状态 */}
-        <div className="space-y-6">
-          {/* 判题机列表（多开时每台判题机一个 ID） */}
-          <JudgeWorkers initial={judgeWorkers} />
-
-          {/* 判题沙箱状态 */}
-          <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6">
-            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <ServerIcon className="w-5 h-5 text-gray-500" />
-              Judge Server Status
-            </h3>
-
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="relative flex h-3 w-3">
-                  <span
-                    className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${stats.judge.status === "online" ? "bg-green-400" : "bg-red-400"}`}
-                  ></span>
-                  <span
-                    className={`relative inline-flex rounded-full h-3 w-3 ${stats.judge.status === "online" ? "bg-green-500" : "bg-red-500"}`}
-                  ></span>
-                </div>
-                <span className="font-medium text-sm text-gray-700">
-                  Go-Judge Core
-                </span>
-              </div>
-              <span
-                className={`text-xs font-bold px-2 py-1 rounded ${
-                  stats.judge.status === "online"
-                    ? "bg-green-100 text-green-700"
-                    : "bg-red-100 text-red-700"
-                }`}
-              >
-                {stats.judge.status === "online" ? "ONLINE" : "OFFLINE"}
-              </span>
-            </div>
-
-            {stats.judge.version !== "N/A" && (
-              <div className="mt-2 text-xs text-gray-400 text-right">
-                Version: {stats.judge.version}
-              </div>
-            )}
-          </div>
-
-          {/* 服务器资源监控 */}
-          <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6">
-            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <CpuChipIcon className="w-5 h-5 text-gray-500" />
-              System Resources
-            </h3>
-
-            <div className="space-y-4">
-              {/* CPU */}
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-500">
-                    {stats.system.platform === "win32"
-                      ? "CPU Cores"
-                      : "CPU Load (1m/5m/15m)"}
-                  </span>
-                </div>
+      <div className="grid items-start gap-4 lg:grid-cols-2 xl:gap-5">
+        <section className="admin-card p-4 sm:p-5">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <CpuChipIcon className="size-5 text-gray-500" aria-hidden="true" />
+            {t("System resources", "服务器资源")}
+          </h2>
+          <dl className="mt-4 space-y-4 text-sm">
+            <div>
+              <dt className="font-medium text-gray-700">{stats.system.platform === "win32" ? t("CPU cores", "CPU 核心") : t("CPU load (1 / 5 / 15 min)", "CPU 负载（1 / 5 / 15 分钟）")}</dt>
+              <dd className="mt-2">
                 {stats.system.platform === "win32" ? (
-                  <div className="bg-blue-50 text-blue-700 text-center py-2 rounded text-xs font-mono font-bold">
-                    {stats.system.cpuCount} Cores Available (Load Average N/A on
-                    Windows)
-                  </div>
+                  <span className="rounded-md bg-blue-50 px-2 py-1 font-mono text-blue-700">{stats.system.cpuCount}</span>
                 ) : (
-                  <div className="flex gap-2">
-                    {stats.system.loadAvg.map((load: number, i: number) => (
-                      <div
-                        key={i}
-                        className="flex-1 bg-blue-50 text-blue-700 text-center py-1 rounded text-xs font-mono font-bold"
-                      >
-                        {load.toFixed(2)}
-                      </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {stats.system.loadAvg.map((load, index) => (
+                      <span key={index} className="rounded-md bg-blue-50 px-2 py-1 text-center font-mono text-xs text-blue-700">{load.toFixed(2)}</span>
                     ))}
                   </div>
                 )}
-                <div
-                  className="mt-1 text-[10px] text-gray-400 truncate"
-                  title={stats.system.cpuModel}
-                >
-                  {stats.system.cpuModel}
-                </div>
+                <p className="mt-1.5 wrap-break-word text-xs text-gray-600">{stats.system.cpuModel}</p>
+              </dd>
+            </div>
+            <div>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <dt className="font-medium text-gray-700">{t("Memory usage", "内存用量")}</dt>
+                <dd className="font-mono text-xs text-gray-700">{formatBytes(stats.system.memory.used, locale)} / {formatBytes(stats.system.memory.total, locale)}</dd>
               </div>
-
-              {/* Memory */}
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-500">Memory Usage</span>
-                  <span className="text-gray-700 font-medium">
-                    {formatBytes(stats.system.memory.used)} /{" "}
-                    {formatBytes(stats.system.memory.total)}
-                  </span>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-purple-500 rounded-full"
-                    style={{
-                      width: `${(stats.system.memory.used / stats.system.memory.total) * 100}%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Uptime */}
-              <div className="pt-4 border-t border-gray-100 flex justify-between items-center text-xs">
-                <span className="text-gray-500">System Uptime</span>
-                <span className="font-mono text-gray-700 font-medium">
-                  {formatUptime(stats.system.uptime)}
-                </span>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100" role="meter" aria-label={t("Memory usage", "内存用量")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={memoryPercent}>
+                <div className="h-full rounded-full bg-purple-500" style={{ width: `${memoryPercent}%` }} />
               </div>
             </div>
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-gray-100 pt-4">
+              <dt className="font-medium text-gray-700">{t("System uptime", "运行时间")}</dt>
+              <dd className="font-mono text-xs text-gray-700">{t(`${days}d ${hours}h ${minutes}m`, `${days} 天 ${hours} 小时 ${minutes} 分钟`)}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="admin-card overflow-hidden">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 p-4 sm:px-5">
+            <div>
+              <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+                <ServerIcon className="size-5 text-gray-500" aria-hidden="true" />
+                {t("Judge sandbox", "判题沙箱")}
+              </h2>
+              <p className="mt-1 text-xs text-gray-600">go-judge{stats.judge.version !== "N/A" && ` · ${stats.judge.version}`}</p>
+            </div>
+            <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isJudgeOnline ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+              {isJudgeOnline ? t("Online", "在线") : t("Offline", "离线")}
+            </span>
           </div>
-
-          {/* 支持的语言列表 */}
-          <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6">
-            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <CommandLineIcon className="w-5 h-5 text-gray-500" />
-              Supported Languages
+          <div className="p-4 sm:px-5">
+            <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900">
+              <CommandLineIcon className="size-4 text-gray-500" aria-hidden="true" />
+              {t("Supported languages", "支持的语言")}
             </h3>
-
-            <div className="space-y-4">
+            <div className="divide-y divide-gray-100">
               {Object.entries(languages).map(([key, config]) => (
-                <div
-                  key={key}
-                  className="bg-gray-50 rounded-lg p-4 border border-gray-100"
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-bold text-gray-800 uppercase bg-white border border-gray-200 px-2 py-0.5 rounded text-xs shadow-sm">
-                      {key}
-                    </span>
-                    <span className="text-xs text-gray-400 font-mono">
-                      {config.srcName}
-                    </span>
-                  </div>
-
-                  {config.compileCmd && (
-                    <div className="mb-2">
-                      <div className="text-[10px] uppercase text-gray-400 font-bold mb-1">
-                        Compile Command
+                <details key={key} className="py-1.5">
+                  <summary className="cursor-pointer rounded-sm px-1 py-1 text-sm font-medium text-gray-700">
+                    <span className="ml-1 uppercase">{key}</span>
+                    <code className="ml-2 text-xs text-gray-600">{config.srcName}</code>
+                  </summary>
+                  <dl className="space-y-2 px-2 pt-2 pb-3 text-xs">
+                    {config.compileCmd && (
+                      <div>
+                        <dt className="mb-1 font-medium text-gray-700">{t("Compile command", "编译命令")}</dt>
+                        <dd><code className="block wrap-break-word rounded-md bg-gray-100 p-2 text-gray-700">{config.compileCmd.join(" ")}</code></dd>
                       </div>
-                      <code className="block bg-gray-100 text-gray-600 text-[10px] p-2 rounded border border-gray-200 font-mono break-all">
-                        {config.compileCmd.join(" ")}
-                      </code>
+                    )}
+                    <div>
+                      <dt className="mb-1 font-medium text-gray-700">{t("Run command", "运行命令")}</dt>
+                      <dd><code className="block wrap-break-word rounded-md bg-gray-100 p-2 text-gray-700">{config.runCmd.join(" ")}</code></dd>
                     </div>
-                  )}
-
-                  <div>
-                    <div className="text-[10px] uppercase text-gray-400 font-bold mb-1">
-                      Run Command
-                    </div>
-                    <code className="block bg-gray-100 text-gray-600 text-[10px] p-2 rounded border border-gray-200 font-mono break-all">
-                      {config.runCmd.join(" ")}
-                    </code>
-                  </div>
-                </div>
+                  </dl>
+                </details>
               ))}
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

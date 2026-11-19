@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   getClarificationDetail,
-  submitReply,
   toggleClarificationVisibility,
 } from "../actions";
 import {
@@ -13,10 +12,12 @@ import {
   ClockIcon,
 } from "@heroicons/react/24/outline";
 import { ContestRole } from "@/lib/generated/prisma/enums";
-import { getDictionary } from "@/lib/get-dictionary";
+import { getDictionary, getLanguage } from "@/lib/get-dictionary";
+import { formatMessage, getLocale } from "@/lib/dictionaries";
 
 import { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
+import { ClarificationReplyForm } from "../ClarificationForm";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
@@ -28,13 +29,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
   });
 
+  const dict = await getDictionary();
   if (!contest) {
     return {
-      title: "比赛未找到",
+      title: dict.contestList.notFound,
     };
   }
   return {
-    title: `Q&A - ${contest.title}`,
+    title: `${dict.nav.clarifications} - ${contest.title}`,
   };
 }
 
@@ -56,11 +58,10 @@ export default async function ClarificationDetail({ params }: Props) {
   if (!data) notFound();
 
   const { thread, isAdmin, currentUserId } = data;
+  const [dict, lang] = await Promise.all([getDictionary(), getLanguage()]);
   const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString();
+    return new Date(date).toLocaleString(getLocale(lang));
   };
-
-  const dict = await getDictionary();
 
   return (
     <div className="mx-auto pb-10">
@@ -70,7 +71,7 @@ export default async function ClarificationDetail({ params }: Props) {
           href={`/contest/${contestId}/clarifications`}
           className="text-sm font-medium text-gray-500 hover:text-blue-600 flex items-center gap-1 transition-colors"
         >
-          &larr; Back to List
+          &larr; {dict.clarifications.backToList}
         </Link>
 
         {/* 【新增功能】管理员控制面板 */}
@@ -93,11 +94,11 @@ export default async function ClarificationDetail({ params }: Props) {
             >
               {thread.isPublic ? (
                 <>
-                  <EyeSlashIcon className="w-4 h-4" /> Unpublish (Make Private)
+                  <EyeSlashIcon className="w-4 h-4" /> {dict.clarifications.makePrivate}
                 </>
               ) : (
                 <>
-                  <EyeIcon className="w-4 h-4" /> Publish to All (Make Public)
+                  <EyeIcon className="w-4 h-4" /> {dict.clarifications.makePublic}
                 </>
               )}
             </button>
@@ -129,11 +130,11 @@ export default async function ClarificationDetail({ params }: Props) {
                       : "bg-gray-200 text-gray-700 border-gray-300"
                   }`}
                 >
-                  {thread.isPublic ? "Public Board" : "Private"}
+                  {thread.isPublic ? dict.clarifications.publicThread : dict.clarifications.privateThread}
                 </span>
                 {thread.displayId && (
                   <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                    Problem {thread.displayId}
+                    {formatMessage(dict.clarifications.problemNumber, { problem: thread.displayId })}
                   </span>
                 )}
               </div>
@@ -145,7 +146,7 @@ export default async function ClarificationDetail({ params }: Props) {
           <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
             <span className="flex items-center gap-1">
               <UserCircleIcon className="w-4 h-4" />
-              {thread.user?.displayName || thread.user?.username || "Unknown"}
+              {thread.user?.displayName || thread.user?.username || dict.common.unknown}
             </span>
             <span className="flex items-center gap-1">
               <ClockIcon className="w-4 h-4" />
@@ -187,7 +188,7 @@ export default async function ClarificationDetail({ params }: Props) {
                 title={reply.user?.username}
               >
                 <span className="font-bold text-xs">
-                  {isMe ? "ME" : isReplyByStaff ? "ADM" : "USR"}
+                  {isMe ? dict.clarifications.avatarSelf : isReplyByStaff ? dict.clarifications.avatarStaff : dict.clarifications.avatarUser}
                 </span>
               </div>
 
@@ -210,7 +211,7 @@ export default async function ClarificationDetail({ params }: Props) {
                       {reply.user?.displayName || reply.user?.username}
                       {isReplyByStaff && (
                         <span className="bg-orange-500 text-white px-1.5 rounded-sm text-[10px]">
-                          管理员
+                          {dict.clarifications.staff}
                         </span>
                       )}
                     </span>
@@ -230,36 +231,7 @@ export default async function ClarificationDetail({ params }: Props) {
         })}
       </div>
 
-      {/* --- Reply Box --- */}
-      <div className="mt-10 pt-6 border-t border-gray-200">
-        <h3 className="text-sm font-bold text-gray-500 uppercase mb-4">
-          {dict.clarifications.reply}
-        </h3>
-        <form action={submitReply} className="p-2">
-          <input type="hidden" name="contestId" value={contestId} />
-          <input type="hidden" name="clariId" value={clariId} />
-
-          <div className="relative">
-            <textarea
-              name="content"
-              required
-              rows={4}
-              className="w-full bg-white border border-gray-300 rounded-lg p-4 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none shadow-sm transition-all"
-              placeholder={
-                isAdmin ? "Type official response..." : "Add more details..."
-              }
-            ></textarea>
-            <div className="absolute bottom-3 right-3">
-              <button
-                type="submit"
-                className="bg-blue-600 text-white px-6 py-1.5 text-sm font-bold rounded hover:bg-blue-700 shadow-sm transition-colors cursor-pointer"
-              >
-                {dict.clarifications.replay}
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
+      <ClarificationReplyForm contestId={contestId} clariId={clariId} isAdmin={isAdmin} />
     </div>
   );
 }

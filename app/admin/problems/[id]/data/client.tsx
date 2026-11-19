@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -55,6 +57,7 @@ export default function DataManagementClient({
   initialFiles,
   initialYaml,
 }: PageProps) {
+  const { t } = useAdminLocale();
   const router = useRouter(); // 2. 初始化 router
   const isCommunication = problemType === "communication";
 
@@ -83,7 +86,7 @@ export default function DataManagementClient({
       setIsModalOpen(true);
     } catch (e) {
       console.log(e);
-      toast.error("Failed to load file content.");
+      toast.error(t("Failed to load file content.", "读取文件内容失败。"));
     }
   };
 
@@ -92,11 +95,11 @@ export default function DataManagementClient({
     if (!activeFile) return;
     try {
       await saveFileContent(problemId, activeFile.name, newContent);
-      toast.success("File saved successfully!");
+      toast.success(t("File saved successfully!", "文件已保存"));
       router.refresh(); // 刷新数据
     } catch (e) {
       console.log(e);
-      toast.error("Failed to save file.");
+      toast.error(t("Failed to save file.", "保存文件失败。"));
     }
   };
 
@@ -116,7 +119,7 @@ export default function DataManagementClient({
       formRef.current?.reset();
     } catch (error) {
       console.error("Upload failed", error);
-      toast.error(error instanceof Error ? error.message : "Upload failed");
+      toast.error(error instanceof Error ? error.message : t("Upload failed", "上传失败"));
     } finally {
       setIsUploading(false);
     }
@@ -139,10 +142,10 @@ export default function DataManagementClient({
     try {
       // 后台真实删除
       await deleteFile(problemId, fileToDelete);
-      toast.success("File deleted successfully");
+      toast.success(t("File deleted successfully", "文件已删除"));
     } catch (e) {
       console.error(e);
-      toast.error("Failed to delete file");
+      toast.error(t("Failed to delete file", "删除文件失败"));
       // 如果失败，应该重新加载文件列表以保持一致
       router.refresh();
     } finally {
@@ -155,22 +158,22 @@ export default function DataManagementClient({
     try {
       const savedYaml = await saveYamlConfig(problemId, content);
       setYamlContent(savedYaml);
-      toast.success("Configuration saved!");
+      toast.success(t("Configuration saved!", "配置已保存"));
       router.refresh();
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save configuration",
+        error instanceof Error ? error.message : t("Failed to save configuration", "保存配置失败"),
       );
     }
   };
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col">
-      <ConfirmModal
+    <div className="flex min-w-0 flex-col gap-4 xl:min-h-[calc(100dvh-8rem)]">
+      <ConfirmModal cancelText={t("Cancel", "取消")}
         isOpen={isConfirmOpen}
-        title="Delete File"
-        message={`Are you sure you want to delete ${fileToDelete}?`}
-        confirmText="Delete"
+        title={t("Delete File", "删除文件")}
+        message={t(`Delete ${fileToDelete}?`, `确认删除 ${fileToDelete}？`)}
+        confirmText={t("Delete", "删除")}
         onConfirm={confirmDelete}
         onCancel={() => setIsConfirmOpen(false)}
         isDestructive
@@ -190,10 +193,10 @@ export default function DataManagementClient({
             href="/admin/problems"
             className="flex items-center text-gray-500 hover:text-gray-700"
           >
-            <ArrowLeftIcon className="w-5 h-5 mr-1" /> Back
+            <ArrowLeftIcon className="w-5 h-5 mr-1" /> {t("Back", "返回")}
           </Link>
           <h1 className="text-xl font-bold text-gray-800">
-            Data Management{" "}
+            {t("Data Management", "测试数据管理")}{" "}
             <span className="text-gray-400 font-mono text-base">
               #{problemId}
             </span>
@@ -203,15 +206,12 @@ export default function DataManagementClient({
 
       {isPolygon && (
         <div className="mb-4 shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 space-y-2">
-          <p className="font-semibold">Polygon judge configuration</p>
+          <p className="font-semibold">{t("Polygon judge configuration", "Polygon 判题配置")}</p>
           <p>
-            Keep the imported <code>polygon</code> configuration, <code>checker.cpp</code>,
-            and <code>interactor.cpp</code> when present. The configured runs pass stdout
-            or the interactor&apos;s output to the next run, then execute the final checker.
+            {t("Keep the imported", "请保留导入的")} <code>polygon</code> {t("configuration,", "配置、")} <code>checker.cpp</code>{t(", and", "，以及")} <code>interactor.cpp</code> {t("when present. The configured runs pass stdout or the interactor's output to the next run, then execute the final checker.", "。判题会把 stdout 或交互器输出传给下一轮，再运行最终 checker。")}
           </p>
           <p>
-            Public examples are in the statement. Sample debugging uses the judge tests
-            selected by <code>polygon.sample_cases</code> (one-based case indices).
+            {t("Public examples are in the statement. Sample debugging uses the judge tests selected by", "公开样例见题面。调试会运行")} <code>polygon.sample_cases</code> {t("(one-based case indices).", "指定的测试点（从 1 开始编号）。")}
           </p>
         </div>
       )}
@@ -219,30 +219,23 @@ export default function DataManagementClient({
       {isCommunication && !isPolygon && (
         <details open className="mb-4 shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           <summary className="cursor-pointer font-semibold">
-            Communication (Run twice) — Configuration
+            {t("Communication (Run twice) — Configuration", "两轮通信配置")}
           </summary>
           <div className="mt-3 grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <p>
-                Upload <code>communicator.cpp</code> (C++ / testlib) and test
-                inputs (<code>*.in</code>). The communicator prepares the
-                second-run input, checks the allowed message, and judges the
-                result. The server provides <code>testlib.h</code>.
+                {t("Upload", "上传")} <code>communicator.cpp</code> {t("(C++ / testlib) and test inputs (", "（C++ / testlib）及测试输入（")}<code>*.in</code>{t("). The communicator prepares the second-run input, checks the allowed message, and judges the result. The server provides", "）。通信裁判会校验消息、生成第二轮输入并判定结果。服务端提供")} <code>testlib.h</code>.
               </p>
               <p>
-                Reference answers (<code>*.out</code> or <code>*.ans</code>) are
-                optional; use <code>/dev/null</code> when none is needed.
-                Include the complete first-run input in each test case.
+                {t("Reference answers (", "参考答案（")}<code>*.out</code> {t("or", "或")} <code>*.ans</code>{t(") are optional; use", "）为可选。可以用")} <code>/dev/null</code> {t("when none is needed. Include the complete first-run input in each test case.", "表示无需参考答案。每个测试点都应包含完整的第一轮输入。")}
               </p>
               <p>
-                Each run has its own time and memory limits and shares no
-                memory or files with the other run. <code>output_limit</code>
-                sets the output size limit in bytes; the communicator enforces
-                the problem-specific message restrictions.
+                {t("Each run has its own time and memory limits and shares no memory or files with the other run.", "两轮分别计算时间和内存，各使用独立的文件与内存空间。")} <code>output_limit</code>
+                {t("sets the output size limit in bytes; the communicator enforces the problem-specific message restrictions.", "以字节为单位限制输出大小，通信裁判按题目规则检查消息。")}
               </p>
             </div>
             <div>
-              <p className="mb-2 font-semibold">Example problem.yml</p>
+              <p className="mb-2 font-semibold">{t("Example problem.yml", "problem.yml 示例")}</p>
               <pre className="overflow-x-auto rounded border border-blue-100 bg-white p-3 font-mono text-xs">
                 {`type: communication
 communicator: communicator.cpp
@@ -257,7 +250,7 @@ cases:
         </details>
       )}
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-2">
         {/* 左侧：YAML 编辑器 */}
         <div className="flex flex-col min-h-0">
           <YamlEditor
@@ -268,15 +261,14 @@ cases:
         </div>
 
         {/* 右侧：文件列表 */}
-        <div className="flex flex-col border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm min-h-0">
+        <div className="admin-card flex min-h-0 flex-col overflow-hidden">
           <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
             <h3 className="font-bold text-gray-700 text-sm mb-3">
-              Test Data Files
+              {t("Test Data Files", "测试数据文件")}
             </h3>
             {isCommunication && !isPolygon && (
               <p className="mb-3 text-xs text-gray-500">
-                Upload communicator.cpp and all test data together, or as a ZIP.
-                Each upload replaces the existing data files.
+                {t("Upload communicator.cpp and all test data together, or as a ZIP. Each upload replaces the existing data files.", "请一次上传 communicator.cpp 和整套测试数据，也可上传 ZIP。每次上传都会替换原有数据文件。")}
               </p>
             )}
 
@@ -298,7 +290,7 @@ cases:
                 ) : (
                   <CloudArrowUpIcon className="w-4 h-4 mr-1" />
                 )}
-                {isUploading ? "Uploading..." : "Upload"}
+                {isUploading ? t("Uploading...", "正在上传…") : t("Upload", "上传")}
               </button>
             </form>
           </div>
@@ -307,15 +299,15 @@ cases:
             {files?.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-400">
                 <DocumentIcon className="w-12 h-12 mb-2 opacity-20" />
-                <p className="text-sm">No files uploaded yet.</p>
+                <p className="text-sm">{t("No files uploaded yet.", "暂无数据文件。")}</p>
               </div>
             ) : (
-              <table className="w-full text-sm text-left">
+              <table className="admin-table min-w-[22rem]">
                 <thead className="text-xs text-gray-500 bg-gray-50 sticky top-0">
                   <tr>
-                    <th className="px-6 py-3">Filename</th>
-                    <th className="px-6 py-3 w-48">Size</th>
-                    <th className="px-6 py-3 w-24 text-center">Action</th>
+                    <th className="px-6 py-3">{t("Filename", "文件名")}</th>
+                    <th className="px-6 py-3 w-48">{t("Size", "大小")}</th>
+                    <th className="px-6 py-3 w-24 text-center">{t("Action", "操作")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -338,14 +330,14 @@ cases:
                         <button
                           onClick={() => handleOpenFile(file.name)}
                           className="text-blue-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50 transition-colors cursor-pointer"
-                          title="View/Edit"
+                          title={t("View/Edit", "查看或编辑")}
                         >
                           <PencilSquareIcon className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(file.name)}
                           className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors cursor-pointer"
-                          title="Delete"
+                          title={t("Delete", "删除")}
                         >
                           <TrashIcon className="w-4 h-4" />
                         </button>

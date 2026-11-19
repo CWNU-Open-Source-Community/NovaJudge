@@ -2,19 +2,24 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { useLanguage } from '@/context/LanguageContext';
+import { formatMessage, getLocale } from '@/lib/dictionaries';
 
 interface PaginationProps {
   totalItems: number;
   pageSize?: number;
   className?: string;
+  labels?: { navigation: string; previous: string; next: string; total: string };
 }
 
 export default function Pagination({
   totalItems,
   pageSize = 20,
   className = "",
+  labels,
 }: PaginationProps) {
   const router = useRouter();
+  const { dict, lang } = useLanguage();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -74,7 +79,7 @@ export default function Pagination({
         <div className="w-full max-w-full overflow-x-auto overscroll-x-contain pb-1">
           <nav
             className="isolate inline-flex min-w-max -space-x-px rounded-md shadow-sm"
-            aria-label="Pagination"
+            aria-label={labels?.navigation ?? dict.common.pagination}
           >
             <button
               onClick={() => handlePageChange(currentPage - 1)}
@@ -83,7 +88,7 @@ export default function Pagination({
                 currentPage === 1 ? disabledClass : normalClass
               }`}
             >
-              <span className="sr-only">Previous</span>
+              <span className="sr-only">{labels?.previous ?? dict.common.previous}</span>
               <ChevronLeftIcon className="h-4 w-4" aria-hidden="true" />
             </button>
 
@@ -92,6 +97,7 @@ export default function Pagination({
                 key={idx}
                 onClick={() => handlePageChange(p)}
                 disabled={p === '...'}
+                aria-current={p === currentPage ? "page" : undefined}
                 className={`${baseClass} ${
                   p === currentPage
                     ? activeClass
@@ -111,7 +117,7 @@ export default function Pagination({
                 currentPage === totalPages ? disabledClass : normalClass
               }`}
             >
-              <span className="sr-only">Next</span>
+              <span className="sr-only">{labels?.next ?? dict.common.next}</span>
               <ChevronRightIcon className="h-4 w-4" aria-hidden="true" />
             </button>
           </nav>
@@ -119,7 +125,7 @@ export default function Pagination({
       )}
 
       <div className="text-sm text-gray-500">
-        &#20849; {totalItems} &#26465;&#25968;&#25454;
+        {labels?.total ?? formatMessage(dict.common.total, { count: totalItems.toLocaleString(getLocale(lang)) })}
       </div>
     </div>
   );

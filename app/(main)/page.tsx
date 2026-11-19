@@ -12,7 +12,8 @@ import {
   TrophyIcon,
   HashtagIcon,
 } from "@heroicons/react/24/outline";
-import { getDictionary } from "@/lib/get-dictionary";
+import { getDictionary, getLanguage } from "@/lib/get-dictionary";
+import { formatMessage, getLocale, type Dictionary } from "@/lib/dictionaries";
 import { hasContestAccess } from "@/lib/contest-access";
 
 export type ContestConfig = {
@@ -63,17 +64,17 @@ export interface Contest {
 }
 
 // 辅助函数：格式化持续时间
-function formatDuration(start: Date, end: Date) {
+function formatDuration(start: Date, end: Date, dict: Dictionary) {
   const diffMs = end.getTime() - start.getTime();
   const hours = Math.floor(diffMs / (1000 * 60 * 60));
   const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  if (minutes === 0) return `${hours}h`;
-  return `${hours}h ${minutes}m`;
+  const template = minutes === 0 ? dict.contest.durationHours : dict.contest.durationHoursMinutes;
+  return formatMessage(template, { hours, minutes });
 }
 
 // 辅助函数：格式化日期
-function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatDate(date: Date, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -83,7 +84,7 @@ function formatDate(date: Date) {
 }
 
 // 提取状态徽章组件，以便复用
-function StatusBadge({ status }: { status: ContestStatus }) {
+function StatusBadge({ status, label }: { status: ContestStatus; label: string }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
@@ -103,7 +104,7 @@ function StatusBadge({ status }: { status: ContestStatus }) {
               : "bg-blue-500"
         }`}
       />
-      {status}
+      {label}
     </span>
   );
 }
@@ -124,7 +125,8 @@ export default async function ContestList() {
     [contest.id, contest.type === ContestType.PUBLIC || await hasContestAccess(contest.id)] as const,
   )));
 
-  const dict = await getDictionary();
+  const [dict, lang] = await Promise.all([getDictionary(), getLanguage()]);
+  const locale = getLocale(lang);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
@@ -149,7 +151,7 @@ export default async function ContestList() {
           <p className="text-lg font-medium">
             {dict.contestList.noContestsFound}
           </p>
-          <p>暂无公开比赛，请稍后再来看看。</p>
+          <p>{dict.contestList.empty}</p>
         </div>
       ) : (
         <>
@@ -163,13 +165,13 @@ export default async function ContestList() {
                       <LockClosedIcon className="h-5 w-5 text-orange-500" />
                       {dict.contestList.private} #{contest.id}
                     </div>
-                    <p className="mt-2 text-sm text-gray-500">输入比赛密码后查看</p>
+                    <p className="mt-2 text-sm text-gray-500">{dict.contestList.passwordRequired}</p>
                   </Link>
                 );
               }
               const config = contest.config as ContestConfig;
               const frozenText = config?.frozenDuration
-                ? `Last ${config.frozenDuration}m frozen`
+                ? formatMessage(dict.contest.freezesBeforeEnd, { minutes: config.frozenDuration })
                 : null;
 
               return (
@@ -195,7 +197,7 @@ export default async function ContestList() {
                   </h3>
 
                   <div className="flex flex-wrap gap-2 mb-4">
-                    <StatusBadge status={contest.status} />
+                    <StatusBadge status={contest.status} label={dict.contest[contest.status]} />
                     {frozenText && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-cyan-50 text-cyan-700 border border-cyan-100">
                         ❄️ {frozenText}
@@ -210,7 +212,7 @@ export default async function ContestList() {
                       </span>
                       <div className="flex items-center gap-1.5 font-medium">
                         <CalendarDaysIcon className="w-4 h-4 text-gray-400" />
-                        {formatDate(contest.startTime)}
+                        {formatDate(contest.startTime, locale)}
                       </div>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -219,7 +221,7 @@ export default async function ContestList() {
                       </span>
                       <div className="flex items-center gap-1.5 font-medium">
                         <ClockIcon className="w-4 h-4 text-gray-400" />
-                        {formatDuration(contest.startTime, contest.endTime)}
+                        {formatDuration(contest.startTime, contest.endTime, dict)}
                       </div>
                     </div>
                   </div>
@@ -234,7 +236,7 @@ export default async function ContestList() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50/50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500 font-semibold">
-                    <th className="px-6 py-4 w-20 text-center">ID</th>
+                    <th className="px-6 py-4 w-20 text-center">{dict.common.id}</th>
                     <th className="px-6 py-4 w-1/3">
                       {dict.contestList.title}
                     </th>
@@ -255,7 +257,7 @@ export default async function ContestList() {
                           <td colSpan={5} className="px-6 py-5">
                             <Link href={`/contest/${contest.id}/access`} className="flex items-center gap-2 font-bold text-gray-800 hover:text-blue-600">
                               <LockClosedIcon className="h-5 w-5 text-orange-500" />
-                              {dict.contestList.private} · 输入比赛密码后查看
+                              {dict.contestList.private} · {dict.contestList.passwordRequired}
                             </Link>
                           </td>
                         </tr>
@@ -263,7 +265,7 @@ export default async function ContestList() {
                     }
                     const config = contest.config as ContestConfig;
                     const frozenText = config?.frozenDuration
-                      ? `Last ${config.frozenDuration}m frozen`
+                      ? formatMessage(dict.contest.freezesBeforeEnd, { minutes: config.frozenDuration })
                       : null;
 
                     return (
@@ -294,7 +296,7 @@ export default async function ContestList() {
                         </td>
 
                         <td className="px-6 py-5">
-                          <StatusBadge status={contest.status} />
+                          <StatusBadge status={contest.status} label={dict.contest[contest.status]} />
                         </td>
 
                         <td className="px-6 py-5">
@@ -316,11 +318,11 @@ export default async function ContestList() {
                             <div className="flex items-center gap-2">
                               <CalendarDaysIcon className="w-4 h-4 text-gray-400" />
                               <span className="font-medium text-gray-900">
-                                {formatDate(contest.startTime)}
+                                {formatDate(contest.startTime, locale)}
                               </span>
                             </div>
                             <div className="flex items-center gap-2 mt-1 pl-6 text-xs text-gray-500">
-                              to {formatDate(contest.endTime)}
+                              – {formatDate(contest.endTime, locale)}
                             </div>
                           </div>
                         </td>
@@ -332,6 +334,7 @@ export default async function ContestList() {
                               {formatDuration(
                                 contest.startTime,
                                 contest.endTime,
+                                dict,
                               )}
                             </span>
                           </div>

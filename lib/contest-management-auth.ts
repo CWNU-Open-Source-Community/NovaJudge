@@ -1,6 +1,7 @@
 import { getCurrentSuper, getCurrentUser } from "./auth";
 import { hasContestAccess } from "./contest-access";
 import { prisma } from "./prisma";
+import { zh } from "./dictionaries";
 
 export interface ContestManager {
   key: string;
@@ -35,8 +36,8 @@ export async function getContestManager(contestId: number): Promise<ContestManag
   return { key: `contest-${user.id}`, userId: user.id, isGlobalAdmin: false };
 }
 
-export async function requireContestManager(contestId: number): Promise<ContestManager> {
+export async function requireContestManager(contestId: number, message = zh.rejudge.managerRequired): Promise<ContestManager> {
   const manager = await getContestManager(contestId);
-  if (!manager) throw new Error("无权管理本场比赛，请使用本场管理员或裁判账号登录。");
+  if (!manager) throw new Error(message);
   return manager;
 }

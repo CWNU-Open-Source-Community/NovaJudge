@@ -1,9 +1,20 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
+import { FormEvent, useEffect, useEffectEvent, useState } from "react";
 import { toast } from "sonner";
 import { Switch } from "@headlessui/react";
 import CliSettings from "./CliSettings";
+import { AdminPageHeader } from "@/components/admin/AdminPage";
+
+const envTextZh: Record<string, { label: string; description: string }> = {
+  DATABASE_URL: { label: "数据库地址", description: "Prisma 使用的 PostgreSQL 连接字符串。" },
+  REDIS_URL: { label: "Redis 地址", description: "判题队列、缓存和实时状态使用的 Redis 连接字符串。" },
+  GO_JUDGE_API: { label: "go-judge 接口地址", description: "go-judge 判题沙箱的基本地址。" },
+  EXTERNAL_AUTH_URL: { label: "外部认证地址", description: "外部身份认证服务的密码登录接口。" },
+  NOVAJUDGE_URL: { label: "NovaJudge 站点地址", description: "命令行工具和自动登录使用的站点地址。" },
+};
 
 type EnvSetting = {
   key: string;
@@ -20,11 +31,13 @@ type SettingsResponse = {
 };
 
 export default function SystemSettingsPage() {
+  const { t, lang } = useAdminLocale();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [allowExternalLogin, setAllowExternalLogin] = useState(false);
   const [envSettings, setEnvSettings] = useState<EnvSetting[]>([]);
   const [envValues, setEnvValues] = useState<Record<string, string>>({});
+  const notifyLoadError = useEffectEvent(() => toast.error(t("Failed to load settings", "加载设置失败")));
 
   useEffect(() => {
     fetch("/api/admin/settings")
@@ -42,17 +55,12 @@ export default function SystemSettingsPage() {
         );
       })
       .catch(() => {
-        toast.error("Failed to load settings");
+        notifyLoadError();
       })
       .finally(() => {
         setLoading(false);
       });
   }, []);
-
-  const hasRestartRequiredSetting = useMemo(
-    () => envSettings.some((item) => item.restartRequired),
-    [envSettings],
-  );
 
   const saveSettings = async (nextAllowExternalLogin = allowExternalLogin) => {
     setSaving(true);
@@ -76,9 +84,9 @@ export default function SystemSettingsPage() {
           (data.envSettings || []).map((item) => [item.key, item.value]),
         ),
       );
-      toast.success("Settings saved");
+      toast.success(t("Settings saved", "设置已保存"));
     } catch {
-      toast.error("Failed to save settings");
+      toast.error(t("Failed to save settings", "保存设置失败"));
       throw new Error("Failed to save settings");
     } finally {
       setSaving(false);
@@ -104,30 +112,25 @@ export default function SystemSettingsPage() {
     }
   };
 
-  if (loading) return <div className="p-8">Loading...</div>;
+  if (loading) return <p role="status" className="admin-card p-5 text-sm text-gray-600">{t("Loading settings…", "正在加载设置…")}</p>;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">System Settings</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          Manage global login behavior and runtime service links.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <AdminPageHeader title={t("System Settings", "系统设置")} description={t("Manage site sign-in and service connections.", "配置站点登录方式和基础服务连接。")} />
 
-      <section className="rounded-lg bg-white p-6 shadow">
+      <section className="admin-card p-4 sm:p-5">
         <div className="flex items-center justify-between gap-6">
           <div>
             <h2 className="text-lg font-medium text-gray-900">
-              Allow External Login
+              {t("Allow External Login", "允许外部登录")}
             </h2>
             <p className="mt-1 text-sm text-gray-500">
-              When enabled, users can sign in through the configured external
-              identity provider.
+              {t("When enabled, users can sign in through the configured external identity provider.", "开启后，用户可以通过已配置的外部身份认证服务登录。")}
             </p>
           </div>
 
           <Switch
+            aria-label={t("Allow external login", "允许外部登录")}
             checked={allowExternalLogin}
             onChange={handleToggle}
             disabled={saving}
@@ -145,15 +148,13 @@ export default function SystemSettingsPage() {
       </section>
       <CliSettings />
 
-      <form onSubmit={handleSubmit} className="rounded-lg bg-white p-6 shadow">
+      <form onSubmit={handleSubmit} className="admin-card p-4 sm:p-5">
         <div className="flex flex-col gap-2 border-b border-gray-200 pb-5">
           <h2 className="text-lg font-medium text-gray-900">
-            Environment Links
+            {t("Environment Links", "服务连接")}
           </h2>
           <p className="text-sm text-gray-500">
-            These values are written to the project .env file. Current web
-            requests will see updated values after saving, but database, Redis,
-            judge, and worker connections may require a process restart.
+            {t("These values are written to the project .env file. Current web requests will see updated values after saving, but database, Redis, judge, and worker connections may require a process restart.", "设置会写入项目的 .env 文件。数据库、Redis 和判题服务连接更新后需要重启对应进程。")}
           </p>
         </div>
 
@@ -162,14 +163,14 @@ export default function SystemSettingsPage() {
             <label key={setting.key} className="block">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-gray-900">
-                  {setting.label}
+                  {(lang === "zh" && envTextZh[setting.key]?.label) || setting.label}
                 </span>
                 <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
                   {setting.key}
                 </code>
                 {setting.restartRequired && (
                   <span className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-                    restart required
+                    {t("restart required", "需要重启")}
                   </span>
                 )}
               </div>
@@ -183,30 +184,22 @@ export default function SystemSettingsPage() {
                 }
                 placeholder={setting.placeholder}
                 spellCheck={false}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm text-gray-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="admin-input font-mono"
               />
               <p className="mt-1 text-xs text-gray-500">
-                {setting.description}
+                {(lang === "zh" && envTextZh[setting.key]?.description) || setting.description}
               </p>
             </label>
           ))}
         </div>
 
-        {hasRestartRequiredSetting && (
-          <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            Infrastructure links are loaded when Prisma, Redis, BullMQ, and the
-            worker start. Save updates the .env file, then restart the affected
-            services before relying on those new connections.
-          </div>
-        )}
-
         <div className="mt-6 flex justify-end">
           <button
             type="submit"
             disabled={saving}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="admin-button admin-button-primary"
           >
-            {saving ? "Saving..." : "Save Link Settings"}
+            {saving ? t("Saving...", "正在保存…") : t("Save Link Settings", "保存连接设置")}
           </button>
         </div>
       </form>

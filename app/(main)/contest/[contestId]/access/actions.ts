@@ -11,20 +11,22 @@ import {
   signContestAccessToken,
 } from "@/lib/contest-access-token";
 
+type ContestAccessState = { error: "notFound" | "unconfigured" | "wrongPassword" | null };
+
 export async function unlockContest(
   contestId: number,
-  _previous: { error: string },
+  _previous: ContestAccessState,
   formData: FormData,
-): Promise<{ error: string }> {
+): Promise<ContestAccessState> {
   const { contest, allowed } = await getContestAccess(contestId);
-  if (!contest) return { error: "比赛不存在。" };
+  if (!contest) return { error: "notFound" };
   if (allowed) redirect(`/contest/${contestId}`);
   if (!contest.password) {
-    return { error: "该私有赛尚未配置访问密码，请联系比赛管理员。" };
+    return { error: "unconfigured" };
   }
   const password = formData.get("password");
   if (typeof password !== "string" || !matchesContestPassword(password, contest.password)) {
-    return { error: "比赛密码错误，请重新输入。" };
+    return { error: "wrongPassword" };
   }
   const token = await signContestAccessToken(contest, getJwtSecretKey());
   (await cookies()).set(contestAccessCookieName(contestId), token, {

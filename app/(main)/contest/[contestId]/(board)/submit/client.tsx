@@ -5,13 +5,8 @@ import CodeEditor from "@/components/CodeEditor";
 import { submitCode } from "./actions";
 import { useLanguage } from "@/context/LanguageContext";
 import { toast } from "sonner";
-
-const LANGUAGES = [
-  { value: "c", label: "C" },
-  { value: "cpp", label: "C++" },
-  { value: "java", label: "Java" },
-  { value: "pypy3", label: "PyPy3" },
-];
+import { formatMessage } from "@/lib/dictionaries";
+import { contestLanguages } from "@/lib/contest-languages";
 
 export default function SubmitForm({
   contestId,
@@ -74,7 +69,7 @@ export default function SubmitForm({
     e.preventDefault();
     const res = await submitCode(Number(contestId), problemId, language, code);
     if (res?.error) {
-      toast.error(res.error);
+      toast.error(dict.submissionErrors[res.error]);
     }
   };
 
@@ -95,7 +90,7 @@ export default function SubmitForm({
               onChange={(e) => setLanguage(e.target.value)}
               className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-sm focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 max-w-xs"
             >
-              {LANGUAGES.map((lang) => (
+              {contestLanguages.map((lang) => (
                 <option key={lang.value} value={lang.value}>
                   {lang.label}
                 </option>
@@ -115,7 +110,7 @@ export default function SubmitForm({
                 height="500px"
               />
               <div className="absolute bottom-2 right-2 text-xs text-gray-400">
-                {code.length} chars
+                {formatMessage(dict.submit.characterCount, { count: code.length })}
               </div>
             </div>
           </div>
@@ -125,7 +120,7 @@ export default function SubmitForm({
               <button
                 disabled
                 className="bg-gray-400 text-white font-medium rounded-sm text-sm px-8 py-3 shadow-md cursor-not-allowed opacity-60"
-                title="Admins cannot submit"
+                title={dict.submit.unavailable}
               >
                 {dict.common.submit}
               </button>

@@ -90,14 +90,15 @@ npm run build
 | `NOVAJUDGE_SITE_NAME` | 站点名称，默认 NovaJudge |
 | `NOVAJUDGE_SITE_DESCRIPTION` | 页面描述，默认 XCPC Online Judge |
 | `NOVAJUDGE_FOOTER_TEXT` | 可选的学校/组织页脚文字 |
-| `NOVAJUDGE_ORG_MAP_PATH` | 可选的组织映射 JSON 路径，支持绝对路径；默认 `config/org-map.json` |
+| `NOVAJUDGE_ORG_MAP_PATH` | 后台首次保存前使用的组织映射文件，默认 `config/org-map.json` |
 | `PROBLEM_DATA_ROOT` | Worker 读取的共享题目根目录，内容应对应 Web 的 `uploads/problems` |
 | `JUDGE_CONCURRENCY`、`JUDGE_WORKER_COUNT` | 单 Worker 并发与本机 Worker 数量 |
 | `GO_JUDGE_REQUEST_TIMEOUT_MS` | 可选 go-judge HTTP 超时；运行请求会覆盖沙箱兜底时间 |
 
-学校部署将组织映射放在如 `/etc/novajudge/org-map.json` 的独立文件中，无需修改仓库默认映射。
-映射格式为 `{ "学校名称": "organization-id" }`。修改站点名称、页脚等展示配置后重新构建并重启 Web；
-修改组织映射后重启读取该配置的服务。
+超级管理员在 **站点配置 → 组织管理** 维护组织名称、学校别名、组织 ID、两位国家或地区代码和 Logo。
+后台首次保存时会将原 JSON 映射一并保存到数据库，兼容 `{"学校名称":"organization-id"}` 和带 `id`、`country` 的条目。
+之后的编辑直接用于排行榜和新请求的 CCS 数据。组织 Logo 随数据库一起备份。
+修改站点名称、页脚等环境配置后重新构建并重启 Web。
 旧推流环境变量已不再读取，可以在维护部署配置时移除。
 
 ### 外部登录协议

@@ -1,4 +1,5 @@
 import { Verdict } from "@/lib/generated/prisma/enums";
+import { getVerdictLabel } from "@/lib/dictionaries";
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -31,63 +32,53 @@ function SnowflakeIcon({ className }: { className?: string }) {
 const VERDICT_CONFIG: Record<
   string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  { text: string; color: string; icon?: any }
+  { color: string; icon?: any }
 > = {
   // --- 等待/评测中 (带动画) ---
-  [Verdict.PENDING]: { text: "Pending", color: "text-gray-500" },
-  [Verdict.JUDGING]: { text: "Judging", color: "text-blue-600" },
+  [Verdict.PENDING]: { color: "text-gray-500" },
+  [Verdict.JUDGING]: { color: "text-blue-600" },
 
   // 封榜
   ["FROZEN"]: {
-    text: "Frozen",
     color: "text-sky-500 font-bold", // 冰雪配色
     icon: SnowflakeIcon,
   },
 
   ["REJECTED"]: {
-    text: "Rejected",
     color: "text-red-600 font-bold",
     icon: XCircleIcon,
   },
 
   // --- 最终状态 ---
   [Verdict.ACCEPTED]: {
-    text: "Accepted",
     color: "text-green-600 font-bold",
     icon: CheckCircleIcon,
   },
   [Verdict.WRONG_ANSWER]: {
-    text: "Wrong Answer",
     color: "text-red-600 font-bold",
     icon: XCircleIcon,
   },
   [Verdict.TIME_LIMIT_EXCEEDED]: {
-    text: "Time Limit Exceeded",
     color: "text-orange-600 font-bold",
     icon: ClockIcon,
   },
   [Verdict.MEMORY_LIMIT_EXCEEDED]: {
-    text: "Memory Limit Exceeded",
     color: "text-orange-600 font-bold",
     icon: ExclamationCircleIcon,
   },
   [Verdict.RUNTIME_ERROR]: {
-    text: "Runtime Error",
     color: "text-purple-600 font-bold",
     icon: ExclamationCircleIcon,
   },
   [Verdict.COMPILE_ERROR]: {
-    text: "Compile Error",
     color: "text-yellow-600 font-bold",
     icon: ExclamationCircleIcon,
   },
   [Verdict.PRESENTATION_ERROR]: {
-    text: "Presentation Error",
     color: "text-orange-500 font-bold",
     icon: ExclamationCircleIcon,
   },
   [Verdict.SYSTEM_ERROR]: {
-    text: "System Error",
     color: "text-gray-900 font-bold",
     icon: ExclamationCircleIcon,
   },
@@ -96,7 +87,6 @@ const VERDICT_CONFIG: Record<
 export default function VerdictBadge({ status }: { status: string }) {
   // 默认配置 (防止未知状态报错)
   const config = VERDICT_CONFIG[status] || {
-    text: status,
     color: "text-gray-400",
   };
 
@@ -115,7 +105,7 @@ export default function VerdictBadge({ status }: { status: string }) {
       {!isLoading && Icon && <Icon className="w-4 h-4" />}
 
       {/* 3. 文字 */}
-      <span>{config.text}</span>
+      <span>{getVerdictLabel(status)}</span>
     </span>
   );
 }

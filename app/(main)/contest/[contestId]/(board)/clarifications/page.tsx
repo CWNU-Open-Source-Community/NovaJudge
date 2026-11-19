@@ -12,7 +12,8 @@ import {
 } from "@heroicons/react/24/outline";
 import { getCurrentUser } from "@/lib/auth";
 import { ClariCategory } from "@/lib/generated/prisma/client";
-import { getDictionary } from "@/lib/get-dictionary";
+import { getDictionary, getLanguage } from "@/lib/get-dictionary";
+import { formatMessage, getLocale } from "@/lib/dictionaries";
 import ClarificationForm from "./ClarificationForm";
 import { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
@@ -27,13 +28,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
   });
 
+  const dict = await getDictionary();
   if (!contest) {
     return {
-      title: "比赛未找到",
+      title: dict.contestList.notFound,
     };
   }
   return {
-    title: `Q&A - ${contest.title}`,
+    title: `${dict.nav.clarifications} - ${contest.title}`,
   };
 }
 interface Props {
@@ -57,8 +59,9 @@ export default async function ClarificationsPage({
   const { notifications, clarifications, total, problems, isAdmin } =
     await getClarificationData(cid, Number(page) || 1);
 
+  const [dict, lang] = await Promise.all([getDictionary(), getLanguage()]);
   const formatTime = (d: Date) => {
-    return new Date(d).toLocaleString();
+    return new Date(d).toLocaleString(getLocale(lang));
   };
 
   // 将 notifications 拆分为 公告(Notice) 和 公开提问(PublicQuestion)
@@ -72,7 +75,6 @@ export default async function ClarificationsPage({
   const currentUser = await getCurrentUser();
   const now = new Date();
 
-  const dict = await getDictionary();
   return (
     <div className="space-y-10 pb-12 max-w-7xl mx-auto">
       {/* --- Section 1: Official Announcements (拆分出的公告区) --- */}
@@ -89,14 +91,14 @@ export default async function ClarificationsPage({
               href={`/contest/${contestId}/clarifications/create`}
               className="text-sm font-bold text-white bg-orange-600 px-4 py-2 rounded-md hover:bg-orange-700 transition shadow-sm flex items-center gap-2"
             >
-              + New Notice
+              + {dict.clarifications.newNotice}
             </Link>
           )}
         </div>
 
         {announcements.length === 0 ? (
           <div className="bg-orange-50/50 border border-orange-100 border-dashed rounded-lg p-6 text-center text-gray-400 text-sm">
-            No official announcements yet.
+            {dict.clarifications.emptyNotices}
           </div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -117,7 +119,7 @@ export default async function ClarificationsPage({
                       {note.title}
                       {isNew && (
                         <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded-sm font-bold animate-pulse shadow-sm">
-                          NEW
+                          {dict.clarifications.newBadge}
                         </span>
                       )}
                     </h3>
@@ -156,7 +158,7 @@ export default async function ClarificationsPage({
               >
                 <div className="flex justify-between items-start mb-2">
                   <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors text-lg truncate pr-8">
-                    {note.title || "No Title"}
+                    {note.title || dict.clarificationNotifications.untitled}
                   </h3>
                   {note._count.replies > 0 && (
                     <span className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full font-bold">
@@ -171,9 +173,7 @@ export default async function ClarificationsPage({
                 <div className="flex items-center justify-between text-xs text-gray-400 font-mono border-t border-gray-50 pt-3">
                   <span className="flex items-center gap-1">
                     <TagIcon className="w-3 h-3" />
-                    {note.category === ClariCategory.NOTICE
-                      ? "Announcement"
-                      : "Public Q&A"}
+                    {dict.clarifications.publicQuestion}
                   </span>
                   <span>{formatTime(note.createdAt)}</span>
                 </div>
@@ -189,8 +189,8 @@ export default async function ClarificationsPage({
           <LockClosedIcon className="w-5 h-5 text-gray-500" />
           <h2 className="text-xl font-bold text-gray-800 font-serif">
             {isAdmin
-              ? "Inbox (Private Questions)"
-              : `${dict.clarifications.private}`}
+              ? dict.clarifications.inbox
+              : dict.clarifications.private}
           </h2>
         </div>
 
@@ -204,7 +204,7 @@ export default async function ClarificationsPage({
                     {dict.clarifications.problem}
                   </th>
                   <th className="px-6 py-3">{dict.clarifications.title}</th>
-                  {isAdmin && <th className="px-6 py-3 w-40">Author</th>}
+                  {isAdmin && <th className="px-6 py-3 w-40">{dict.clarifications.author}</th>}
                   <th className="px-6 py-3 w-50">{dict.clarifications.time}</th>
                   <th className="px-6 py-3 w-20 text-center">
                     {dict.clarifications.replay}
@@ -219,15 +219,15 @@ export default async function ClarificationsPage({
                   >
                     <td className="px-6 py-4 font-mono font-bold text-blue-600">
                       {clari.displayId
-                        ? `Problem ${clari.displayId}`
-                        : "General"}
+                        ? formatMessage(dict.clarifications.problemNumber, { problem: clari.displayId })
+                        : dict.clarifications.generalShort}
                     </td>
                     <td className="px-6 py-4">
                       <Link
                         href={`/contest/${contestId}/clarifications/${clari.id}`}
                         className="text-gray-900 font-medium hover:text-blue-600 block"
                       >
-                        {clari.title || "(No Title)"}
+                        {clari.title || dict.clarificationNotifications.untitled}
                       </Link>
                     </td>
                     {isAdmin && (
@@ -257,8 +257,8 @@ export default async function ClarificationsPage({
                       className="px-6 py-12 text-center text-gray-400"
                     >
                       {isAdmin
-                        ? "No pending private questions."
-                        : "You haven't asked any questions yet."}
+                        ? dict.clarifications.noPrivateQuestions
+                        : dict.clarifications.noOwnQuestions}
                     </td>
                   </tr>
                 )}
@@ -276,7 +276,7 @@ export default async function ClarificationsPage({
 
       {/* --- Section 4: Ask Question Form (选手用) --- */}
       {!isAdmin && currentUser && (
-        <ClarificationForm contestId={cid} problems={problems} dict={dict} />
+        <ClarificationForm contestId={cid} problems={problems} />
       )}
     </div>
   );

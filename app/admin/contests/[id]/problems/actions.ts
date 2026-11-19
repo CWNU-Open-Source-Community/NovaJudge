@@ -3,6 +3,7 @@
 import { requireSuperAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { removeContestStatement, writeContestStatement } from "@/lib/contest-statements";
 
 // 获取当前比赛的题目列表
 export async function getContestProblems(contestId: number) {
@@ -60,9 +61,34 @@ export async function addContestProblem(formData: FormData) {
 export async function removeContestProblem(id: string, contestId: number) {
   await requireSuperAdmin();
   await prisma.contestProblem.delete({
-    where: { id },
+    where: { id, contestId },
   });
+  await removeContestStatement(contestId, id).catch(error =>
+    console.error("Could not clean up the removed contest problem's PDF.", error));
   revalidatePath(`/admin/contests/${contestId}/problems`);
+}
+
+export async function updateContestStatement(contestId: number, bindingId: string | null, data: FormData) {
+  await requireSuperAdmin();
+  if (!Number.isSafeInteger(contestId) || contestId <= 0 || (bindingId !== null && typeof bindingId !== "string")) return "target";
+  const target = bindingId === null
+    ? await prisma.contest.findUnique({ where: { id: contestId }, select: { id: true } })
+    : await prisma.contestProblem.findFirst({ where: { id: bindingId, contestId }, select: { id: true } });
+  if (!target) return "target";
+
+  if (data.get("operation") === "remove") {
+    await removeContestStatement(contestId, bindingId);
+  } else {
+    const file = data.get("pdf");
+    if (!(file instanceof File) || !file.size || !/\.pdf$/i.test(file.name)) return "format";
+    if (file.size > 50 * 1024 * 1024) return "size";
+    const pdf = Buffer.from(await file.arrayBuffer());
+    if (!/^%PDF-\d\.\d/.test(pdf.toString("ascii", 0, 8))) return "format";
+    await writeContestStatement(contestId, bindingId, pdf);
+  }
+  revalidatePath(`/admin/contests/${contestId}/problems`);
+  revalidatePath(`/contest/${contestId}/problems`);
+  return "ok";
 }
 
 export async function updateProblemDisplayId(

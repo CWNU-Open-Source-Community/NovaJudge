@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -9,21 +11,23 @@ import {
   type RejudgeFilters,
 } from "@/app/admin/submissions/actions";
 import ConfirmModal from "./ConfirmModal";
+import { getVerdictLabel } from "@/lib/dictionaries";
 
-const VERDICT_OPTIONS: { value: string; label: string }[] = [
-  { value: "WRONG_ANSWER", label: "Wrong Answer" },
-  { value: "TIME_LIMIT_EXCEEDED", label: "Time Limit Exceeded" },
-  { value: "MEMORY_LIMIT_EXCEEDED", label: "Memory Limit Exceeded" },
-  { value: "RUNTIME_ERROR", label: "Runtime Error" },
-  { value: "COMPILE_ERROR", label: "Compile Error" },
-  { value: "PRESENTATION_ERROR", label: "Presentation Error" },
-  { value: "SYSTEM_ERROR", label: "System Error" },
-  { value: "ACCEPTED", label: "Accepted (需勾选“包含 AC”)" },
+const VERDICT_OPTIONS = [
+  { value: "WRONG_ANSWER" },
+  { value: "TIME_LIMIT_EXCEEDED" },
+  { value: "MEMORY_LIMIT_EXCEEDED" },
+  { value: "RUNTIME_ERROR" },
+  { value: "COMPILE_ERROR" },
+  { value: "PRESENTATION_ERROR" },
+  { value: "SYSTEM_ERROR" },
+  { value: "ACCEPTED" },
 ];
 
 const MAX_BATCH = 5000;
 
 export default function RejudgeBatchPanel() {
+  const { t } = useAdminLocale();
   const router = useRouter();
 
   const [contests, setContests] = useState<{ id: number; title: string }[]>([]);
@@ -43,6 +47,7 @@ export default function RejudgeBatchPanel() {
   const [counting, setCounting] = useState(false);
   const [rejudging, setRejudging] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const notifyLoadError = useEffectEvent(() => toast.error(t("Failed to load contest/problem list", "加载比赛或题目失败")));
 
   // 加载下拉选项
   useEffect(() => {
@@ -59,7 +64,7 @@ export default function RejudgeBatchPanel() {
         setProblems(problemList as { id: number; title: string }[]);
       })
       .catch(() => {
-        toast.error("Failed to load contest/problem list");
+        notifyLoadError();
       });
   }, []);
 
@@ -99,7 +104,7 @@ export default function RejudgeBatchPanel() {
       }
       setCount(result.count ?? null);
     } catch {
-      toast.error("Failed to count submissions");
+      toast.error(t("Failed to count submissions", "统计提交失败"));
       setCount(null);
     } finally {
       setCounting(false);
@@ -120,14 +125,17 @@ export default function RejudgeBatchPanel() {
         toast.error(result.error);
         return;
       }
-      const message = `已入队 ${result.queued ?? 0} 条，跳过 ${result.skipped ?? 0} 条，入队失败 ${result.failed ?? 0} 条`;
+      const message = t(
+        `${result.queued ?? 0} queued, ${result.skipped ?? 0} skipped, ${result.failed ?? 0} failed`,
+        `已入队 ${result.queued ?? 0} 条，跳过 ${result.skipped ?? 0} 条，入队失败 ${result.failed ?? 0} 条`,
+      );
       if (result.error) toast.error(`${result.error} ${message}`);
       else if (result.failed) toast.error(message);
       else toast.success(message);
       setCount(null);
       router.refresh();
     } catch {
-      toast.error("Failed to rejudge submissions");
+      toast.error(t("Failed to rejudge submissions", "提交重判失败"));
     } finally {
       setRejudging(false);
     }
@@ -141,24 +149,24 @@ export default function RejudgeBatchPanel() {
 
   return (
     <>
-      <ConfirmModal
+      <ConfirmModal cancelText={t("Cancel", "取消")}
         isOpen={confirmOpen}
-        title="Batch Rejudge"
-        message={`This will reset and re-queue ${count} submissions for judging. Continue?`}
-        confirmText="Rejudge"
+        title={t("Batch Rejudge", "批量重判")}
+        message={t(`Reset and rejudge ${count} submissions?`, `将清除 ${count} 条提交的旧结果并重新排队评测。确认重判？`)}
+        confirmText={t("Rejudge", "重判")}
         isDestructive
         onConfirm={handleRejudge}
         onCancel={() => setConfirmOpen(false)}
       />
 
-      <details className="mb-4 rounded-lg border border-gray-200 bg-white shadow-sm open:pb-4">
-        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50">
-          ⚡ Batch Rejudge（按条件批量重测）
+      <details className="admin-card overflow-hidden open:pb-4">
+        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50 focus-visible:-outline-offset-2">
+          {t("Batch rejudge", "批量重判")}
         </summary>
 
         <div className="mt-2 grid grid-cols-1 gap-3 px-4 md:grid-cols-3">
           <div>
-            <label className={labelClass}>Contest（可选）</label>
+            <label className={labelClass}>{t("Contest (optional)", "比赛（可选）")}</label>
             <select
               className={selectClass + " w-full"}
               value={filters.contestId ?? ""}
@@ -169,7 +177,7 @@ export default function RejudgeBatchPanel() {
                 )
               }
             >
-              <option value="">All contests</option>
+              <option value="">{t("All contests", "全部比赛")}</option>
               {contests.map((c) => (
                 <option key={c.id} value={c.id}>
                   #{c.id} - {c.title}
@@ -179,7 +187,7 @@ export default function RejudgeBatchPanel() {
           </div>
 
           <div>
-            <label className={labelClass}>Problem（可选）</label>
+            <label className={labelClass}>{t("Problem (optional)", "题目（可选）")}</label>
             <select
               className={selectClass + " w-full"}
               value={filters.problemId ?? ""}
@@ -190,7 +198,7 @@ export default function RejudgeBatchPanel() {
                 )
               }
             >
-              <option value="">All problems</option>
+              <option value="">{t("All problems", "全部题目")}</option>
               {problems.map((p) => (
                 <option key={p.id} value={p.id}>
                   #{p.id} - {p.title}
@@ -200,7 +208,7 @@ export default function RejudgeBatchPanel() {
           </div>
 
           <div>
-            <label className={labelClass}>Verdict（可选）</label>
+            <label className={labelClass}>{t("Verdict (optional)", "结果（可选）")}</label>
             <select
               className={selectClass + " w-full"}
               value={filters.verdict ?? ""}
@@ -210,30 +218,30 @@ export default function RejudgeBatchPanel() {
             >
               <option value="">
                 {filters.includeAccepted
-                  ? "All verdicts (incl. AC)"
-                  : "All verdicts (excl. AC)"}
+                  ? t("All verdicts (incl. AC)", "所有结果（含 AC）")
+                  : t("All verdicts (excl. AC)", "所有结果（不含 AC）")}
               </option>
               {verdictOptions.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}
+                  {getVerdictLabel(o.value)}
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className={labelClass}>队伍 / 用户（可选，模糊匹配）</label>
+            <label className={labelClass}>{t("Team or user (optional)", "队伍 / 用户（可选，模糊匹配）")}</label>
             <input
               type="text"
               className={inputClass + " w-full"}
-              placeholder="队名、账号、学校或座位号"
+              placeholder={t("Team, username, school, or seat", "队名、账号、学校或座位号")}
               value={filters.username ?? ""}
               onChange={(e) => setField("username", e.target.value)}
             />
           </div>
 
           <div>
-            <label className={labelClass}>Submitted from（可选）</label>
+            <label className={labelClass}>{t("Submitted from (optional)", "提交起始时间（可选）")}</label>
             <input
               type="datetime-local"
               className={inputClass + " w-full"}
@@ -243,7 +251,7 @@ export default function RejudgeBatchPanel() {
           </div>
 
           <div>
-            <label className={labelClass}>Submitted to（可选）</label>
+            <label className={labelClass}>{t("Submitted to (optional)", "提交截止时间（可选）")}</label>
             <input
               type="datetime-local"
               className={inputClass + " w-full"}
@@ -272,7 +280,7 @@ export default function RejudgeBatchPanel() {
                   setCount(null);
                 }}
               />
-              包含已 AC 的提交（默认排除，避免改动数据后误伤已有成绩）
+              {t("Include accepted submissions (excluded by default)", "包含已 AC 的提交（默认排除，避免改动数据后误伤已有成绩）")}
             </label>
           </div>
 
@@ -283,15 +291,15 @@ export default function RejudgeBatchPanel() {
               disabled={counting}
               className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {counting ? "Counting..." : "查询符合条件的数量"}
+              {counting ? t("Counting...", "正在统计…") : t("Count matching submissions", "统计符合条件的提交")}
             </button>
 
             {count !== null && (
               <>
                 <span className="text-sm text-gray-600">
-                  将重测{" "}
+                  {t("Selected for rejudge:", "将重测")}{" "}
                   <span className="font-bold text-blue-600">{count}</span>{" "}
-                  条提交（上限 {MAX_BATCH} 条）
+                  {t("submissions (limit:", "条提交（上限")} {MAX_BATCH} {t(")", "条）")}
                 </span>
                 <button
                   type="button"
@@ -299,7 +307,7 @@ export default function RejudgeBatchPanel() {
                   disabled={count === 0 || rejudging}
                   className="rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {rejudging ? "Rejudging..." : "确认重测"}
+                  {rejudging ? t("Rejudging...", "正在重判…") : t("Confirm rejudge", "确认重测")}
                 </button>
               </>
             )}

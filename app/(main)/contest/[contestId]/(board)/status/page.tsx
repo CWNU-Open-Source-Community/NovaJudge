@@ -1,5 +1,7 @@
 import { requireContestAccess } from "@/lib/contest-access";
+import { usesDomjudge } from "@/lib/contest-interface";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import Pagination from "@/components/Pagination";
 import {
   ContestRole,
@@ -14,7 +16,8 @@ import StatusControls from "./StatusControls";
 import SearchAndFilter from "./SearchAndFilter";
 import { getCurrentSuper, getCurrentUser } from "@/lib/auth";
 import { ContestConfig } from "@/app/(main)/page";
-import { getDictionary } from "@/lib/get-dictionary";
+import { getDictionary, getLanguage } from "@/lib/get-dictionary";
+import { formatMessage, getLocale, getVerdictLabel } from "@/lib/dictionaries";
 import { Metadata } from "next";
 import { getLatestVirtualParticipation } from "@/lib/virtual-participation";
 import { buildContestSubmissionWhere } from "@/lib/contest-submission-query";
@@ -32,13 +35,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
   });
 
+  const dict = await getDictionary();
   if (!contest) {
     return {
-      title: "比赛未找到",
+      title: dict.contestList.notFound,
     };
   }
   return {
-    title: `提交状态 - ${contest.title}`,
+    title: `${dict.nav.status} - ${contest.title}`,
   };
 }
 interface Props {
@@ -61,6 +65,10 @@ interface Props {
 
 export default async function Status({ params, searchParams }: Props) {
   const { contestId } = await params;
+  const cid = parseInt(contestId);
+  await requireContestAccess(cid);
+  if (await usesDomjudge(cid)) redirect(`/contest/${cid}`);
+
   const {
     page = "1",
     userId,
@@ -76,8 +84,8 @@ export default async function Status({ params, searchParams }: Props) {
 
   const currentPage = parseInt(page as string) || 1;
   const pageSize = 15;
-  const cid = parseInt(contestId);
-  await requireContestAccess(cid);
+  const [dict, lang] = await Promise.all([getDictionary(), getLanguage()]);
+  const locale = getLocale(lang);
 
   // 1. 获取比赛信息
   const contestInfo = await prisma.contest.findUnique({
@@ -93,7 +101,7 @@ export default async function Status({ params, searchParams }: Props) {
 
   if (!contestInfo) {
     return (
-      <div className="text-center py-10 text-gray-500">Contest not found.</div>
+      <div className="text-center py-10 text-gray-500">{dict.contestList.notFound}</div>
     );
   }
 
@@ -243,9 +251,9 @@ export default async function Status({ params, searchParams }: Props) {
   let filterError = "";
   if (isAdmin) {
     try {
-      where = await buildContestSubmissionWhere(cid, managerFilters);
+      where = await buildContestSubmissionWhere(cid, managerFilters, dict);
     } catch (error) {
-      filterError = error instanceof Error ? error.message : "筛选条件无效，请重新选择。";
+      filterError = error instanceof Error ? error.message : dict.submission.filterLoadFailed;
       where = { contestId: cid, id: { in: [] } };
     }
   }
@@ -366,31 +374,19 @@ export default async function Status({ params, searchParams }: Props) {
     c: "C",
   };
 
-  const verdictRecord: Record<string, string> = {
-    [Verdict.ACCEPTED]: "Accepted",
-    [Verdict.WRONG_ANSWER]: "Wrong Answer",
-    [Verdict.TIME_LIMIT_EXCEEDED]: "Time Limit Exceeded",
-    [Verdict.MEMORY_LIMIT_EXCEEDED]: "Memory Limit Exceeded",
-    [Verdict.RUNTIME_ERROR]: "Runtime Error",
-    [Verdict.COMPILE_ERROR]: "Compile Error",
-    [Verdict.SYSTEM_ERROR]: "System Error",
-  };
-
   const statusLabel =
     !shouldViewAll && currentUser && !isAdmin
-      ? "(Your Submissions)"
+      ? dict.submission.yourSubmissions
       : !shouldViewAll && isRunningVp && latestVp
-        ? `(Your current VP #${latestVp.attemptNo})`
+        ? formatMessage(dict.submission.yourVp, { attempt: latestVp.attemptNo })
         : !shouldViewAll && globalUser && !isAdmin
-          ? "(Your Submissions)"
+          ? dict.submission.yourSubmissions
           : isContestEnded
-            ? "(Contest Ended - All Submissions Visible)"
+            ? dict.submission.allVisible
             : "";
 
-  const dict = await getDictionary();
-
   return (
-    <div className="bg-white w-full mx-auto shadow-sm border border-gray-100 rounded-sm p-3 sm:p-6">
+    <div className="contest-panel bg-white w-full mx-auto shadow-sm border border-gray-100 rounded-sm p-3 sm:p-6">
       <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-serif font-bold text-gray-800">
           {dict.submission.title}{" "}
@@ -404,7 +400,6 @@ export default async function Status({ params, searchParams }: Props) {
             problems={allProblems}
             languages={allLanguages}
             verdicts={allVerdicts}
-            verdictRecord={verdictRecord}
             languageRecord={languageRecord}
           />
           {(currentUser || globalUser) && (
@@ -421,7 +416,6 @@ export default async function Status({ params, searchParams }: Props) {
         languages={allLanguages}
         verdicts={Object.values(Verdict)}
         languageRecord={languageRecord}
-        verdictRecord={verdictRecord}
       />}
       {filterError && <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{filterError}</p>}
       {isAdmin ? <ContestRejudgePanel
@@ -434,7 +428,7 @@ export default async function Status({ params, searchParams }: Props) {
         submissions={submissions.map((submission) => ({
           id: submission.id,
           displayId: submission.displayId,
-          teamName: submission.user?.displayName || submission.globalUser?.displayName || submission.user?.username || submission.globalUser?.username || "Unknown",
+          teamName: submission.user?.displayName || submission.globalUser?.displayName || submission.user?.username || submission.globalUser?.username || dict.common.unknown,
           username: submission.user?.username || submission.globalUser?.username || "",
           school: submission.user?.school || null,
           seat: submission.user?.seat || null,
@@ -452,13 +446,13 @@ export default async function Status({ params, searchParams }: Props) {
         }))}
       /> : contestInfo.status === ContestStatus.PENDING ? (
         <div className="text-center py-10 text-gray-500">
-          {dict.contestList.noContestsFound}
+          {dict.contest.PENDING}
         </div>
       ) : displaySubmissions.length === 0 ? (
         <div className="text-center py-10 text-gray-500">
           {shouldViewAll
-            ? "No submissions yet."
-            : "You have no submissions yet."}
+            ? dict.submission.none
+            : dict.submission.noneForUser}
         </div>
       ) : (
         <div className="w-full overflow-x-auto overscroll-x-contain">
@@ -476,7 +470,7 @@ export default async function Status({ params, searchParams }: Props) {
             <thead className="whitespace-nowrap bg-white font-serif text-sm font-bold text-gray-800 border-b border-gray-400 border-t-2 sm:text-base">
               <tr>
                 <th scope="col" className="px-3 py-2 sm:px-6">
-                  Run ID
+                  {dict.submission.runId}
                 </th>
                 <th scope="col" className="px-3 py-2 sm:px-6">
                   {dict.submission.submitTime}
@@ -507,12 +501,12 @@ export default async function Status({ params, searchParams }: Props) {
                   problemIdMap.get(submission.problemId) || "?";
                 const submitTime = new Date(
                   submission.submittedAt,
-                ).toLocaleString("zh-CN");
+                ).toLocaleString(locale);
                 const submitterName =
                   submission.user?.displayName ||
                   submission.user?.username ||
                   submission.globalUser?.displayName ||
-                  "Unknown";
+                  dict.common.unknown;
                 const timeText =
                   isGuest && !isContestEnded
                     ? "-"
@@ -528,19 +522,15 @@ export default async function Status({ params, searchParams }: Props) {
                 const languageText = isGuest && !isContestEnded
                   ? "-"
                   : languageRecord[submission.language];
-                const verdictTitle = (() => {
-                  if (isGuest && !isContestEnded) return String(submission.verdict);
-                  if (!showTestDetails) return String(submission.verdict);
-                  if (submission.verdict === Verdict.WRONG_ANSWER)
-                    return `Wrong Answer on test ${submission.passedTests + 1}`;
-                  if (submission.verdict === Verdict.TIME_LIMIT_EXCEEDED)
-                    return `Time Limit Exceeded on test ${submission.passedTests + 1}`;
-                  if (submission.verdict === Verdict.MEMORY_LIMIT_EXCEEDED)
-                    return `Memory Limit Exceeded on test ${submission.passedTests + 1}`;
-                  if (submission.verdict === Verdict.RUNTIME_ERROR)
-                    return `Runtime Error on test ${submission.passedTests + 1}`;
-                  return String(submission.verdict);
-                })();
+                const isMasked = isGuest && !isContestEnded;
+                const publicVerdict = isMasked && submission.verdict !== "FROZEN" &&
+                  submission.verdict !== Verdict.ACCEPTED ? "REJECTED" : submission.verdict;
+                const verdictTitle = getVerdictLabel(
+                  publicVerdict,
+                  !isMasked && showTestDetails && publicVerdict !== Verdict.JUDGING
+                    ? submission.passedTests + 1
+                    : undefined,
+                );
                 // 列表可见性不授予源码/编译信息权限，也不向客户端传整条记录。
                 const canViewErrorMessage =
                   Boolean(isAdmin) ||
@@ -615,7 +605,7 @@ export default async function Status({ params, searchParams }: Props) {
                           href={`/contest/${contestId}/status/${submission.displayId}`}
                           className="text-blue-500 hover:underline hover:text-blue-800"
                         >
-                          {languageRecord[submission.language]}
+                          {languageRecord[submission.language] || submission.language}
                         </Link>
                       )}
                     </td>
@@ -624,7 +614,7 @@ export default async function Status({ params, searchParams }: Props) {
                         className="mx-auto max-w-full overflow-hidden text-ellipsis whitespace-nowrap [&>button]:max-w-full [&>button]:overflow-hidden [&>span]:max-w-full [&>span]:overflow-hidden [&>span>span]:truncate"
                         title={verdictTitle}
                       >
-                        {isGuest && !isContestEnded ? (
+                        {isMasked ? (
                           <VerdictCell submission={verdictSubmission} isGuest={true} />
                         ) : (
                           <VerdictCell

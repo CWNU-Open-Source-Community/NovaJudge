@@ -1,0 +1,131 @@
+/* The team board uses the compact geometry of DOMjudge's scoreboard templates. */
+[data-contest-ui="domjudge"] .contest-board:has(.dj-standings) { overflow-x: clip; }
+[data-contest-ui="domjudge"] .contest-board-inner:has(.dj-standings) { padding: 2rem .7rem 1rem .5rem; }
+[data-contest-ui="domjudge"]:has(.dj-standings) .dj-nav-row { min-height: 3.3rem; padding: .25rem .5rem; }
+.dj-standings { min-width: 0; color: #000; line-height: 1.5; --dj-board-nav-height: 3.3rem; }
+.dj-board-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem 1rem;
+  padding: .5rem 1rem; border: 1px solid #d2d2d2; border-radius: .375rem;
+  color: #212529; background: #f8f8f8;
+}
+.dj-board-banner h1 { font-size: 1rem; font-weight: 700; }
+.dj-board-banner > span { color: dimgrey; }
+.dj-freeze-notice {
+  margin: 0 0 1rem; padding: 1rem; border: 1px solid #ffe69c; border-radius: .375rem;
+  color: #664d03; background: #fff3cd; font-size: 80%;
+}
+.dj-board-filter { position: relative; width: fit-content; max-width: 100%; padding: .5rem; }
+.dj-filter-toggle, .dj-filter-apply, .dj-filter-clear {
+  display: inline-flex; align-items: center; gap: .25em; padding: .25rem .5rem; border: 1px solid;
+  border-radius: .25rem; font-size: .875rem; line-height: 1.5; cursor: pointer;
+}
+.dj-filter-toggle { border-color: #6c757d; color: #6c757d; background: white; }
+.dj-filter-toggle svg { width: 1.25em; height: 1em; }
+.dj-filter-toggle::after {
+  content: ""; margin-left: .15em; border: .3em solid transparent; border-top-color: currentColor; border-bottom: 0;
+}
+.dj-filter-toggle:hover, .dj-filter-toggle[aria-expanded="true"], .dj-filter-clear { color: white; background: #6c757d; }
+.dj-filter-spacer { height: 1.5rem; }
+.dj-filter-panel {
+  position: absolute; z-index: 8; top: calc(100% - .45rem); left: .5rem; width: max-content; max-width: calc(100vw - 2rem);
+  max-height: 75dvh; overflow: auto; padding: .65rem 1rem; border: 1px solid #0003; border-radius: .375rem; background: white;
+}
+.dj-filter-fields { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin-bottom: 1rem; }
+.dj-filter-fields label { min-width: 0; max-width: 100%; color: gray; font-size: .875rem; }
+.dj-filter-fields select {
+  display: block; max-width: 100%; padding: .25rem .5rem; border: 1px solid #dee2e6;
+  border-radius: .375rem; color: #212529; background: white; font-size: 1rem;
+}
+.dj-filter-apply { margin-right: .3rem; border-color: #0d6efd; color: #fff; background: #0d6efd; }
+.dj-filter-clear { border-color: #6c757d; }
+.dj-board-viewport { position: relative; max-width: 100%; }
+.dj-board-viewport[data-overflow="true"] { max-height: calc(100dvh - var(--dj-board-nav-height)); overflow: auto; }
+.dj-board-viewport[data-overflow="true"] thead th { top: 0; }
+.dj-board-table, .dj-cell-legend { margin-inline: auto; border-collapse: collapse; white-space: nowrap; color: #000; }
+.dj-board-table tr, .dj-cell-legend tr { height: 42px; border-bottom: 1px solid black; }
+.dj-board-table thead th {
+  position: sticky; z-index: 1; top: var(--dj-board-nav-height); padding: 0; background: white;
+  box-shadow: -1px 0 0 silver inset, 0 2px 0 black; font-variant: small-caps; text-align: center; font-weight: 700;
+}
+.dj-board-table thead tr { border-bottom: 2px solid black; }
+.dj-heading-problem a { display: block; padding: 2px 1px; }
+.dj-board-table tbody :is(td, th) {
+  vertical-align: middle; text-align: center; font-size: small; padding: 0; border-right: 1px solid silver;
+}
+.dj-board-table tr[aria-current="true"] { background: #ffff99; }
+.dj-board-table .dj-board-medal { min-width: 1.9rem; border: 0; font-size: 1.5rem; }
+.dj-board-table .dj-board-place { min-width: 1.9rem; padding-inline: .3em; }
+.dj-board-table .dj-board-affiliation { border: 0; padding: 2px 4px; }
+.dj-board-table .dj-board-logo { border: 0; padding: 2px 4px; text-align: left; }
+.dj-board-table .dj-board-team { padding: 0 5px; font-weight: 700; text-align: right; }
+.dj-board-team button { display: block; width: 100%; padding: 2px 1px; text-align: right; cursor: pointer; }
+.dj-board-name, .dj-board-school { display: block; max-width: 350px; overflow: hidden; text-overflow: ellipsis; }
+.dj-board-team [data-truncated] { text-align: left; text-overflow: clip; mask-image: linear-gradient(to right, black 70%, transparent); }
+.dj-board-name .dj-category { display: inline-block; margin-right: 2.25em; padding: .24em .6em; font-weight: 400; line-height: 1; }
+.dj-board-school { color: dimgrey; font-size: .92em; font-weight: 400; }
+.dj-board-table .dj-board-solved, .dj-board-penalty { min-width: 2.5rem; }
+.dj-board-table .dj-board-solved { border-right: 0; font-weight: 700; }
+.dj-board-table .dj-board-problem { position: relative; min-width: 4.2em; padding: 2px 1px; border: 0; }
+.dj-board-problem button { display: block; width: 100%; cursor: pointer; }
+.dj-board-problem .dj-score-cell { display: inline-block; width: max-content; padding-inline: .1em; }
+.dj-board-summary { border-top: 2px solid black; }
+.dj-board-summary th { font-variant: small-caps; font-weight: 400; }
+.dj-board-table .dj-problem-total { padding: 2px; text-align: left; }
+.dj-problem-total > span { display: flex; align-items: center; gap: .25em; font-size: 90%; }
+.dj-problem-total svg { width: 1.25em; }
+.dj-stat-accepted { color: green; }
+.dj-stat-rejected { color: red; }
+.dj-stat-pending { color: #666; }
+.dj-no-teams { white-space: normal; }
+.dj-cell-legend { width: 25ex; margin: 4rem 0 0; }
+.dj-cell-legend :is(th, td) { border-right: 1px solid silver; text-align: center; }
+.dj-cell-legend td { font-size: small; }
+.dj-board-updated { margin-top: 1em; color: gray; text-align: right; font-size: x-small; }
+.dj-board-updated a:hover { text-decoration: underline; }
+.dj-affiliation-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 1.5rem; margin-top: 1.5rem; }
+.dj-affiliation-groups section { border: 1px solid #dee2e6; border-radius: .375rem; overflow: hidden; }
+.dj-affiliation-groups h2 { padding: .5rem 1rem; background: #f8f8f8; }
+.dj-affiliation-groups ul { padding: 1rem; }
+.dj-affiliation-groups li { display: flex; align-items: center; gap: .65rem; padding: .4rem .75rem; border: 1px solid #dee2e6; }
+
+@media (max-width: 767.98px) {
+  .dj-board-banner { align-items: start; flex-direction: column; gap: 0; }
+  .dj-board-table, .dj-board-table thead, .dj-board-table tbody { display: block; width: 100%; }
+  .dj-board-table thead { position: sticky; z-index: 1; top: var(--dj-board-nav-height); background: white; }
+  .dj-board-table thead th { position: static; box-shadow: none; }
+  .dj-board-table thead tr { font-size: 75%; }
+  .dj-heading-team { flex: 1; }
+  .dj-heading-problem, .dj-cell-legend { display: none; }
+  .dj-board-table tr { display: flex; flex-wrap: wrap; align-items: center; height: auto; padding: 2px 0; }
+  .dj-board-table tr::after { content: ""; order: 1; flex-basis: 100%; }
+  .dj-board-table tbody :is(td, th) { border-right: 0; }
+  .dj-board-table .dj-board-medal, .dj-board-table .dj-board-place { width: 1.8rem; min-width: 0; flex: none; }
+  .dj-board-place, .dj-board-problem { order: 2; }
+  .dj-board-table .dj-board-team { flex: 1 1 0; min-width: 0; }
+  .dj-board-name, .dj-board-school { max-width: none; }
+  .dj-board-table .dj-country { width: 1.33rem; height: 1rem; border-radius: .1875rem; }
+  .dj-board-table .dj-board-solved, .dj-board-table .dj-board-penalty { width: auto; min-width: 0; padding: 0 .3em; }
+  .dj-board-table .dj-board-problem { min-width: 0; margin: 1px 2px; padding: 0; }
+  .dj-board-problem::before {
+    content: attr(data-problem); display: inline-block; min-width: 2em; padding: .15em .4em;
+    border: 1px solid linen; border-radius: .375rem; color: silver; background: whitesmoke;
+    font-size: x-small; font-weight: 700; line-height: 1.4;
+  }
+  .dj-board-problem:is([data-state="first"], [data-state="correct"])::before {
+    color: var(--badge-fg); border-color: var(--badge-border); background: var(--badge-bg);
+  }
+  .dj-board-problem[data-state="pending"]::before { background: #6666ff; color: white; }
+  .dj-board-problem[data-state="incorrect"]::after {
+    content: ""; position: absolute; inset: 50% 0 auto; transform: rotate(-35deg); border-top: 2px solid firebrick; pointer-events: none;
+  }
+  .dj-board-problem button { position: absolute; inset: 0; padding: 0; }
+  .dj-board-problem .dj-score-cell { display: none; }
+  .dj-board-summary td:not(.dj-board-solved) { display: none; }
+  .dj-board-table .dj-board-summary th { flex: 1; padding-left: .3em; text-align: left; }
+}
+@media print {
+  .dj-board-filter, .dj-board-dialog { display: none; }
+  .dj-board-viewport[data-overflow="true"] { max-height: none; overflow: visible; }
+  .dj-board-table thead th { position: static; }
+  .dj-standings { print-color-adjust: exact; }
+}

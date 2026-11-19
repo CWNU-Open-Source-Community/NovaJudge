@@ -8,6 +8,8 @@ import {
 } from "@heroicons/react/24/outline";
 import { Verdict } from "@/lib/generated/prisma/enums";
 import VerdictBadge from "./VerdictBadge";
+import { useLanguage } from "@/context/LanguageContext";
+import { getVerdictLabel } from "@/lib/dictionaries";
 
 interface VerdictCellProps {
   submission: {
@@ -26,6 +28,7 @@ export default function VerdictCell({
   isGuest = false,
   showTestDetails = true,
 }: VerdictCellProps) {
+  const { dict } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
 
   if (submission.verdict === "FROZEN") {
@@ -63,11 +66,11 @@ export default function VerdictCell({
       <button
         onClick={() => setIsOpen(true)}
         className="inline-flex group relative items-center gap-1.5 text-yellow-600 hover:text-yellow-800 transition-colors cursor-pointer"
-        title="Click to view error details"
+        title={dict.submission.viewCompilationError}
       >
         <ExclamationTriangleIcon className="w-4 h-4" />
         <span className="text-sm whitespace-nowrap font-bold border-b border-dashed border-yellow-600 group-hover:border-yellow-800 text-center">
-          Compile Error
+          {getVerdictLabel(Verdict.COMPILE_ERROR)}
         </span>
       </button>
 
@@ -78,10 +81,11 @@ export default function VerdictCell({
             <div className="flex justify-between items-center px-6 py-4 border-b">
               <h3 className="text-lg font-bold text-red-600 flex items-center gap-2">
                 <ExclamationTriangleIcon className="w-5 h-5" />
-                Compilation Error
+                {dict.submission.compilationError}
               </h3>
               <button
                 onClick={() => setIsOpen(false)}
+                aria-label={dict.common.close}
                 className="text-gray-400 cursor-pointer hover:text-gray-600"
               >
                 <XMarkIcon className="w-6 h-6" />
@@ -95,7 +99,7 @@ export default function VerdictCell({
                 onClick={() => setIsOpen(false)}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded cursor-pointer hover:bg-gray-300 font-medium text-sm"
               >
-                Close
+                {dict.common.close}
               </button>
             </div>
           </div>

@@ -1,5 +1,8 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+import { getVerdictLabel } from "@/lib/dictionaries";
+
 import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   ArrowPathIcon,
@@ -54,6 +57,7 @@ function SubmissionsChart({
   minutes: MonitorMinuteBucket[];
   localizeTime: boolean;
 }) {
+  const { t } = useAdminLocale();
   const plotW = CHART_W - CHART_PAD_X * 2;
   const plotH = CHART_H - CHART_PAD_TOP - CHART_PAD_BOTTOM;
   const slot = plotW / minutes.length;
@@ -68,9 +72,9 @@ function SubmissionsChart({
   return (
     <svg
       viewBox={`0 0 ${CHART_W} ${CHART_H}`}
-      className="w-full"
+      className="w-full min-w-[26rem]"
       role="img"
-      aria-label="Submissions per minute (last 60 minutes)"
+      aria-label={t("Submissions per minute (last 60 minutes)", "最近 60 分钟每分钟提交量")}
     >
       {/* 顶部分钟刻度线 */}
       <line
@@ -97,7 +101,7 @@ function SubmissionsChart({
             fill={isPeak ? "#2563eb" : m.count > 0 ? "#93c5fd" : "#e5e7eb"}
           >
             <title>
-              {`${formatMinute(m.timestamp, localizeTime)} — ${m.count} submissions`}
+              {t(`${formatMinute(m.timestamp, localizeTime)} — ${m.count} submissions`, `${formatMinute(m.timestamp, localizeTime)} · ${m.count} 条提交`)}
             </title>
           </rect>
         );
@@ -123,6 +127,7 @@ export default function MonitorClient({
 }: {
   initial: MonitorStats;
 }) {
+  const { t, locale } = useAdminLocale();
   const [data, setData] = useState<MonitorStats>(initial);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   // SSR/首次 hydration 使用稳定的 UTC 标签；挂载后再切换为浏览器本地时区，
@@ -163,37 +168,37 @@ export default function MonitorClient({
 
   const cards = [
     {
-      label: "Queue Waiting",
+      label: t("Queue waiting", "等待评测"),
       value: queue?.waiting ?? 0,
       icon: QueueListIcon,
       color: queue && queue.waiting > 0 ? "text-amber-600" : "text-gray-500",
     },
     {
-      label: "Queue Active",
+      label: t("Queue active", "正在评测"),
       value: queue?.active ?? 0,
       icon: ClockIcon,
       color: "text-blue-600",
     },
     {
-      label: "Workers Online",
+      label: t("Workers online", "在线判题进程"),
       value: workers.length,
       icon: ServerIcon,
       color: workers.length > 0 ? "text-green-600" : "text-red-600",
     },
     {
-      label: "Active Teams (10 min)",
+      label: t("Active teams (10 min)", "活跃队伍（10 分钟）"),
       value: data.onlineTeams,
       icon: UsersIcon,
       color: "text-orange-600",
     },
     {
-      label: "Submissions (1 h)",
+      label: t("Submissions (1 h)", "提交量（1 小时）"),
       value: data.submissionsLastHour,
       icon: ChartBarIcon,
       color: "text-green-600",
     },
     {
-      label: "Running Contests",
+      label: t("Running contests", "进行中的比赛"),
       value: data.runningContests,
       icon: TrophyIcon,
       color: "text-purple-600",
@@ -201,20 +206,20 @@ export default function MonitorClient({
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       {/* 指标卡片 */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 2xl:grid-cols-6">
         {cards.map((card) => (
           <div
             key={card.label}
-            className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3"
+            className="admin-card flex flex-wrap items-start gap-2.5 p-3.5 sm:p-4"
           >
             <card.icon className={`w-6 h-6 ${card.color} shrink-0`} />
             <div className="min-w-0">
-              <div className="text-xl font-bold text-gray-900 leading-none">
-                {card.value}
+              <div className="text-xl leading-none font-semibold tabular-nums text-gray-900">
+                {card.value.toLocaleString(locale)}
               </div>
-              <div className="text-[11px] font-medium text-gray-500 mt-1 truncate">
+              <div className="mt-1 text-xs font-medium text-gray-600">
                 {card.label}
               </div>
             </div>
@@ -223,41 +228,43 @@ export default function MonitorClient({
       </div>
 
       {/* 提交曲线 */}
-      <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6">
+      <div className="admin-card p-4 sm:p-5">
         <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
           <h3 className="font-bold text-gray-800 flex items-center gap-2">
             <ChartBarIcon className="w-5 h-5 text-gray-500" />
-            Submissions / Minute (last 60 min)
+            {t("Submissions / Minute (last 60 min)", "每分钟提交量（近 60 分钟）")}
           </h3>
           <span className="text-xs text-gray-400 flex items-center gap-2">
             <span>
-              Peak: <b className="text-gray-600">{maxPerMinute}/min</b>
+              {t("Peak:", "峰值：")} <b className="text-gray-600">{maxPerMinute}{t("/min", "条/分钟")}</b>
             </span>
             <span>
               {lastUpdated === null
-                ? "refreshing…"
-                : `updated ${new Date(lastUpdated).toLocaleTimeString()}`}
+                ? t("refreshing…", "正在刷新…")
+                : t(`Updated ${new Date(lastUpdated).toLocaleTimeString(locale)}`, `更新于 ${new Date(lastUpdated).toLocaleTimeString(locale)}`)}
             </span>
-            <ArrowPathIcon className="w-3.5 h-3.5 animate-spin [animation-duration:3s]" />
+            <ArrowPathIcon className="size-3.5" aria-hidden="true" />
           </span>
         </div>
         {data.submissionsLastHour === 0 ? (
           <div className="p-8 text-center text-sm text-gray-400 border border-dashed border-gray-200 rounded-lg">
-            No submissions in the last hour.
+            {t("No submissions in the last hour.", "最近一小时暂无提交。")}
           </div>
         ) : (
-          <SubmissionsChart minutes={minutes} localizeTime={isHydrated} />
+          <div className="overflow-x-auto">
+            <SubmissionsChart minutes={minutes} localizeTime={isHydrated} />
+          </div>
         )}
       </div>
 
       {/* 判定结果分布 */}
-      <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6">
+      <div className="admin-card p-4 sm:p-5">
         <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
           <QueueListIcon className="w-5 h-5 text-gray-500" />
-          Verdict Distribution (last 60 min)
+          {t("Verdict Distribution (last 60 min)", "判题结果分布（近 60 分钟）")}
         </h3>
         {verdicts.length === 0 ? (
-          <div className="text-sm text-gray-400">No data.</div>
+          <div className="text-sm text-gray-400">{t("No data.", "暂无数据。")}</div>
         ) : (
           <div className="flex flex-wrap gap-2">
             {verdicts.map((v) => (
@@ -267,7 +274,7 @@ export default function MonitorClient({
                   v.verdict,
                 )}`}
               >
-                {v.verdict}
+                {getVerdictLabel(v.verdict)}
                 <span className="opacity-70">{v.count}</span>
               </span>
             ))}

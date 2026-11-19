@@ -2,6 +2,7 @@
 
 import Editor, { OnMount, loader } from "@monaco-editor/react";
 import { useRef, useState } from "react";
+import { useLanguage } from "@/context/LanguageContext";
 
 loader.config({
   paths: {
@@ -33,6 +34,7 @@ export default function CodeEditor({
   readOnly = false,
   wordWrap = "on",
 }: CodeEditorProps) {
+  const { dict } = useLanguage();
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const [, setMounted] = useState(false);
 
@@ -79,7 +81,7 @@ export default function CodeEditor({
           onMount={handleEditorDidMount}
           loading={
             <div className="h-full w-full flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
-              Initializing Editor...
+              {dict.common.initializingEditor}
             </div>
           }
         />

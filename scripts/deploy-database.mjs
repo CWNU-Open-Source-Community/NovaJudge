@@ -37,7 +37,7 @@ async function main() {
       // Old editions used db push and did not have a complete migration history.
       // Only adopt a database that exactly matches one of the shipped schemas.
       let matched;
-      for (const snapshot of ["prisma/legacy-schemas/public.prisma", "prisma/legacy-schemas/internal.prisma", "prisma/schema.prisma"]) {
+      for (const snapshot of ["prisma/legacy-schemas/public.prisma", "prisma/legacy-schemas/internal.prisma", "prisma/legacy-schemas/unified.prisma", "prisma/schema.prisma"]) {
         const result = runPrisma(["migrate", "diff", "--from-config-datasource", "--to-schema", snapshot, "--exit-code"]);
         if (result.status === 0) { matched = snapshot; break; }
         if (result.status !== 2) {

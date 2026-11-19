@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { XMarkIcon } from "@heroicons/react/24/outline";
@@ -24,6 +26,7 @@ export default function FileModal({
   initialContent,
   onSave,
 }: FileModalProps) {
+  const { t } = useAdminLocale();
   const [content, setContent] = useState(initialContent);
   const [saving, setSaving] = useState(false);
 
@@ -60,7 +63,7 @@ export default function FileModal({
         {/* Header */}
         <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-            Editing:{" "}
+            {t("Editing:", "正在编辑：")}{" "}
             <span className="font-mono text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-base">
               {fileName}
             </span>
@@ -78,7 +81,7 @@ export default function FileModal({
           <CodeEditor
             value={content}
             language={language}
-            placeholder="Please enter code."
+            placeholder={t("Please enter code.", "请输入文件内容。")}
             onChange={(evn) => setContent(evn.target.value)}
             padding={20}
             style={{
@@ -97,14 +100,14 @@ export default function FileModal({
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50"
           >
-            Cancel
+            {t("Cancel", "取消")}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
           >
-            {saving ? "Saving..." : "Save Changes"}
+            {saving ? t("Saving...", "正在保存…") : t("Save Changes", "保存修改")}
           </button>
         </div>
       </div>

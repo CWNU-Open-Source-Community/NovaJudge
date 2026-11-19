@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface StatusControlsProps {
   canViewAll: boolean;
@@ -10,6 +11,7 @@ export default function StatusControls({
   canViewAll,
 }: StatusControlsProps) {
   const router = useRouter();
+  const { dict } = useLanguage();
   const searchParams = useSearchParams();
   const viewAll = searchParams.get("viewAll") === "true";
 
@@ -31,11 +33,11 @@ export default function StatusControls({
           className="w-4 h-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <span className="text-sm font-medium text-gray-700">
-          View All Submissions
+          {dict.submission.viewAll}
         </span>
         {!canViewAll && (
           <span className="text-xs text-gray-400">
-            (Available after contest ends)
+            {dict.submission.afterContest}
           </span>
         )}
       </label>

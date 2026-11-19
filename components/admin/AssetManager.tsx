@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useState, useRef } from "react";
 import Image from "next/image";
 import {
@@ -29,6 +31,7 @@ export default function AssetManager({
   problemId: number;
   initialAssets: Asset[];
 }) {
+  const { t } = useAdminLocale();
   const [assets, setAssets] = useState<Asset[]>(initialAssets);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -45,7 +48,7 @@ export default function AssetManager({
     setUploading(true);
 
     // 创建 loading toast，并获取 ID
-    const toastId = toast.loading("正在上传...");
+    const toastId = toast.loading(t("Uploading…", "正在上传..."));
 
     try {
       const formData = new FormData();
@@ -57,11 +60,11 @@ export default function AssetManager({
       if (fileInputRef.current) fileInputRef.current.value = "";
 
       // 更新 toast 为成功状态
-      toast.success("上传成功！", { id: toastId });
+      toast.success(t("Upload complete", "上传成功！"), { id: toastId });
     } catch (error) {
       console.log(error);
       // 更新 toast 为错误状态
-      toast.error("上传失败，请重试", { id: toastId });
+      toast.error(t("Upload failed. Please retry.", "上传失败，请重试"), { id: toastId });
     } finally {
       setUploading(false);
     }
@@ -74,14 +77,14 @@ export default function AssetManager({
       action: {
         label: "确定删除",
         onClick: async () => {
-          const toastId = toast.loading("正在删除...");
+          const toastId = toast.loading(t("Deleting…", "正在删除..."));
           try {
             await deleteAsset(problemId, filename);
             setAssets((prev) => prev.filter((a) => a.name !== filename));
-            toast.success("文件已删除", { id: toastId });
+            toast.success(t("File deleted", "文件已删除"), { id: toastId });
           } catch (e) {
             console.log(e);
-            toast.error("删除失败", { id: toastId });
+            toast.error(t("Delete failed", "删除失败"), { id: toastId });
           }
         },
       },
@@ -95,17 +98,17 @@ export default function AssetManager({
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success("Markdown 链接已复制");
+    toast.success(t("Markdown link copied", "Markdown 链接已复制"));
   };
 
   return (
     <div className="mt-4 border p-4 rounded-md bg-gray-50 h-[calc(100%-2rem)] flex flex-col relative text-sm">
       <h3 className="font-bold text-gray-700 mb-4 flex items-center justify-between">
         <span className="flex items-center gap-2">
-          附件与图片
+          {t("Attachments and images", "附件与图片")}
           <button
             onClick={refreshAssets}
-            title="刷新列表"
+            title={t("Refresh files", "刷新列表")}
             className="text-gray-400 cursor-pointer hover:text-blue-600"
           >
             <ArrowPathIcon className="w-4 h-4" />
@@ -116,7 +119,7 @@ export default function AssetManager({
           className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-50 transition-colors cursor-pointer"
           disabled={uploading}
         >
-          {uploading ? "上传中..." : "上传文件"}
+          {uploading ? t("Uploading…", "上传中...") : t("Upload file", "上传文件")}
         </button>
       </h3>
 
@@ -167,7 +170,7 @@ export default function AssetManager({
                 }
                 className="text-blue-600 hover:text-blue-800 text-[10px] cursor-pointer font-bold px-1"
               >
-                Copy
+                {t("Copy", "复制")}
               </button>
 
               <button
@@ -182,7 +185,7 @@ export default function AssetManager({
         {assets.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-gray-400 text-xs py-10 border-2 border-dashed border-gray-200 rounded">
             <PhotoIcon className="w-8 h-8 mb-2 opacity-50" />
-            <p>暂无文件，点击右上角上传</p>
+            <p>{t("No files yet. Use Upload to add one.", "暂无文件，点击右上角上传")}</p>
           </div>
         )}
       </div>

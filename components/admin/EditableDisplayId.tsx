@@ -1,6 +1,8 @@
 // components/admin/EditableDisplayId.tsx
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { updateProblemDisplayId } from "@/app/admin/contests/[id]/problems/actions";
@@ -12,6 +14,7 @@ interface Props {
 }
 
 export default function EditableDisplayId({ contestProblemId, contestId, initialDisplayId }: Props) {
+  const { t } = useAdminLocale();
   const [isEditing, setIsEditing] = useState(false);
   const [displayId, setDisplayId] = useState(initialDisplayId);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,7 +41,7 @@ export default function EditableDisplayId({ contestProblemId, contestId, initial
       toast.error(res.error);
       setDisplayId(initialDisplayId);
     } else {
-      toast.success("题号更新成功");
+      toast.success(t("Problem ID updated", "题号更新成功"));
     }
     setIsEditing(false);
   };
@@ -71,7 +74,7 @@ export default function EditableDisplayId({ contestProblemId, contestId, initial
     <div 
       onClick={() => setIsEditing(true)}
       className="cursor-pointer px-2 py-1 rounded hover:bg-gray-100 border border-transparent hover:border-gray-300 transition-colors inline-block min-w-10 text-center"
-      title="点击修改题号"
+      title={t("Edit problem ID", "点击修改题号")}
     >
       {initialDisplayId}
     </div>

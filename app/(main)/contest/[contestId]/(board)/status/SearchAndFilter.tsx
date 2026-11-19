@@ -2,13 +2,14 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
+import { useLanguage } from "@/context/LanguageContext";
+import { getVerdictLabel } from "@/lib/dictionaries";
 
 interface SearchAndFilterProps {
   canSearch: boolean;
   problems: Array<{ displayId: string; problemId: number }>;
   languages: string[];
   verdicts: string[];
-  verdictRecord: Record<string, string>;
   languageRecord: Record<string, string>;
 }
 
@@ -17,10 +18,10 @@ export default function SearchAndFilter({
   problems,
   languages,
   verdicts,
-  verdictRecord,
   languageRecord,
 }: SearchAndFilterProps) {
   const router = useRouter();
+  const { dict } = useLanguage();
   const searchParams = useSearchParams();
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(
@@ -88,7 +89,8 @@ export default function SearchAndFilter({
       <div className="relative min-w-0 flex-1 sm:flex-none">
         <input
           type="text"
-          placeholder="Search user..."
+          placeholder={dict.submission.searchUser}
+          aria-label={dict.submission.searchUser}
           value={inputValue}
           onChange={(e) => handleSearchInput(e.target.value)}
           disabled={!canSearch}
@@ -96,7 +98,7 @@ export default function SearchAndFilter({
         />
         {!canSearch && (
           <div className="absolute top-full mt-1 text-xs text-gray-400 whitespace-nowrap">
-            (Available after contest ends)
+            {dict.submission.afterContest}
           </div>
         )}
       </div>
@@ -105,13 +107,14 @@ export default function SearchAndFilter({
       <div className="relative shrink-0">
         <button
           onClick={() => setIsOpen(!isOpen)}
+          aria-expanded={isOpen}
           className={`px-3 py-2 text-sm font-medium rounded-sm border transition-colors ${
             hasActiveFilters
               ? "bg-blue-100 border-blue-300 text-blue-700"
               : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
           } cursor-pointer`}
         >
-          Filter {hasActiveFilters && "✓"}
+          {dict.common.filter} {hasActiveFilters && "✓"}
         </button>
 
         {isOpen && (
@@ -119,14 +122,14 @@ export default function SearchAndFilter({
             {/* Problem 筛选 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Problem
+                {dict.submission.problem}
               </label>
               <select
                 value={currentProblem}
                 onChange={(e) => handleFilterChange("problem", e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">All Problems</option>
+                <option value="">{dict.submission.allProblems}</option>
                 {problems.map((p) => (
                   <option key={p.problemId} value={p.displayId}>
                     {p.displayId}
@@ -138,17 +141,17 @@ export default function SearchAndFilter({
             {/* Language 筛选 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Language
+                {dict.common.language}
               </label>
               <select
                 value={currentLanguage}
                 onChange={(e) => handleFilterChange("language", e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">All Languages</option>
+                <option value="">{dict.submission.allLanguages}</option>
                 {languages.map((lang) => (
                   <option key={lang} value={lang}>
-                    {languageRecord[lang]}
+                    {languageRecord[lang] || lang}
                   </option>
                 ))}
               </select>
@@ -157,17 +160,17 @@ export default function SearchAndFilter({
             {/* Verdict 筛选 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Judge Status
+                {dict.submission.status}
               </label>
               <select
                 value={currentVerdict}
                 onChange={(e) => handleFilterChange("verdict", e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">All Status</option>
+                <option value="">{dict.submission.allVerdicts}</option>
                 {verdicts.map((verdict) => (
                   <option key={verdict} value={verdict}>
-                    {verdictRecord[verdict]}
+                    {getVerdictLabel(verdict)}
                   </option>
                 ))}
               </select>
@@ -186,7 +189,7 @@ export default function SearchAndFilter({
                 }}
                 className="w-full px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-sm hover:bg-gray-200 transition-colors"
               >
-                Clear Filters
+                {dict.common.clearFilters}
               </button>
             )}
           </div>

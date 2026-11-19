@@ -14,6 +14,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { QRCodeSVG } from "qrcode.react";
 import { getDictionary } from "@/lib/get-dictionary";
+import { formatMessage } from "@/lib/dictionaries";
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { headers } from "next/headers";
@@ -26,6 +27,7 @@ export default async function BalloonPage({ params }: Props) {
   const { contestId } = await params;
   const cid = Number(contestId);
   await requireContestAccess(cid);
+  const dict = await getDictionary();
 
   const user = await getCurrentUser();
   const superAdmin = (await getCurrentSuper()) as UserJwtPayload;
@@ -41,10 +43,9 @@ export default async function BalloonPage({ params }: Props) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
         <h1 className="text-4xl font-bold text-gray-800 mb-4">403</h1>
-        <p className="text-xl text-gray-600 mb-8">Access Denied</p>
+        <p className="text-xl text-gray-600 mb-8">{dict.common.accessDenied}</p>
         <p className="text-gray-500 max-w-md">
-          Only contest administrators and balloon volunteers can access this
-          page.
+          {dict.balloon.restricted}
         </p>
       </div>
     );
@@ -91,8 +92,6 @@ export default async function BalloonPage({ params }: Props) {
     };
   });
 
-  const dict = await getDictionary();
-
   return (
     <div className="max-w-7xl mx-auto pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
@@ -105,10 +104,10 @@ export default async function BalloonPage({ params }: Props) {
           <div className="flex items-center gap-4 bg-white p-2 rounded-lg shadow-sm border border-gray-200">
             <div className="text-right hidden sm:block">
               <p className="text-xs font-bold text-gray-500 uppercase">
-                Volunteer Login
+                {dict.balloon.volunteerLogin}
               </p>
               <p className="text-xs text-gray-400">
-                Scan to access mobile view
+                {dict.balloon.scan}
               </p>
             </div>
             <div className="h-10 w-10 flex items-center justify-center bg-gray-100 rounded overflow-hidden">
@@ -125,7 +124,7 @@ export default async function BalloonPage({ params }: Props) {
             </div>
             <form action={generateBalloons.bind(null, cid)}>
               <button className="bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded hover:bg-blue-700 transition">
-                Refresh
+                {dict.common.refresh}
               </button>
             </form>
           </div>
@@ -139,7 +138,7 @@ export default async function BalloonPage({ params }: Props) {
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             <div className="bg-orange-50 px-6 py-4 border-b border-orange-100 flex justify-between">
               <h2 className="font-bold text-orange-800">
-                1. Task Pool ({pending.length})
+                {formatMessage(dict.balloon.pending, { count: pending.length })}
               </h2>
             </div>
             <div className="p-4 space-y-3 max-h-125 overflow-y-auto">
@@ -150,7 +149,7 @@ export default async function BalloonPage({ params }: Props) {
                 >
                   <div className="flex justify-between items-center mb-2">
                     <span className="font-black text-xl text-gray-800">
-                      Problem {problemMap[b.submission.problem.id].displayId}
+                      {formatMessage(dict.clarifications.problemNumber, { problem: problemMap[b.submission.problem.id].displayId })}
                     </span>
                     <span className="text-sm font-medium text-gray-600">
                       <span className="text-sm pr-2">
@@ -171,7 +170,7 @@ export default async function BalloonPage({ params }: Props) {
                       name="runnerId"
                       className="flex-1 text-sm bg-gray-50 border border-gray-300 rounded px-2 py-1"
                     >
-                      <option value="">Select Runner...</option>
+                      <option value="">{dict.balloon.selectVolunteer}</option>
                       {runners.map((r) => (
                         <option key={r.id} value={r.id}>
                           {r.displayName || r.username}
@@ -179,14 +178,14 @@ export default async function BalloonPage({ params }: Props) {
                       ))}
                     </select>
                     <button className="bg-orange-600 text-white px-3 py-1 rounded text-sm font-bold">
-                      Assign
+                      {dict.balloon.assign}
                     </button>
                   </form>
                 </div>
               ))}
               {pending.length === 0 && (
                 <p className="text-center text-gray-400 py-8 text-sm">
-                  All clear! No pending balloons.
+                  {dict.balloon.empty}
                 </p>
               )}
             </div>
@@ -196,7 +195,7 @@ export default async function BalloonPage({ params }: Props) {
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             <div className="bg-blue-50 px-6 py-4 border-b border-blue-100">
               <h2 className="font-bold text-blue-800">
-                2. In Progress ({assigned.length})
+                {formatMessage(dict.balloon.inProgress, { count: assigned.length })}
               </h2>
             </div>
             <div className="p-4 space-y-3 max-h-125 overflow-y-auto">
@@ -231,22 +230,22 @@ export default async function BalloonPage({ params }: Props) {
       {/* --- Volunteer View (Mobile Friendly) --- */}
       <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2 px-1">
         {isMaster ? (
-          <span className="text-gray-400">Recently Completed Log</span>
+          <span className="text-gray-400">{dict.balloon.recent}</span>
         ) : (
-          <span className="text-green-600">My Tasks to Deliver</span>
+          <span className="text-green-600">{dict.balloon.mine}</span>
         )}
       </h2>
 
       {!isMaster &&
       assigned.filter((b) => b.assignedToId === currentUserId).length === 0 ? (
         <div className="bg-green-50 rounded-xl p-8 text-center border-2 border-dashed border-green-200">
-          <p className="text-green-800 font-bold text-lg">You are ready!</p>
+          <p className="text-green-800 font-bold text-lg">{dict.balloon.ready}</p>
           <p className="text-green-600 text-sm mt-1">
-            Wait for the Balloon Master to assign you tasks.
+            {dict.balloon.wait}
           </p>
           <form action={generateBalloons.bind(null, cid)} className="mt-6">
             <button className="text-blue-600 underline text-sm">
-              Refresh manually
+              {dict.common.refresh}
             </button>
           </form>
         </div>
@@ -262,7 +261,7 @@ export default async function BalloonPage({ params }: Props) {
                   className="bg-white border-2 border-blue-600 rounded-xl p-6 shadow-xl relative overflow-hidden group"
                 >
                   <div className="absolute top-0 right-0 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-bl-lg">
-                    DELIVER NOW
+                    {dict.balloon.toDeliver}
                   </div>
                   <div className="text-5xl font-black text-gray-900 mb-2">
                     <div className="flex justify-between items-center">
@@ -304,7 +303,7 @@ export default async function BalloonPage({ params }: Props) {
                   >
                     <button className="w-full bg-green-500 hover:bg-green-600 active:scale-95 text-white font-bold py-4 rounded-lg shadow-md transition-all flex items-center justify-center gap-2 text-lg">
                       <CheckCircleIcon className="w-6 h-6" />
-                      DONE
+                      {dict.balloon.complete}
                     </button>
                   </form>
                 </div>
@@ -318,10 +317,10 @@ export default async function BalloonPage({ params }: Props) {
             >
               <div className="flex justify-between items-center mb-1">
                 <span className="font-bold text-gray-500">
-                  Problem {problemMap[b.submission.problem.id].displayId}
+                  {formatMessage(dict.clarifications.problemNumber, { problem: problemMap[b.submission.problem.id].displayId })}
                 </span>
                 <span className="text-xs text-green-600 border border-green-200 px-1 py-0.5 rounded font-mono">
-                  DELIVERED
+                  {dict.balloon.delivered}
                 </span>
               </div>
               <div className="text-sm text-gray-400">
@@ -332,7 +331,7 @@ export default async function BalloonPage({ params }: Props) {
               </div>
               {isMaster && (
                 <div className="text-xs text-gray-300 mt-2 text-right">
-                  By {b.assignedTo?.displayName}
+                  {formatMessage(dict.balloon.deliveredBy, { name: b.assignedTo?.displayName || b.assignedTo?.username || dict.common.unknown })}
                 </div>
               )}
             </div>

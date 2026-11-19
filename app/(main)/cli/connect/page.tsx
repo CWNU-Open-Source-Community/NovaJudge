@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import DeviceApproval from "./client";
 import { isCliEnabled } from "@/lib/cli-deployment";
 import { notFound } from "next/navigation";
+import { getDictionary } from "@/lib/get-dictionary";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "绑定 submit 命令行",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { cliConnect } = await getDictionary();
+  return { title: cliConnect.title, robots: { index: false, follow: false } };
+}
 
 export default async function CliConnectPage({
   searchParams,

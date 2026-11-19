@@ -10,6 +10,9 @@ import {
   getRunningVirtualParticipation,
 } from "@/lib/virtual-participation";
 import { getOfficialSubmissionWhere } from "@/lib/official-submission";
+import { getDomjudgeContest } from "@/lib/domjudge-contest";
+import { DomjudgeProblemset } from "@/components/contest/DomjudgeProblemset";
+import { scoreboardClock } from "@/lib/domjudge-scoreboard";
 
 interface Props {
   params: Promise<{
@@ -27,13 +30,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
   });
 
+  const dict = await getDictionary();
   if (!contest) {
     return {
-      title: "比赛未找到",
+      title: dict.contestList.notFound,
     };
   }
   return {
-    title: `题目列表 - ${contest.title}`,
+    title: `${dict.problemList.title} - ${contest.title}`,
     generator: "NovaJudge Contest",
   };
 }
@@ -50,7 +54,13 @@ export default async function Problems({ params }: Props) {
   });
 
   if (!contestInfo) {
-    return <div>Contest not found</div>;
+    return <div>{(await getDictionary()).contestList.notFound}</div>;
+  }
+
+  const domjudge = await getDomjudgeContest(contestId);
+  if (domjudge) {
+    const now = new Date();
+    return <DomjudgeProblemset contest={domjudge} now={now} freezeAt={scoreboardClock(contestInfo, now).freezeAt} />;
   }
 
   // 1. 鉴权逻辑：必须登录比赛账号或全局管理员
@@ -222,7 +232,7 @@ export default async function Problems({ params }: Props) {
       </h2>
       {contestInfo?.status === ContestStatus.PENDING ? (
         <div className="text-center py-10 text-gray-500">
-          {dict.contestList.noContestsFound}
+          {dict.problemList.empty}
         </div>
       ) : (
         <div className="w-full overflow-x-auto overscroll-x-contain">
@@ -233,7 +243,7 @@ export default async function Problems({ params }: Props) {
                   {dict.problemDetail.status}
                 </th>
                 <th scope="col" className="w-20 px-3 py-2 sm:w-24 sm:px-6">
-                  ID
+                  {dict.problemDetail.id}
                 </th>
                 <th scope="col" className="px-3 py-2 sm:px-6">
                   {dict.problemDetail.title}

@@ -47,6 +47,7 @@ test("the administrator guard accepts the verified super administrator", async (
 const protectedActionFiles = [
   "app/admin/actions.ts",
   "app/admin/api-keys/actions.ts",
+  "app/admin/organizations/actions.ts",
   "app/admin/contests/actions.ts",
   "app/admin/contests/[id]/edit/actions.ts",
   "app/admin/contests/[id]/users/actions.ts",

@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import { useTransition, useState } from "react";
 import { rejudgeSubmission } from "@/app/admin/submissions/actions";
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
@@ -14,6 +16,7 @@ export default function RejudgeButton({
   submissionId: string;
   verdict: string;
 }) {
+  const { t } = useAdminLocale();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -37,9 +40,9 @@ export default function RejudgeButton({
 
         // 强制刷新当前路由
         router.refresh();
-        toast.success("Rejudge request sent");
+        toast.success(t("Rejudge request sent", "已发送重判请求"));
       } catch (error) {
-        toast.error("Failed to rejudge");
+        toast.error(t("Failed to rejudge", "重判失败"));
         console.error(error);
       }
     });
@@ -47,13 +50,13 @@ export default function RejudgeButton({
 
   return (
     <>
-      <ConfirmModal
+      <ConfirmModal cancelText={t("Cancel", "取消")}
         isOpen={isConfirmOpen}
-        title="Rejudge Submission"
+        title={t("Rejudge Submission", "重判提交")}
         message={verdict === "ACCEPTED"
-          ? "该提交已 AC。确认重新评测这条提交？结果可能发生变化。"
-          : "确认重新评测这条提交？"}
-        confirmText={verdict === "ACCEPTED" ? "确认重判 AC" : "确认重判"}
+          ? t("This submission is accepted. Rejudging may change its result. Continue?", "该提交已 AC。确认重新评测这条提交？结果可能发生变化。")
+          : t("Rejudge this submission?", "确认重新评测这条提交？")}
+        confirmText={verdict === "ACCEPTED" ? t("Rejudge AC", "确认重判 AC") : t("Confirm rejudge", "确认重判")}
         isDestructive={verdict === "ACCEPTED"}
         onConfirm={confirmRejudge}
         onCancel={() => setIsConfirmOpen(false)}
@@ -62,8 +65,8 @@ export default function RejudgeButton({
         onClick={handleRejudge}
         disabled={isPending || verdict === "PENDING" || verdict === "JUDGING"}
         className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed p-1 rounded hover:bg-blue-50 transition-colors cursor-pointer"
-        title="ReJudge"
-        aria-label="重判此提交"
+        title={t("Rejudge", "重判")}
+        aria-label={t("Rejudge this submission", "重判此提交")}
       >
         <ArrowPathIcon
           className={`w-5 h-5 ${isPending ? "animate-spin" : ""}`}

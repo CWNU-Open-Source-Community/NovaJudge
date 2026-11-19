@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminLocale } from "@/components/admin/useAdminLocale";
+
 import ConfirmModal from "@/components/admin/ConfirmModal";
 import { LockClosedIcon, LockOpenIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
@@ -16,6 +18,7 @@ export default function AccountBanButton({
   username: string;
   isBanned: boolean;
 }) {
+  const { t } = useAdminLocale();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -31,26 +34,26 @@ export default function AccountBanButton({
     startTransition(async () => {
       try {
         await setExternalAccountBanStatus(userId, nextIsBanned);
-        toast.success(nextIsBanned ? "用户已封禁" : "用户已解封");
+        toast.success(nextIsBanned ? t("User banned", "用户已封禁") : t("User unbanned", "用户已解封"));
         router.refresh();
       } catch (error) {
         console.error(error);
-        toast.error(nextIsBanned ? "封禁失败" : "解封失败");
+        toast.error(nextIsBanned ? t("Failed to ban user", "封禁失败") : t("Failed to unban user", "解封失败"));
       }
     });
   }
 
   return (
     <>
-      <ConfirmModal
+      <ConfirmModal cancelText={t("Cancel", "取消")}
         isOpen={isConfirmOpen}
-        title={nextIsBanned ? "封禁外部用户" : "解除封禁"}
+        title={nextIsBanned ? t("Ban external user", "封禁外部用户") : t("Unban external user", "解除封禁")}
         message={
           nextIsBanned
-            ? `确定要封禁外部用户 ${username} 吗？封禁后该账号的外部登录会失效。`
-            : `确定要解除 ${username} 的封禁状态吗？`
+            ? t(`Ban external user ${username}? This disables the account's external sign-in.`, `确认封禁外部用户 ${username}？该账号将失去外部登录权限。`)
+            : t(`Unban ${username}?`, `确认解除 ${username} 的封禁？`)
         }
-        confirmText={nextIsBanned ? "封禁" : "解封"}
+        confirmText={nextIsBanned ? t("Ban", "封禁") : t("Unban", "解封")}
         onConfirm={handleConfirm}
         onCancel={() => setIsConfirmOpen(false)}
         isDestructive={nextIsBanned}
@@ -71,7 +74,7 @@ export default function AccountBanButton({
         ) : (
           <LockClosedIcon className="h-4 w-4" />
         )}
-        {isBanned ? "解封" : "封禁"}
+        {isBanned ? t("Unban", "解封") : t("Ban", "封禁")}
       </button>
     </>
   );

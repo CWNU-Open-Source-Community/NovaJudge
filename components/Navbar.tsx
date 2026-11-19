@@ -17,8 +17,12 @@ import {
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import { useLanguage } from "@/context/LanguageContext";
+import { ContestInterfaceSwitch, useContestInterface } from "./contest/ContestInterface";
+import DomjudgeMenu from "./contest/DomjudgeMenu";
+import DomjudgeSubmit from "./contest/DomjudgeSubmit";
+import type { DomjudgeContest } from "@/lib/domjudge-contest";
 
-type DesktopNavItem =
+export type ContestNavItem =
   | {
       type: "link";
       key: string;
@@ -34,15 +38,22 @@ type DesktopNavItem =
       onClick: () => void;
     };
 
+interface NavbarProps {
+  siteName?: string;
+  externalLoginLabel?: string;
+  externalLoginUrl?: string;
+  domjudge?: DomjudgeContest;
+}
+
 export default function Navbar({
   siteName = "NovaJudge",
   externalLoginLabel = "",
   externalLoginUrl = "",
-}: {
-  siteName?: string;
-  externalLoginLabel?: string;
-  externalLoginUrl?: string;
-}) {
+  domjudge: teamContest,
+}: NavbarProps) {
+  const mode = useContestInterface();
+  const domjudge = mode === "domjudge" ? teamContest : undefined;
+  const [submitOpen, setSubmitOpen] = useState(false);
   const [clickCount, setClickCount] = useState(0);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [showExternalLogin, setShowExternalLogin] = useState(false);
@@ -208,11 +219,12 @@ export default function Navbar({
 
   const handleNavClick = (e: React.MouseEvent) => {
     if (user) return;
-    const target = e.target as HTMLElement;
+    const target = e.target;
+    if (!(target instanceof Element)) return;
     if (
       target.tagName === "NAV" ||
-      target?.className?.includes("max-w-7xl") ||
-      target?.className?.includes("nav-trigger")
+      target.classList.contains("max-w-7xl") ||
+      target.classList.contains("nav-trigger")
     ) {
       const newCount = clickCount + 1;
       setClickCount(newCount);
@@ -239,10 +251,10 @@ export default function Navbar({
         user?.role === ContestRole.PRINT));
   const canRequestPrint = isSameContestUser && user?.role === ContestRole.TEAM;
 
-  const desktopContestItems = useMemo<DesktopNavItem[]>(() => {
+  const desktopContestItems = useMemo<ContestNavItem[]>(() => {
     if (!contestId) return [];
 
-    const items: DesktopNavItem[] = [
+    const items: ContestNavItem[] = [
       {
         type: "link",
         key: "contest",
@@ -387,7 +399,7 @@ export default function Navbar({
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [desktopContestItems, measureDesktopNav]);
+  }, [desktopContestItems, measureDesktopNav, domjudge]);
 
   const visibleDesktopItems = desktopContestItems.slice(
     0,
@@ -397,7 +409,7 @@ export default function Navbar({
     visibleDesktopItemCount,
   );
 
-  const renderDesktopItem = (item: DesktopNavItem) => {
+  const renderDesktopItem = (item: ContestNavItem) => {
     if (item.type === "link") {
       return (
         <Link
@@ -422,7 +434,7 @@ export default function Navbar({
     );
   };
 
-  const renderDesktopMenuItem = (item: DesktopNavItem) => {
+  const renderDesktopMenuItem = (item: ContestNavItem) => {
     if (item.type === "link") {
       return (
         <Link
@@ -455,24 +467,26 @@ export default function Navbar({
 
   return (
     <>
-      <nav
-        onClick={handleNavClick}
-        className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40"
-      >
+      {domjudge ? (
+        <DomjudgeMenu key={domjudge.id} contest={domjudge} items={desktopContestItems}
+          onPrint={() => setShowPrintRequest(true)} onSubmit={() => setSubmitOpen(true)} onLogout={logout} />
+      ) : <nav onClick={handleNavClick} className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 nav-trigger">
           <div className="flex justify-between items-center h-14 font-serif text-xl nav-trigger gap-3">
-            {/* 左侧：移动端汉堡菜单按钮 & 桌面端导航 */}
             <div className="flex min-w-0 flex-1 items-center">
               {/* 移动端汉堡菜单按钮 */}
               <button
                 className="md:hidden mr-2 p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-md"
                 onClick={() => setIsMobileMenuOpen(true)}
+                aria-label={dict.nav.openMenu}
+                aria-expanded={isMobileMenuOpen}
               >
                 <Bars3Icon className="w-6 h-6" />
               </button>
 
               <Link
                 href="/"
+                aria-label={dict.nav.home}
                 className="text-gray-900 font-bold px-2 py-2 shrink-0 flex items-center gap-1"
               >
                 <HomeIcon className="w-6 h-6 md:hidden" />
@@ -483,23 +497,24 @@ export default function Navbar({
               <div className="hidden md:flex min-w-0 flex-1 items-center">
                 {user && !user.contestId && (
                   <Link href="/train" className={desktopLinkClass("/train")}>
-                    训练中心
+                    {dict.nav.train}
                   </Link>
                 )}
 
                 {contestId && (
                   <>
                     <span className="text-gray-300 shrink-0 mx-1">|</span>
-                    <div className="pointer-events-none absolute left-0 top-0 -z-10 flex opacity-0">
-                      <div ref={desktopMeasureRef} className="flex items-center">
+                    {/* 测量项保留自然宽度，超出导航栏的部分只在测量行内裁剪。 */}
+                    <div inert aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 flex overflow-clip opacity-0">
+                      <div ref={desktopMeasureRef} className="flex shrink-0 items-center">
                         {desktopContestItems.map(renderDesktopItem)}
                       </div>
                       <button
                         ref={desktopMoreMeasureRef}
                         type="button"
-                        className="px-3 py-2 font-bold whitespace-nowrap flex items-center gap-1"
+                        className="shrink-0 px-3 py-2 font-bold whitespace-nowrap flex items-center gap-1"
                       >
-                        More
+                        {dict.nav.more}
                         <ChevronDownIcon className="h-4 w-4" />
                       </button>
                     </div>
@@ -524,7 +539,7 @@ export default function Navbar({
                                 : "text-gray-900 hover:text-blue-700"
                             }`}
                           >
-                            More
+                            {dict.nav.more}
                             <ChevronDownIcon
                               className={`h-4 w-4 transition-transform ${
                                 showMoreMenu ? "rotate-180" : ""
@@ -564,17 +579,19 @@ export default function Navbar({
               </div>
             </div>
 
-            {/* 右侧：用户菜单与多语言 (始终在顶部显示) */}
-            <div className="flex space-x-4 text-lg items-center gap-2 sm:gap-4 shrink-0">
+            <div className={mode ? "flex text-lg items-center gap-1 sm:gap-4 shrink-0" : "flex space-x-4 text-lg items-center gap-2 sm:gap-4 shrink-0"}>
+              <ContestInterfaceSwitch />
               <ClarificationNotifications />
               <button
                 onClick={toggleLanguage}
                 className="p-2 text-gray-500 hover:text-blue-600 transition-colors rounded-full hover:bg-gray-100 cursor-pointer"
-                title="Switch Language"
+                title={dict.nav.switchLanguage}
+                aria-label={dict.nav.switchLanguage}
+                lang={lang === "zh" ? "en" : "zh-CN"}
               >
                 <div className="flex items-center text-sm font-bold gap-1">
                   <LanguageIcon className="w-5 h-5" />
-                  <span>{lang === "zh" ? "中" : "EN"}</span>
+                  <span>{lang === "zh" ? "EN" : "中文"}</span>
                 </div>
               </button>
 
@@ -618,13 +635,13 @@ export default function Navbar({
                   onClick={handleExternalLoginOpen}
                   className="px-3 py-2 text-sm font-bold rounded-sm border border-gray-300 text-gray-700 hover:bg-gray-50 cursor-pointer"
                 >
-                  外部登录
+                  {dict.nav.externalLogin}
                 </button>
               ) : null}
             </div>
           </div>
         </div>
-      </nav>
+      </nav>}
 
       {isMobileMenuOpen && (
         <div
@@ -633,7 +650,7 @@ export default function Navbar({
         />
       )}
 
-      <div
+      {!domjudge && <div
         className={`fixed top-0 left-0 bottom-0 w-64 bg-white z-50 shadow-2xl transform transition-transform duration-300 ease-in-out md:hidden flex flex-col ${
           isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
@@ -642,6 +659,7 @@ export default function Navbar({
           <span className="font-bold text-xl font-serif">{siteName}</span>
           <button
             onClick={() => setIsMobileMenuOpen(false)}
+            aria-label={dict.nav.closeMenu}
             className="p-2 text-gray-500 hover:bg-gray-100 rounded-full"
           >
             <XMarkIcon className="w-6 h-6" />
@@ -763,8 +781,13 @@ export default function Navbar({
             </>
           )}
         </div>
-      </div>
+      </div>}
 
+      {domjudge && submitOpen && <DomjudgeSubmit contest={domjudge}
+        initialProblem={domjudge.problems.find(item =>
+          pathname === `/contest/${domjudge.id}/problems/${encodeURIComponent(item.displayId)}` ||
+          (pathname === `/contest/${domjudge.id}/submit` && searchParams.get("problem") === item.displayId)
+        )?.displayId} onClose={() => setSubmitOpen(false)} />}
       {showAdminLogin && (
         <AdminLoginModal onClose={() => setShowAdminLogin(false)} />
       )}

@@ -1,6 +1,8 @@
 "use server";
 
 import { requireContestAccess } from "@/lib/contest-access";
+import { getDictionary } from "@/lib/get-dictionary";
+import { formatMessage } from "@/lib/dictionaries";
 
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { ContestRole, PrintJobStatus } from "@/lib/generated/prisma/client";
@@ -25,7 +27,7 @@ async function requirePrintManager(contestId: number) {
       payload.role === ContestRole.PRINT);
 
   if (!isContestStaff && !superAdmin?.isGlobalAdmin) {
-    throw new Error("Only contest staff can manage print jobs.");
+    throw new Error((await getDictionary()).print.manageDenied);
   }
 }
 
@@ -41,27 +43,28 @@ export async function createPrintJob(
   sourceFilename?: string,
 ) {
   await requireContestAccess(contestId);
+  const { print } = await getDictionary();
   try {
     const payload = await getCurrentUser();
-    if (!payload) return { error: "Please sign in before printing." };
+    if (!payload) return { error: print.signIn };
     if (payload.contestId !== contestId || payload.role !== ContestRole.TEAM) {
-      return { error: "Only contest teams can request code printing." };
+      return { error: print.teamRequired };
     }
 
     const filename = sourceFilename?.trim() || "pasted-code.txt";
     if (sourceFilename && !getAllowedExtension(filename)) {
       return {
-        error: `Only ${ALLOWED_PRINT_EXTENSIONS.join(", ")} files can be printed.`,
+        error: formatMessage(print.allowedError, { extensions: ALLOWED_PRINT_EXTENSIONS.join(", ") }),
       };
     }
 
     const trimmedCode = code.trimEnd();
-    if (!trimmedCode.trim()) return { error: "Code is empty." };
+    if (!trimmedCode.trim()) return { error: print.emptyCode };
     if (trimmedCode.includes("\0")) {
-      return { error: "Binary files cannot be printed." };
+      return { error: print.binaryFile };
     }
     if (trimmedCode.length > MAX_PRINT_CHARS) {
-      return { error: "Code is too long to print." };
+      return { error: print.codeTooLong };
     }
 
     await prisma.printJob.create({
@@ -77,10 +80,8 @@ export async function createPrintJob(
     revalidatePath(`/contest/${contestId}/print`);
     return { ok: true };
   } catch (error) {
-    return {
-      error:
-        error instanceof Error ? error.message : "Failed to create print job.",
-    };
+    console.error("Could not create print job", error);
+    return { error: print.createFailed };
   }
 }
 

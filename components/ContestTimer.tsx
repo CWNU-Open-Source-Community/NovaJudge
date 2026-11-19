@@ -1,24 +1,35 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { faClock } from "@fortawesome/free-solid-svg-icons";
 import { ClockIcon } from "@heroicons/react/24/outline";
+import DomjudgeIcon from "./contest/DomjudgeIcon";
+import { useLanguage } from "@/context/LanguageContext";
+import { formatMessage } from "@/lib/dictionaries";
 
 interface Props {
   startTime: string | Date;
   endTime: string | Date;
   frozenDuration?: number;
   endedLabel?: string;
+  domjudgeState?: { started: boolean; ended: boolean };
 }
 
 export default function ContestTimer({
   startTime,
   endTime,
-  frozenDuration,
-  endedLabel = "Contest Ended",
+  frozenDuration = 0,
+  endedLabel,
+  domjudgeState,
 }: Props) {
+  const { dict } = useLanguage();
+  const router = useRouter();
   const start = new Date(startTime).getTime();
   const end = new Date(endTime).getTime();
   const duration = end - start;
+  const refreshAt = domjudgeState && !domjudgeState.ended
+    ? (domjudgeState.started ? end : start) : Infinity;
 
   // 【优化】初始值为 null，代表未挂载/服务端状态
   const [now, setNow] = useState<number | null>(null);
@@ -29,17 +40,49 @@ export default function ContestTimer({
     setNow(Date.now());
 
     // 启动定时器
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    let nextRefresh = refreshAt;
+    const timer = setInterval(() => {
+      const time = Date.now();
+      setNow(time);
+      if (time >= nextRefresh) {
+        // The worker may publish the new contest status shortly after the clock boundary.
+        nextRefresh = time + 30_000;
+        router.refresh();
+      }
+    }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [refreshAt, router]);
 
   // 计算封榜线的百分比位置
   let frozenPercentage = 0;
-  if (frozenDuration! > 0) {
-    const frozenTime = end - frozenDuration! * 60 * 1000; // 结束时间 - 分钟数
+  if (frozenDuration > 0) {
+    const frozenTime = end - frozenDuration * 60 * 1000; // 结束时间 - 分钟数
     if (frozenTime > start && frozenTime < end) {
       frozenPercentage = ((frozenTime - start) / duration) * 100;
     }
+  }
+
+  if (domjudgeState) {
+    const ended = domjudgeState.ended || (now !== null && now >= end);
+    const upcoming = !ended && !domjudgeState.started;
+    const seconds = now === null ? 0 : Math.max(0, Math.ceil(((upcoming ? start : end) - now) / 1000));
+    const time = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
+      .map(part => String(part).padStart(2, "0")).join(":");
+    const label = ended ? "contest over" : upcoming ? "starts in" : "time left";
+    const percent = now !== null && end > start ? Math.max(0, Math.min(100, (now - start) * 100 / duration)) : 0;
+    return (
+      <div className="dj-clock" title={label}>
+        <DomjudgeIcon icon={faClock} />
+        {upcoming && <span>{label}</span>}
+        <span role="timer" aria-label={label}>{ended ? label : now === null ? "––:––:––" : time}</span>
+        {now !== null && !upcoming && !ended && (
+          <div className="dj-progress" role="progressbar" aria-label={dict.contest.elapsed}
+            aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(percent)}>
+            <div style={{ width: `${percent}%` }} />
+          </div>
+        )}
+      </div>
+    );
   }
 
   if (now === null) {
@@ -59,7 +102,7 @@ export default function ContestTimer({
       <div className="flex items-center gap-2 text-blue-600 font-mono font-bold bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
         <ClockIcon className="w-5 h-5" />
         <span>
-          Begin To Starts {hours}h {minutes}m {seconds}s
+          {formatMessage(dict.contest.startsIn, { hours, minutes, seconds })}
         </span>
       </div>
     );
@@ -69,7 +112,7 @@ export default function ContestTimer({
   if (now > end) {
     return (
       <div className="flex items-center gap-2 text-gray-500 font-bold bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200">
-        <span>{endedLabel}</span>
+        <span>{endedLabel ?? dict.contest.ENDED}</span>
       </div>
     );
   }
@@ -97,12 +140,13 @@ export default function ContestTimer({
   // 格式化流逝时间 (Elapsed)
   const eHours = Math.floor(elapsed / 3600000);
   const eMinutes = Math.floor((elapsed % 3600000) / 60000);
+  const freezeLabel = formatMessage(dict.contest.freezesBeforeEnd, { minutes: frozenDuration });
 
   return (
     <div className="flex flex-col w-full">
       <div className="flex justify-between text-base font-medium text-gray-600 mb-1">
         <span>
-          Elapsed: {eHours}:{eMinutes.toString().padStart(2, "0")}
+          {dict.contest.elapsed} {eHours}:{eMinutes.toString().padStart(2, "0")}
         </span>
         <span className="text-red-600 font-mono">
           -{rHours}:{rMinutes.toString().padStart(2, "0")}:
@@ -120,22 +164,10 @@ export default function ContestTimer({
           <div
             className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 hover:w-1 transition-all cursor-help"
             style={{ left: `${frozenPercentage}%` }}
-            title={`Scoreboard freezes ${frozenDuration} mins before end`}
+            title={freezeLabel}
           />
         )}
       </div>
-      {/* 封榜提示 Tooltip (Hover 时显示) */}
-      {frozenPercentage > 0 && (
-        <div
-          className="absolute -bottom-8 bg-black text-white text-sm px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none"
-          style={{
-            left: `${frozenPercentage}%`,
-            transform: "translateX(-50%)",
-          }}
-        >
-          Freeze: {frozenDuration}m before end
-        </div>
-      )}
     </div>
   );
 }

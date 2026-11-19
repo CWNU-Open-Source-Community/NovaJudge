@@ -2,6 +2,9 @@
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useLanguage } from "@/context/LanguageContext";
+import { useContestInterface } from "./contest/ContestInterface";
+import { notifyContestant } from "@/lib/domjudge-notifications";
 
 export default function ContestNoticeSniffer({
   contestId,
@@ -9,6 +12,9 @@ export default function ContestNoticeSniffer({
   contestId: number;
 }) {
   const router = useRouter();
+  const mode = useContestInterface();
+  const teamInterface = mode !== null;
+  const { dict: { clarifications } } = useLanguage();
 
   useEffect(() => {
     const checkNotice = async () => {
@@ -22,12 +28,19 @@ export default function ContestNoticeSniffer({
           const lastSeenId = localStorage.getItem(storageKey);
 
           if (!lastSeenId || parseInt(lastSeenId) < latest.id) {
-            toast.info("📢 裁判发布了新公告", {
+            if (mode === "domjudge") {
+              if (lastSeenId) notifyContestant("New clarification", latest.title ?? "Contest announcement",
+                `/contest/${contestId}/clarifications/${latest.id}`);
+              localStorage.setItem(storageKey, String(latest.id));
+              return;
+            }
+            toast.info(`📢 ${clarifications.newAnnouncement}`, {
               description: latest.title,
-              position: "top-right",
+              position: teamInterface ? "bottom-right" : "top-right",
+              closeButton: teamInterface,
               duration: Infinity,
               action: {
-                label: "前往查看",
+                label: clarifications.viewAnnouncement,
                 onClick: () => {
                   router.push(`/contest/${contestId}/clarifications`);
                 },
@@ -46,7 +59,7 @@ export default function ContestNoticeSniffer({
 
     const interval = setInterval(checkNotice, 15000);
     return () => clearInterval(interval);
-  }, [contestId, router]);
+  }, [clarifications, contestId, mode, router, teamInterface]);
 
   return null;
 }

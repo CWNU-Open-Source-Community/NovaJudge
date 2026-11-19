@@ -349,6 +349,33 @@ test("CCS contest access requires current proctoring proof in addition to the pr
   assert.equal(await validate?.(), false);
 });
 
+test("problemset files respect private access and the contest start even when addressed directly", async () => {
+  let allowed = false;
+  let admin = false;
+  const contest = { status: "RUNNING", startTime: new Date(Date.now() + 3600000) };
+  let contestReads = 0;
+  let fileReads = 0;
+  const route = loadModule<{ GET(req: Request, context: { params: Promise<{ contestId: string; file: string }> }): Promise<Response> }>(
+    "app/api/contests/[contestId]/problemset/[file]/route.ts", {
+      "@/lib/contest-access": { contestAccessResponse: async () => allowed ? null : new Response(null, { status: 403 }) },
+      "@/lib/auth": { getCurrentSuper: async () => ({ isGlobalAdmin: admin }) },
+      "@/lib/contest-statements": { openContestStatement: async () => { fileReads++; return null; } },
+      "@/lib/prisma": { prisma: { contest: { findUnique: async () => { contestReads++; return contest; } } } },
+    }, { URL });
+  const download = (file: string) => route.GET(new Request("https://example.test/" + file), { params: Promise.resolve({ contestId: "1001", file }) });
+  for (const file of ["statement.pdf", "samples.zip"]) assert.equal((await download(file)).status, 403);
+  assert.equal(contestReads, 0);
+  allowed = true;
+  for (const file of ["statement.pdf", "samples.zip"]) assert.equal((await download(file)).status, 404);
+  contest.startTime = new Date(0);
+  contest.status = "PENDING";
+  assert.equal((await download("statement.pdf")).status, 404);
+  assert.equal(fileReads, 0);
+  admin = true;
+  await download("statement.pdf");
+  assert.equal(fileReads, 1);
+});
+
 test("contest and problem archives reject revoked administrator sessions before accessing protected storage", async () => {
   for (const filename of [
     "app/api/contests/import/route.ts", "app/api/contests/export/route.ts",
@@ -413,8 +440,8 @@ test("an open submission stream stops before reading new progress after password
     "@/lib/redis": { redis: { get: async () => { progressReads++; return null; } } },
     "@/lib/submission-visibility": { canViewSubmissionTestDetails: async () => true },
   }, {
-    setInterval: (callback: () => Promise<void>) => { poll = callback; return 1; },
-    clearInterval: () => {},
+    setTimeout: (callback: () => Promise<void>) => { poll = callback; return 1; },
+    clearTimeout: () => {},
   });
   const response = await route.GET(new NextRequest("https://example.test/api/submission/id/stream", {
     headers: { cookie: `contest_access_1001=${token}` },
