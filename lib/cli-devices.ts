@@ -7,6 +7,7 @@ import { hasContestAccess } from "@/lib/contest-access";
 import { matchesContestPassword, signContestAccessToken, verifyContestAccessToken } from "@/lib/contest-access-token";
 import { getPrimaryClientIp } from "@/lib/request-ip";
 import { createContestSubmission } from "@/lib/contest-submission";
+import { AccountRateLimitError, enforceAccountRateLimit } from "@/lib/account-rate-limit";
 import { enforceCliRateLimit } from "@/lib/cli-rate-limit";
 import { lockCliSettings } from "@/lib/cli-settings-lock";
 import { assertCliEnabled, isCliEnabled } from "@/lib/cli-deployment";
@@ -42,6 +43,11 @@ export function cliErrorResponse(error: unknown) {
   if (error instanceof CliDeviceError) {
     const response = cliJson({ error: error.message, code: error.code }, error.status);
     if (error.status === 429) response.headers.set("Retry-After", "60");
+    return response;
+  }
+  if (error instanceof AccountRateLimitError) {
+    const response = cliJson({ error: error.message, code: "RATE_LIMITED" }, 429);
+    response.headers.set("Retry-After", String(error.retryAfterSeconds));
     return response;
   }
   if (error instanceof SyntaxError) return cliJson({ error: "Invalid JSON request.", code: "INVALID_JSON" }, 400);
@@ -304,7 +310,7 @@ export async function submitCliDevice(request: Request, body: Record<string, unk
       }),
     });
   } catch (error) {
-    if (error instanceof CliDeviceError) throw error;
+    if (error instanceof CliDeviceError || error instanceof AccountRateLimitError) throw error;
     throw new CliDeviceError(error instanceof Error ? error.message : "Submission failed.", 400, "SUBMISSION_REJECTED");
   }
   return { success: true, submission, statusUrl: `/contest/${device.contestId}/status/${submission.displayId}` };
@@ -338,6 +344,7 @@ export async function getCliPrintContext(request: Request) {
 export async function printCliDevice(request: Request, body: Record<string, unknown>) {
   const initial = await monitoredPrintDevice(request);
   const file = validatePrintFile(body);
+  await enforceAccountRateLimit("print", initial.user.id);
   return prisma.$transaction(async (tx) => {
     // Serialize against the administrator's CLI contest switch and re-read
     // grants, private contest access and team identity immediately before write.

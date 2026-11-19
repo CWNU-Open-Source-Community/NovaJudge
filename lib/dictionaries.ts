@@ -334,6 +334,7 @@ export const en = {
   submissionErrors: {
     signInRequired: "Sign in before submitting.",
     invalidSource: "Select a non-empty source file and a supported language.",
+    rateLimited: "Each account can submit up to 10 times in 60 seconds. Please try again shortly.",
     teamRequired: "Only teams in this contest can submit code.",
     problemNotFound: "This problem does not belong to the contest.",
     passwordRequired: "Enter the contest password before submitting.",
@@ -503,6 +504,7 @@ export const en = {
     teamRequired: "Only teams in this contest can request a print.",
     emptyCode: "The source file is empty.",
     codeTooLong: "The source code is too long to print.",
+    rateLimited: "Each account can send up to {limit} print requests per minute. Try again in {seconds}s.",
     createFailed: "Could not send the print request. Try again.",
     historyFailed: "Could not load print requests.",
     reasonText: "Reason: {reason}",
@@ -900,6 +902,7 @@ export const zh: typeof en = {
   submissionErrors: {
     signInRequired: "请先登录再提交。",
     invalidSource: "请选择非空的源代码文件和支持的语言。",
+    rateLimited: "每个账号在 60 秒内最多提交 10 次，请稍后再试。",
     teamRequired: "仅本场比赛的参赛队伍可以提交代码。",
     problemNotFound: "该题目不属于本场比赛。",
     passwordRequired: "请先输入比赛密码。",
@@ -1069,6 +1072,7 @@ export const zh: typeof en = {
     teamRequired: "只有本场比赛的参赛队伍可以发起打印请求。",
     emptyCode: "源代码文件为空。",
     codeTooLong: "源代码过长，无法打印。",
+    rateLimited: "每个账号每分钟最多提交 {limit} 次打印请求，请在 {seconds} 秒后重试。",
     createFailed: "无法发送打印请求，请重试。",
     historyFailed: "无法读取打印请求。",
     reasonText: "原因：{reason}",

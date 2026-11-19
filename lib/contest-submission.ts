@@ -8,6 +8,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import type { Dictionary } from "@/lib/dictionaries";
 import { enqueueJudge } from "@/lib/queue";
+import { enforceAccountRateLimit } from "@/lib/account-rate-limit";
 import { redis } from "@/lib/redis";
 import { getJwtSecretKey } from "@/lib/auth";
 import { hasContestAccess } from "@/lib/contest-access";
@@ -58,6 +59,11 @@ async function withTimeout<T>(
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+}
+
+export function enforceSubmissionRateLimit(actor: SubmissionActor) {
+  const accountId = actor.type === "contest" ? actor.userId : actor.globalUserId;
+  return enforceAccountRateLimit("submission", accountId, actor.type);
 }
 
 async function getNextDisplayId(contestId: number) {
@@ -201,6 +207,7 @@ export async function createContestSubmission({
     }
   }
 
+  await enforceSubmissionRateLimit(actor);
   const nextId = await getNextDisplayId(contestId);
 
   const submissionData: Prisma.SubmissionUncheckedCreateInput = {

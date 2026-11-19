@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { createContestSubmission } from "@/lib/contest-submission";
+import { AccountRateLimitError } from "@/lib/account-rate-limit";
 import { prisma } from "@/lib/prisma";
 import { cliContestAccessResponse } from "../contest-access";
 import { assertCliEnabled } from "@/lib/cli-deployment";
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
       statusUrl: `/contest/${contestId}/status/${submission.displayId}`,
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
-    if (error instanceof CliDeviceError) return cliErrorResponse(error);
+    if (error instanceof CliDeviceError || error instanceof AccountRateLimitError) return cliErrorResponse(error);
     const message =
       error instanceof Error ? error.message : "Internal server error";
     const status =

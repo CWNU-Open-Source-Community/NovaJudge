@@ -6,6 +6,7 @@ import { usesDomjudge } from "@/lib/contest-interface";
 import { getCurrentSuper, getCurrentUser } from "@/lib/auth";
 import { ContestRole } from "@/lib/generated/prisma/client";
 import { ContestSubmissionError, createContestSubmission } from "@/lib/contest-submission";
+import { AccountRateLimitError } from "@/lib/account-rate-limit";
 import type { Dictionary } from "@/lib/dictionaries";
 import { contestLanguages } from "@/lib/contest-languages";
 import { revalidatePath } from "next/cache";
@@ -60,7 +61,7 @@ async function saveSolution(
           },
     });
   } catch (error) {
-    if (error instanceof ContestSubmissionError) return { error: error.code };
+    if (error instanceof ContestSubmissionError || error instanceof AccountRateLimitError) return { error: error.code };
     console.error("Could not submit contest code", error);
     return { error: "failed" };
   }

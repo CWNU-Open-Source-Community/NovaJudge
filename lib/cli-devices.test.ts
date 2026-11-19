@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import { NextRequest, NextResponse } from "next/server";
+import Redis from "ioredis";
 import ts from "typescript";
 import * as policy from "./cli-device-policy";
 import * as printPolicy from "./print-file-policy";
+import { formatMessage, zh } from "./dictionaries";
 import * as grants from "./contest-access-token";
 import { decodeJwt } from "jose";
 import { lockCliSettings } from "./cli-settings-lock";
@@ -36,6 +38,29 @@ function loadModule<T>(filename: string, dependencies: Record<string, unknown>, 
   return exports as T;
 }
 
+function loadAccountRateLimit(connection: Pick<Redis, "eval">) {
+  return loadModule<typeof import("./account-rate-limit")>("lib/account-rate-limit.ts", {
+    "@/lib/queue": { judgeQueueConnection: connection },
+  });
+}
+
+const accountRateLimit = loadAccountRateLimit({ eval: async () => 0 });
+
+function loadSubmissionService(dependencies: Record<string, unknown>) {
+  return loadModule<typeof import("./contest-submission")>("lib/contest-submission.ts", {
+    "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" }, ContestStatus: { ENDED: "ENDED" }, Verdict: { PENDING: "PENDING", SYSTEM_ERROR: "SYSTEM_ERROR" } },
+    "@/lib/prisma": {},
+    "@/lib/queue": {},
+    "@/lib/account-rate-limit": accountRateLimit,
+    "@/lib/redis": {},
+    "@/lib/auth": { getJwtSecretKey: () => secret },
+    "@/lib/contest-access": { hasContestAccess: async () => true },
+    "@/lib/contest-access-token": grants,
+    "@/lib/virtual-participation": {},
+    ...dependencies,
+  });
+}
+
 type Service = typeof import("./cli-devices");
 type TestContest = { id: number; title: string; type: string; password: string | null };
 type TestUser = { id: string; contestId: number; username: string; displayName: string; password: string; role: string; proctoringKeyHash: string | null };
@@ -45,7 +70,7 @@ type TestDevice = {
   proctoringKeyHash: string | null;
 };
 
-function harness(privateContest = false) {
+function harness(privateContest = false, rateLimit = accountRateLimit) {
   const contest: TestContest = { id: 2, title: "Secret contest title", type: privateContest ? "PRIVATE" : "PUBLIC", password: privateContest ? "contest secret" : null };
   const user: TestUser = { id: "team-id", contestId: 2, username: "team", displayName: "Test team", password: "stored-hash", role: "TEAM", proctoringKeyHash: null };
   const device: TestDevice = {
@@ -127,6 +152,7 @@ function harness(privateContest = false) {
     "@/lib/contest-access": { hasContestAccess: async () => state.grantsAllowed },
     "@/lib/contest-access-token": grants,
     "@/lib/request-ip": { getPrimaryClientIp: () => "127.0.0.1" },
+    "@/lib/account-rate-limit": rateLimit,
     "@/lib/contest-submission": { createContestSubmission: async (input: Record<string, unknown>) => {
       state.beforePersistence?.();
       const persist = input.persistSubmission as (data: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -143,7 +169,7 @@ function harness(privateContest = false) {
     "@/lib/cli-rate-limit": { enforceCliRateLimit: async () => {} },
     "@/lib/cli-settings-lock": { lockCliSettings },
   });
-  return { service, state, user, contest, device };
+  return { service, state, user, contest, device, db };
 }
 
 const request = (token = validToken) => new Request(`${base}/api/cli/device`, { headers: { authorization: `Bearer ${token}` } });
@@ -152,8 +178,8 @@ const proctoringRequest = (headers: Record<string, string> = {}) => new Request(
   method: "POST", headers: { "content-type": "application/json", authorization: "Bearer monitored-jwt", [proctoring.PROCTORING_HEADER]: proctoringProof, ...headers }, body: "{}",
 });
 
-async function monitoredPrintHarness(privateContest = false) {
-  const fixture = harness(privateContest);
+async function monitoredPrintHarness(privateContest = false, rateLimit = accountRateLimit) {
+  const fixture = harness(privateContest, rateLimit);
   fixture.user.proctoringKeyHash = proctoring.proctoringKeyHash(proctoringProof);
   fixture.device.proctoringKeyHash = fixture.user.proctoringKeyHash;
   fixture.device.userId = fixture.user.id;
@@ -190,6 +216,57 @@ test("printfile appends to the existing print queue using server identity and in
   assert.equal("previewUrl" in result, false);
   assert.deepEqual(JSON.parse(JSON.stringify(state.printJobs)), [{ contestId: 2, userId: "team-id", ...printBody, language: "cpp" }]);
   assert.match(state.locks[0], /pg_advisory_xact_lock_shared/);
+});
+
+test("printfile and web print requests share ten slots per team, independently of judging", { skip: !process.env.REDIS_URL }, async () => {
+  const redis = new Redis(process.env.REDIS_URL!, { maxRetriesPerRequest: 1, commandTimeout: 3000 });
+  try {
+    const rateLimit = loadAccountRateLimit(redis);
+    const { service, state, user, device, db } = await monitoredPrintHarness(false, rateLimit);
+    user.id = randomUUID();
+    device.userId = user.id;
+    const cli = loadModule<typeof import("../app/api/cli/device/print/route")>("app/api/cli/device/print/route.ts", {
+      "@/lib/cli-devices": service, "@/lib/print-file-policy": printPolicy, "@/lib/cli-deployment": { assertCliEnabled() {} },
+    });
+    const web = loadModule<typeof import("../app/(main)/contest/[contestId]/print/actions")>("app/(main)/contest/[contestId]/print/actions.ts", {
+      "@/lib/account-rate-limit": rateLimit,
+      "@/lib/contest-access": { requireContestAccess: async () => {} },
+      "@/lib/get-dictionary": { getDictionary: async () => zh },
+      "@/lib/dictionaries": { formatMessage },
+      "@/lib/auth": { getCurrentUser: async () => ({ userId: user.id, role: user.role, contestId: user.contestId }) },
+      "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" } },
+      "@/lib/prisma": { prisma: db }, "next/cache": { revalidatePath() {} },
+    });
+    const printFromCli = () => cli.POST(new Request(`${base}/api/cli/device/print`, {
+      method: "POST", headers: { authorization: `Bearer ${validToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ ...printBody, userId: randomUUID() }),
+    }));
+    const printFromWeb = () => web.createPrintJob(user.contestId, "cpp", printBody.code, printBody.sourceFilename);
+
+    const [cliResults, webResults] = await Promise.all([
+      Promise.all(Array.from({ length: 10 }, printFromCli)),
+      Promise.all(Array.from({ length: 10 }, printFromWeb)),
+    ]);
+    assert.equal(cliResults.filter(r => r.ok).length + webResults.filter(r => r.ok).length, 10);
+    assert.equal(state.printJobs.length, 10);
+
+    const blocked = await printFromCli();
+    assert.equal(blocked.status, 429);
+    assert.equal((await blocked.json()).code, "RATE_LIMITED");
+    const wait = Number(blocked.headers.get("Retry-After"));
+    assert(wait >= 1 && wait <= 60);
+    assert.match((await printFromWeb()).error ?? "", /10 次打印请求，请在 \d+ 秒后重试/);
+    assert.equal(state.printJobs.length, 10);
+    assert.equal((await cli.GET(request())).status, 200);
+    await rateLimit.enforceAccountRateLimit("submission", user.id);
+
+    user.id = randomUUID();
+    device.userId = user.id;
+    assert.equal((await printFromCli()).status, 200);
+    assert.equal(state.printJobs.length, 11);
+  } finally {
+    redis.disconnect();
+  }
 });
 
 test("ordinary browser and pending devices cannot print or spoof a monitored login", async () => {
@@ -377,6 +454,7 @@ test("public deployment blocks legacy CLI APIs and installer downloads before cr
     "@/lib/contest-access-token": grants,
     "@/lib/request-ip": {},
     "@/lib/contest-submission": {},
+    "@/lib/account-rate-limit": accountRateLimit,
     "@/lib/cli-settings-lock": { lockCliSettings },
     "../contest-access": {},
     "@/lib/cli-devices": service,
@@ -718,6 +796,7 @@ test("submissions use the server's bound contest and user; contest changes requi
 
 test("legacy CLI submission links use the contest display ID rather than the database UUID", async () => {
   const submission = { id: "554902db-2c7c-4fde-adc7-44539171f0cb", displayId: 73 };
+  let rateLimited = false;
   const route = loadModule<typeof import("../app/api/cli/submit/route")>("app/api/cli/submit/route.ts", {
     "@/lib/cli-deployment": { assertCliEnabled() {} },
     "@/lib/cli-devices": { ...harness().service, assertActiveCliContest: async () => {} },
@@ -725,18 +804,43 @@ test("legacy CLI submission links use the contest display ID rather than the dat
     "next/server": { NextResponse },
     "@/lib/auth": { verifyAuth: async () => ({ userId: "team-id", contestId: 2, role: "TEAM" }) },
     "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" } },
-    "@/lib/contest-submission": { createContestSubmission: async () => submission },
+    "@/lib/account-rate-limit": accountRateLimit,
+    "@/lib/contest-submission": { createContestSubmission: async () => {
+      if (rateLimited) throw new accountRateLimit.AccountRateLimitError("submission", 17);
+      return submission;
+    } },
     "@/lib/prisma": { prisma: { user: { findUnique: async () => ({ id: "team-id", contestId: 2, role: "TEAM" }) } } },
     "../contest-access": { cliContestAccessResponse: async () => null },
   });
-  const response = await route.POST(new Request(`${base}/api/cli/submit`, {
+  const submit = () => route.POST(new Request(`${base}/api/cli/submit`, {
     method: "POST", headers: { authorization: "Bearer legacy-token", "content-type": "application/json" },
     body: JSON.stringify({ problem: "A", language: "cpp", code: "int main(){}" }),
   }));
+  const response = await submit();
   assert.equal(response.status, 200);
   const result = await response.json();
   assert.equal(result.submission.id, submission.id);
   assert.equal(result.statusUrl, "/contest/2/status/73");
+  rateLimited = true;
+  const limited = await submit();
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers.get("Retry-After"), "17");
+  assert.equal((await limited.json()).code, "RATE_LIMITED");
+});
+
+test("the device CLI returns the submission retry time before persistence", async () => {
+  const { service, state } = harness();
+  await service.approveCliDevice(request(), approvalBody);
+  state.beforePersistence = () => { throw new accountRateLimit.AccountRateLimitError("submission", 23); };
+  const route = loadModule<typeof import("../app/api/cli/device/submit/route")>("app/api/cli/device/submit/route.ts", { "@/lib/cli-devices": service });
+  const response = await route.POST(new Request(`${base}/api/cli/device/submit`, {
+    method: "POST", headers: { authorization: `Bearer ${validToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ problem: "A", language: "cpp", code: "int main(){}" }),
+  }));
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("Retry-After"), "23");
+  assert.equal((await response.json()).code, "RATE_LIMITED");
+  assert.equal(state.persisted.length, 0);
 });
 
 test("legacy JWT submissions obey the selected contest and recheck it before persistence", async () => {
@@ -756,6 +860,7 @@ test("legacy JWT submissions obey the selected contest and recheck it before per
       "next/server": { NextResponse },
       "@/lib/cli-deployment": { assertCliEnabled: () => {} },
       "@/lib/cli-devices": service,
+      "@/lib/account-rate-limit": accountRateLimit,
       "@/lib/auth": { verifyAuth: async () => ({ userId: "team-id", contestId: 2, role: "TEAM" }) },
       "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" } },
       "@/lib/prisma": { prisma: db },
@@ -887,15 +992,42 @@ test("admin settings reject unauthenticated requests without querying or changin
   assert.equal((await route.PUT(new Request(`${base}/api/admin/cli-settings`, { method: "PUT", body: "{}" }))).status, 401);
 });
 
+test("each account gets ten concurrent submissions per rolling minute", { skip: !process.env.REDIS_URL }, async () => {
+  const redis = new Redis(process.env.REDIS_URL!, { maxRetriesPerRequest: 1, commandTimeout: 3000 });
+  const { enforceSubmissionRateLimit } = loadSubmissionService({ "@/lib/account-rate-limit": loadAccountRateLimit(redis) });
+  const team = { type: "contest" as const, userId: randomUUID(), role: "TEAM" };
+  const key = `submission:rate:contest:${team.userId}`;
+  try {
+    const attempts = await Promise.allSettled(Array.from({ length: 20 }, () => enforceSubmissionRateLimit(team)));
+    assert.equal(attempts.filter(attempt => attempt.status === "fulfilled").length, 10);
+    for (const attempt of attempts) {
+      if (attempt.status === "rejected") {
+        assert.equal(attempt.reason.code, "rateLimited");
+        assert(attempt.reason.retryAfterSeconds > 0 && attempt.reason.retryAfterSeconds <= 60);
+      }
+    }
+    await enforceSubmissionRateLimit({ ...team, userId: randomUUID() });
+    await enforceSubmissionRateLimit({ type: "global", globalUserId: team.userId });
+
+    // Age just the oldest admission. Exactly one slot should reopen.
+    const [seconds, micros] = await redis.time();
+    await redis.lset(key, -1, Number(seconds) * 1000 + Math.floor(Number(micros) / 1000) - 60_000);
+    await enforceSubmissionRateLimit(team);
+    await assert.rejects(enforceSubmissionRateLimit(team), { code: "rateLimited" });
+  } finally {
+    redis.disconnect();
+  }
+});
+
 test("ordinary web submissions keep their default persistence and judge only after an optional transaction commits", async () => {
   const events: string[] = [];
+  let retryAfter = 0;
   const saved: Submission = {
     id: "saved", displayId: 1, contestId: 2, problemId: 1, userId: "team-id", globalUserId: null, virtualParticipationId: null,
     language: "cpp", code: "int main(){}", codeLength: 12, verdict: "PENDING", errorMessage: null,
     passedTests: 0, totalTests: 0, timeUsed: null, memoryUsed: null, submittedAt: new Date(),
   };
-  const submissionService = loadModule<typeof import("./contest-submission")>("lib/contest-submission.ts", {
-    "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" }, ContestStatus: { ENDED: "ENDED" }, Verdict: { PENDING: "PENDING", SYSTEM_ERROR: "SYSTEM_ERROR" } },
+  const submissionService = loadSubmissionService({
     "@/lib/prisma": { prisma: {
       contestProblem: { findFirst: async () => ({ problemId: 1, problem: { title: "A+B" }, contest: {
         id: 2, type: "PUBLIC", config: null, startTime: new Date(Date.now() - 60_000), endTime: new Date(Date.now() + 60_000),
@@ -907,16 +1039,13 @@ test("ordinary web submissions keep their default persistence and judge only aft
         update: async () => { throw new Error("Unexpected judge failure update"); },
       },
     } },
+    "@/lib/account-rate-limit": loadAccountRateLimit({ eval: async () => retryAfter }),
     "@/lib/queue": { enqueueJudge: async () => { events.push("enqueue"); } },
-    "@/lib/redis": { redis: { incr: async () => 1 } },
-    "@/lib/auth": { getJwtSecretKey: () => secret },
-    "@/lib/contest-access": { hasContestAccess: async () => true },
-    "@/lib/contest-access-token": grants,
-    "@/lib/virtual-participation": {},
+    "@/lib/redis": { redis: { incr: async () => { events.push("display id"); return 1; } } },
   });
   const input = { contestId: 2, problemDisplayId: "A", language: "cpp", code: "int main(){}", actor: { type: "contest" as const, userId: "team-id", role: "TEAM" } };
   await submissionService.createContestSubmission(input);
-  assert.deepEqual(events, ["default insert", "enqueue"]);
+  assert.deepEqual(events, ["display id", "default insert", "enqueue"]);
   events.length = 0;
   await submissionService.createContestSubmission({ ...input, persistSubmission: async (data) => {
     assert.equal(data.contestId, 2);
@@ -926,12 +1055,16 @@ test("ordinary web submissions keep their default persistence and judge only aft
     events.push("transaction commit");
     return saved;
   } });
-  assert.deepEqual(events, ["transaction insert", "transaction commit", "enqueue"]);
+  assert.deepEqual(events, ["display id", "transaction insert", "transaction commit", "enqueue"]);
   events.length = 0;
   await assert.rejects(submissionService.createContestSubmission({ ...input, persistSubmission: async () => {
     throw new policy.CliDeviceError("Contest changed", 409, "CONTEST_CHANGED");
   } }), { code: "CONTEST_CHANGED" });
-  assert.deepEqual(events, [], "A rejected persistence hook must not write or enqueue.");
+  assert.deepEqual(events, ["display id"], "A rejected persistence hook must not write or enqueue.");
+  events.length = 0;
+  retryAfter = 12;
+  await assert.rejects(submissionService.createContestSubmission(input), { code: "rateLimited", retryAfterSeconds: 12 });
+  assert.deepEqual(events, [], "Rate-limited submissions must not allocate an ID, insert or enqueue.");
 });
 
 test("private deployment keeps external upsolving, account bans and virtual participation separate from official team submissions", async () => {
@@ -939,8 +1072,7 @@ test("private deployment keeps external upsolving, account bans and virtual part
   const contest = { id: 2, type: "PUBLIC", status: "ENDED", config: {}, startTime: new Date(Date.now() - 120_000), endTime: new Date(Date.now() - 60_000) };
   const account = { externalId: "external-id" as string | null, isBanned: false };
   let participation: { id: string } | null = null;
-  const submissionService = loadModule<typeof import("./contest-submission")>("lib/contest-submission.ts", {
-    "@/lib/generated/prisma/client": { ContestRole: { TEAM: "TEAM" }, ContestStatus: { ENDED: "ENDED" }, Verdict: { PENDING: "PENDING", SYSTEM_ERROR: "SYSTEM_ERROR" } },
+  const submissionService = loadSubmissionService({
     "@/lib/prisma": { prisma: {
       contestProblem: { findFirst: async () => ({ problemId: 1, problem: { title: "A+B" }, contest }) },
       globalUser: { findUnique: async () => account },
@@ -953,9 +1085,6 @@ test("private deployment keeps external upsolving, account bans and virtual part
     } },
     "@/lib/queue": { enqueueJudge: async () => {} },
     "@/lib/redis": { redis: { incr: async () => 2 } },
-    "@/lib/auth": { getJwtSecretKey: () => secret },
-    "@/lib/contest-access": { hasContestAccess: async () => true },
-    "@/lib/contest-access-token": grants,
     "@/lib/virtual-participation": { getRunningVirtualParticipation: async () => participation, isVpEnabled: () => true },
   });
   const input = { contestId: 2, problemDisplayId: "A", language: "cpp", code: "int main(){}", actor: { type: "global" as const, globalUserId: "global-id" } };

@@ -1,6 +1,7 @@
 "use server";
 
 import { requireSuperAdmin } from "@/lib/admin-auth";
+import { enforceSubmissionRateLimit } from "@/lib/contest-submission";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { Verdict } from "@/lib/generated/prisma/enums";
@@ -20,6 +21,7 @@ export async function adminSubmit(
     // 2. 查找 Admin 的数据库 ID
     // 注意：Token 里存的是 userId，对于 Admin 来说就是 global_users 表的 ID
     const adminId = payload.userId;
+    await enforceSubmissionRateLimit({ type: "global", globalUserId: adminId });
 
     // 3. 创建提交记录
     const submission = await prisma.submission.create({

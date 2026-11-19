@@ -3,6 +3,7 @@
 import { requireContestAccess } from "@/lib/contest-access";
 import { getDictionary } from "@/lib/get-dictionary";
 import { formatMessage } from "@/lib/dictionaries";
+import { AccountRateLimitError, enforceAccountRateLimit, REQUESTS_PER_MINUTE } from "@/lib/account-rate-limit";
 
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
 import { ContestRole, PrintJobStatus } from "@/lib/generated/prisma/client";
@@ -67,6 +68,7 @@ export async function createPrintJob(
       return { error: print.codeTooLong };
     }
 
+    await enforceAccountRateLimit("print", payload.userId);
     await prisma.printJob.create({
       data: {
         contestId,
@@ -80,6 +82,9 @@ export async function createPrintJob(
     revalidatePath(`/contest/${contestId}/print`);
     return { ok: true };
   } catch (error) {
+    if (error instanceof AccountRateLimitError) {
+      return { error: formatMessage(print.rateLimited, { limit: REQUESTS_PER_MINUTE, seconds: error.retryAfterSeconds }) };
+    }
     console.error("Could not create print job", error);
     return { error: print.createFailed };
   }
