@@ -74,7 +74,7 @@ print(sum(map(int, input().split())))
 | Answer questions and post announcements | Open **Clarifications** in the contest. Signed-in contest `ADMIN` and `JUDGE` users receive pending-question alerts. |
 | Check judging and workers | Open **Judge Monitor** in the admin panel. If submissions keep waiting, check worker status first, then Redis and go-judge. |
 | Rejudge submissions | In contest **Status**, filter by problem, team, or verdict and preview the rejudge batch. Use **Submissions** in the admin panel for site-wide batch rejudging. |
-| Unfreeze and export results | Use contest **Rank** to unfreeze, export results, or open printable standings. Open the contest's **Awards** page in the admin panel to configure awards and export a Resolver Event Feed. |
+| Unfreeze and export results | Use contest **Rank** to unfreeze the standings and export results. Open the contest's **Awards** page in the admin panel to configure awards and export a Resolver Event Feed. |
 | Publish an editorial | Edit the contest and upload the write-up under **Editorial PDF**. |
 | Handle onsite tasks | Use **Balloon** to assign and complete deliveries and **Print Queue** to process team print requests. |
 

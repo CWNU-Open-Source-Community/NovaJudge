@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 export function problemColorStyle(value: string | null, theme: "novajudge" | "domjudge" = "novajudge") {
   const color = value?.trim();
   if (!color) return;
@@ -24,6 +26,11 @@ export function problemColorStyle(value: string | null, theme: "novajudge" | "do
   });
   const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
   return { backgroundColor: color, color: luminance > 0.179 ? "#000" : "#fff" };
+}
+
+export function scoreboardBadgeStyle(color: string | null): CSSProperties {
+  const badge = problemColorStyle(color || "#ffffff", "domjudge");
+  return { "--badge-bg": badge?.backgroundColor, "--badge-fg": badge?.color, "--badge-border": badge?.borderColor } as CSSProperties;
 }
 
 export function attemptsLabel(count: number) {

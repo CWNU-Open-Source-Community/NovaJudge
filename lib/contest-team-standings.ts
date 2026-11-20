@@ -20,7 +20,6 @@ type ProblemResult = StandingsProblem & {
 
 export interface TeamRankData extends Team {
   rank: number | string;
-  logoHash?: string;
   medal?: "Gold" | "Silver" | "Bronze" | "";
   contestUserId?: string;
   isVirtual?: boolean;

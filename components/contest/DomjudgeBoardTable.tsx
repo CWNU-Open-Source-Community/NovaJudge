@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { faCircleQuestion, faClock, faThumbsDown, faThumbsUp } from "@fortawesome/free-solid-svg-icons";
 import type { BoardTeam, summarizeBoard } from "@/lib/domjudge-scoreboard";
-import { problemColorStyle } from "@/lib/problem-badge";
+import { scoreboardBadgeStyle } from "@/lib/problem-badge";
 import DomjudgeIcon from "./DomjudgeIcon";
 import OrganizationLogo from "@/components/OrganizationLogo";
-import { CountryFlag, MedalBadge, ProblemBadge } from "./DomjudgeScoreBadges";
+import { CountryFlag, ProblemBadge } from "./DomjudgeScoreBadges";
+import MedalBadge from "./MedalBadge";
 import DomjudgeBoardDialog, { type BoardProblem, type BoardSelection } from "./DomjudgeBoardDialog";
 
 const legend = { first: "Solved first", correct: "Solved", incorrect: "Tried, incorrect", pending: "Tried, pending", neutral: "Untried" };
@@ -54,13 +55,10 @@ export default function DomjudgeBoardTable({ contestId, rows, problems, viewerId
   const hasLogos = rows.some(team => team.logoHash);
   const placeCols = medalsEnabled ? 2 : 1;
   const teamCols = 1 + Number(hasLogos) + Number(hasFlags);
-  const problemStyles = problems.map(problem => {
-    const color = problemColorStyle(problem.color ?? "#ffffff", "domjudge");
-    return { "--badge-bg": color?.backgroundColor, "--badge-fg": color?.color, "--badge-border": color?.borderColor } as CSSProperties;
-  });
+  const problemStyles = problems.map(problem => scoreboardBadgeStyle(problem.color));
   return <>
     <div className="dj-board-viewport" ref={viewport} data-overflow={overflow} tabIndex={overflow ? 0 : undefined} role="region" aria-label="Scoreboard table">
-      <table className="dj-board-table">
+      <table className="dj-board-table mobile-scoreboard">
         <caption className="sr-only">Contest standings</caption>
         <thead><tr><th scope="colgroup" colSpan={placeCols}>rank</th>
           <th scope="colgroup" colSpan={teamCols} className="dj-heading-team">team</th>

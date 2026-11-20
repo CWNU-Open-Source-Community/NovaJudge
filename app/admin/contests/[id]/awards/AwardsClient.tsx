@@ -1,6 +1,7 @@
 "use client";
 
 import { useAdminLocale } from "@/components/admin/useAdminLocale";
+import MedalBadge from "@/components/contest/MedalBadge";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -64,23 +65,12 @@ function createCustomAwardId() {
 
 function MedalChip({ type }: { type: "gold" | "silver" | "bronze" }) {
   const { t } = useAdminLocale();
-  if (type === "gold")
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-xs font-bold">
-        {t("🥇 Gold", "🥇 金牌")}
-      </span>
-    );
-  if (type === "silver")
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-200 text-gray-700 text-xs font-bold">
-        {t("🥈 Silver", "🥈 银牌")}
-      </span>
-    );
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 text-xs font-bold">
-      {t("🥉 Bronze", "🥉 铜牌")}
-    </span>
-  );
+  const medals = { gold: "Gold", silver: "Silver", bronze: "Bronze" } as const;
+  const labels = { gold: "金牌", silver: "银牌", bronze: "铜牌" };
+  return <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-bold [--medal-size:1.1rem]">
+    <span aria-hidden="true"><MedalBadge medal={medals[type]} /></span>
+    {t(medals[type], labels[type])}
+  </span>;
 }
 
 // 可搜索的多选队伍选择器

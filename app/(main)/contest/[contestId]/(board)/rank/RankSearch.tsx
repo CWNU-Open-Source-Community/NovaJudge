@@ -1,6 +1,9 @@
 "use client";
 
 import { useLanguage } from "@/context/LanguageContext";
+import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
+import { faFilter } from "@fortawesome/free-solid-svg-icons";
+import DomjudgeIcon from "@/components/contest/DomjudgeIcon";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
@@ -14,7 +17,6 @@ export default function RankSearch({ schools, categories }: RankSearchProps) {
   const router = useRouter();
   const { dict: { rank, common } } = useLanguage();
   const searchParams = useSearchParams();
-  const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(
     searchParams.get("teamName") || ""
   );
@@ -78,92 +80,88 @@ export default function RankSearch({ schools, categories }: RankSearchProps) {
   }, [currentTeamName]);
 
   return (
-    <div className="contents sm:relative sm:block">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        aria-expanded={isOpen}
-        className={`px-3 py-2 text-sm font-medium rounded-sm border transition-colors ${
-          hasActiveFilters
-            ? "bg-blue-100 border-blue-300 text-blue-700"
-            : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
-        }`}
-      >
-        {common.search} {hasActiveFilters && "✓"}
-      </button>
+    <Popover className="relative order-first md:order-last">
+      <PopoverButton className="dj-filter-toggle">
+        <DomjudgeIcon icon={faFilter} />
+        <span className="md:hidden">{common.filter}</span>
+        <span className="hidden md:inline">{common.search}</span>
+        {hasActiveFilters && " ✓"}
+      </PopoverButton>
 
-      {isOpen && (
-        <div className="w-full space-y-4 rounded-sm border border-gray-200 bg-white p-4 shadow-lg sm:absolute sm:right-0 sm:top-full sm:z-30 sm:mt-2 sm:w-80">
-          {/* 队伍名搜索 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {common.teamName}
-            </label>
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => handleTeamNameChange(e.target.value)}
-              placeholder={rank.searchTeam}
-              aria-label={rank.searchTeam}
-              className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {/* 学校筛选 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {common.school}
-            </label>
-            <select
-              value={currentSchool}
-              onChange={(e) => handleFilterChange("school", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">{rank.allSchools}</option>
-              {schools.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 队伍类型筛选 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {common.category}
-            </label>
-            <select
-              value={currentCategory}
-              onChange={(e) => handleFilterChange("category", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">{rank.allCategories}</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {categoryMap[c] || c}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 重置按钮 */}
-          {hasActiveFilters && (
-            <button
-              onClick={() => {
-                const params = new URLSearchParams(searchParams);
-                params.delete("teamName");
-                params.delete("school");
-                params.delete("category");
-                params.set("page", "1");
-                router.push(`?${params.toString()}`);
-              }}
-              className="w-full px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-sm hover:bg-gray-200 transition-colors"
-            >
-              {common.clearFilters}
-            </button>
-          )}
+      <PopoverPanel className="absolute left-0 top-full z-30 mt-1 w-80 max-w-[calc(100vw-2rem)] space-y-4 rounded-md border border-gray-200 bg-white p-4 shadow-lg md:right-0 md:left-auto">
+        {/* 队伍名搜索 */}
+        <div>
+          <label htmlFor="rank-filter-team" className="block text-sm font-medium text-gray-700 mb-2">
+            {common.teamName}
+          </label>
+          <input
+            id="rank-filter-team"
+            type="text"
+            value={inputValue}
+            onChange={(e) => handleTeamNameChange(e.target.value)}
+            placeholder={rank.searchTeam}
+            aria-label={rank.searchTeam}
+            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
-      )}
-    </div>
+
+        {/* 学校筛选 */}
+        <div>
+          <label htmlFor="rank-filter-school" className="block text-sm font-medium text-gray-700 mb-2">
+            {common.school}
+          </label>
+          <select
+            id="rank-filter-school"
+            value={currentSchool}
+            onChange={(e) => handleFilterChange("school", e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">{rank.allSchools}</option>
+            {schools.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 队伍类型筛选 */}
+        <div>
+          <label htmlFor="rank-filter-category" className="block text-sm font-medium text-gray-700 mb-2">
+            {common.category}
+          </label>
+          <select
+            id="rank-filter-category"
+            value={currentCategory}
+            onChange={(e) => handleFilterChange("category", e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">{rank.allCategories}</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {categoryMap[c] || c}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 重置按钮 */}
+        {hasActiveFilters && (
+          <button
+            onClick={() => {
+              const params = new URLSearchParams(searchParams);
+              params.delete("teamName");
+              params.delete("school");
+              params.delete("category");
+              params.set("page", "1");
+              router.push(`?${params.toString()}`);
+            }}
+            className="w-full px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-sm hover:bg-gray-200 transition-colors"
+          >
+            {common.clearFilters}
+          </button>
+        )}
+      </PopoverPanel>
+    </Popover>
   );
 }
