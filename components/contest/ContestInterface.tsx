@@ -18,7 +18,7 @@ export function SiteFrame({ team, navigation, footer, children }: {
 }) {
   const pathname = usePathname();
   const route = pathname.match(/^\/contest\/(\d+)(?:\/(?:problems|languages|submit|status|rank|clarifications|editorial)(?:\/.*)?)?\/?$/);
-  const teamPage = team && route && Number(route[1]) === team.contestId && !pathname.endsWith("/rank/print");
+  const teamPage = team && route && Number(route[1]) === team.contestId;
   const mode = teamPage ? (team.domjudge ? "domjudge" : "novajudge") : null;
   return (
     <InterfaceContext.Provider value={mode}>

@@ -8,6 +8,12 @@
   --rank-first-solve: #1daa1d;
 }
 
+.dj-medal { font-size: var(--medal-size, 1.5rem); }
+.dj-medal svg { display: inline-block; width: 1.05em; height: 1.05em; vertical-align: -.125em; }
+.dj-medal-gold { color: #eec710; }
+.dj-medal-silver { color: #aaa; }
+.dj-medal-bronze { color: #c08e55; }
+
 @layer base {
   body {
     /* 英文/数字优先使用 Times New Roman，遇到中文时无缝平滑回退到 苹方/微软雅黑 */

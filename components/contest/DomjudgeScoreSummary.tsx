@@ -3,7 +3,8 @@ import OrganizationLogo from "@/components/OrganizationLogo";
 import type { StandingsProblem, TeamRankData } from "@/lib/contest-team-standings";
 import { scoreboardCell, type BoardTeamDetails } from "@/lib/domjudge-scoreboard";
 import { DomjudgeTeamButton } from "./DomjudgeBoardDialog";
-import { CountryFlag, MedalBadge, ProblemBadge } from "./DomjudgeScoreBadges";
+import { CountryFlag, ProblemBadge } from "./DomjudgeScoreBadges";
+import MedalBadge from "./MedalBadge";
 
 export default function DomjudgeScoreSummary({ base, team, details, problems, frozen, latestSubmissionByProblem }: {
   base: string; team: TeamRankData; details: BoardTeamDetails; problems: StandingsProblem[]; frozen: boolean;

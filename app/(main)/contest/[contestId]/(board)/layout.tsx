@@ -7,6 +7,7 @@ import ContestTimer from "@/components/ContestTimer";
 import { getCurrentSuper } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getLatestVirtualParticipation } from "@/lib/virtual-participation";
+import { scoreboardFreezeTime } from "@/lib/contest-team-standings";
 
 interface Props {
   children: React.ReactNode;
@@ -39,6 +40,17 @@ export default async function ContestLayout({ children, params }: Props) {
     latestVp.endedAt >= now;
   const timerStartTime = isRunningVp ? latestVp.startedAt : contest.startTime;
   const timerEndTime = isRunningVp ? latestVp.endedAt : contest.endTime;
+  const clockFormat = new Intl.DateTimeFormat(getLocale(lang), { dateStyle: "short", timeStyle: "short" });
+  let boardStatus;
+  if (!isRunningVp && contest.status === "PENDING") {
+    boardStatus = `${dict.contestList.startTime} ${clockFormat.format(contest.startTime)}`;
+  } else if (!isRunningVp && (contest.status === "ENDED" || now >= contest.endTime)) {
+    const frozen = +now >= scoreboardFreezeTime(contest.endTime, frozenDuration);
+    boardStatus = frozen ? dict.rank.awaitingResults : dict.rank.finalStandings;
+  } else {
+    const status = isRunningVp ? dict.contest.vpRunning : dict.contest[contest.status];
+    boardStatus = `${status} · ${dict.contestList.endTime} ${clockFormat.format(timerEndTime)}`;
+  }
 
   return (
     <div className="contest-board w-full overflow-x-hidden print:bg-white">
@@ -50,7 +62,8 @@ export default async function ContestLayout({ children, params }: Props) {
               <h1 className="text-xl md:text-3xl font-serif font-bold text-gray-900 mb-2 wrap-break-word">
                 {contest.title}
               </h1>
-              <div className="flex flex-wrap gap-4 text-xs md:text-sm text-gray-500">
+              <p className="rank-contest-status hidden">{boardStatus}</p>
+              <div className="contest-overview-meta flex flex-wrap gap-4 text-xs md:text-sm text-gray-500">
                 <span>
                   {dict.common.id}{" · "}
                   <span className="font-mono text-gray-700">{contest.id}</span>
@@ -70,7 +83,7 @@ export default async function ContestLayout({ children, params }: Props) {
               </div>
             </div>
 
-            <div className="text-left md:text-right w-full md:w-auto">
+            <div className="contest-overview-deadline text-left md:text-right w-full md:w-auto">
               <div className="text-xs text-gray-400 uppercase">
                 {isRunningVp ? formatMessage(dict.contest.vpEndsAt, { attempt: latestVp.attemptNo }) : dict.contestList.endTime}
               </div>
@@ -80,7 +93,7 @@ export default async function ContestLayout({ children, params }: Props) {
             </div>
           </div>
 
-          <div className="mt-6 w-full">
+          <div className="contest-overview-timer mt-6 w-full">
             <ContestTimer
               startTime={timerStartTime}
               endTime={timerEndTime}

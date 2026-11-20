@@ -85,89 +85,45 @@ export default function ContestTimer({
     );
   }
 
-  if (now === null) {
-    return <div className="h-6 w-32 bg-gray-100 animate-pulse rounded" />;
-  }
-
-  // --- 以下逻辑保持不变 ---
-
-  // 1. 比赛尚未开始 (倒计时)
-  if (now < start) {
-    const diff = Math.max(0, start - now);
-    const hours = Math.floor(diff / 3600000);
-    const minutes = Math.floor((diff % 3600000) / 60000);
-    const seconds = Math.floor((diff % 60000) / 1000);
-
-    return (
-      <div className="flex items-center gap-2 text-blue-600 font-mono font-bold bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
-        <ClockIcon className="w-5 h-5" />
-        <span>
-          {formatMessage(dict.contest.startsIn, { hours, minutes, seconds })}
-        </span>
-      </div>
-    );
-  }
-
-  // 2. 比赛已结束
-  if (now > end) {
-    return (
-      <div className="flex items-center gap-2 text-gray-500 font-bold bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200">
-        <span>{endedLabel ?? dict.contest.ENDED}</span>
-      </div>
-    );
-  }
-
-//   prisma.contest.updateMany({
-//     where: {
-//       status: ContestStatus.PENDING,
-//       startTime: { lte: new Date(now) }, // lte: less than or equal to (<=)
-//     },
-//     data: {
-//       status: ContestStatus.RUNNING,
-//     },
-//   });
-
-  // 3. 比赛进行中 (进度条)
-  const elapsed = now - start;
-  const progress = Math.min(100, (elapsed / duration) * 100);
-
-  // 格式化剩余时间
-  const remaining = end - now;
-  const rHours = Math.floor(remaining / 3600000);
-  const rMinutes = Math.floor((remaining % 3600000) / 60000);
-  const rSeconds = Math.floor((remaining % 60000) / 1000);
-
-  // 格式化流逝时间 (Elapsed)
-  const eHours = Math.floor(elapsed / 3600000);
-  const eMinutes = Math.floor((elapsed % 3600000) / 60000);
+  const elapsed = Math.max(0, (now ?? start) - start);
+  const progress = duration > 0 ? Math.min(100, elapsed * 100 / duration) : 0;
+  const running = now !== null && now >= start && now < end;
   const freezeLabel = formatMessage(dict.contest.freezesBeforeEnd, { minutes: frozenDuration });
 
-  return (
-    <div className="flex flex-col w-full">
-      <div className="flex justify-between text-base font-medium text-gray-600 mb-1">
-        <span>
-          {dict.contest.elapsed} {eHours}:{eMinutes.toString().padStart(2, "0")}
-        </span>
-        <span className="text-red-600 font-mono">
-          -{rHours}:{rMinutes.toString().padStart(2, "0")}:
-          {rSeconds.toString().padStart(2, "0")}
-        </span>
-      </div>
-      <div className="h-3 w-full bg-gray-200 rounded-full overflow-hidden border border-gray-300 relative">
-        {/* 绿色进度条 */}
-        <div
-          className="h-full bg-linear-to-r from-green-500 to-green-600 transition-all duration-1000 ease-linear"
-          style={{ width: `${progress}%` }}
-        />
-        {/* 封榜线 */}
-        {frozenPercentage > 0 && (
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 hover:w-1 transition-all cursor-help"
-            style={{ left: `${frozenPercentage}%` }}
-            title={freezeLabel}
-          />
-        )}
-      </div>
+  let clock;
+  if (now === null) {
+    clock = <div className="h-6 w-32 bg-gray-100 animate-pulse rounded" />;
+  } else if (now < start) {
+    const diff = start - now;
+    clock = <div className="flex items-center gap-2 text-blue-600 font-mono font-bold bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+      <ClockIcon className="w-5 h-5" />
+      <span>{formatMessage(dict.contest.startsIn, {
+        hours: Math.floor(diff / 3600000), minutes: Math.floor(diff / 60000) % 60, seconds: Math.floor(diff / 1000) % 60,
+      })}</span>
+    </div>;
+  } else if (!running) {
+    clock = <div className="flex items-center gap-2 text-gray-500 font-bold bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200">
+      {endedLabel ?? dict.contest.ENDED}
+    </div>;
+  } else {
+    const remaining = end - now;
+    const elapsedMinutes = String(Math.floor(elapsed / 60000) % 60).padStart(2, "0");
+    const minutes = String(Math.floor(remaining / 60000) % 60).padStart(2, "0");
+    const seconds = String(Math.floor(remaining / 1000) % 60).padStart(2, "0");
+    clock = <div className="flex justify-between text-base font-medium text-gray-600 mb-1">
+      <span>{dict.contest.elapsed} {Math.floor(elapsed / 3600000)}:{elapsedMinutes}</span>
+      <span className="text-red-600 font-mono">-{Math.floor(remaining / 3600000)}:{minutes}:{seconds}</span>
+    </div>;
+  }
+
+  return <div className="w-full">
+    <div className="contest-timer-label">{clock}</div>
+    <div role="progressbar" aria-label={dict.contest.elapsed} aria-valuemin={0} aria-valuemax={100}
+      aria-valuenow={now === null ? undefined : Math.floor(progress)}
+      className={`contest-timer-track relative h-3 w-full overflow-hidden rounded-full border border-gray-300 bg-gray-200 ${running ? "" : "hidden"}`}>
+      <div className="h-full bg-linear-to-r from-green-500 to-green-600 transition-[width] duration-1000 ease-linear motion-reduce:transition-none"
+        style={{ width: `${progress}%` }} />
+      {frozenPercentage > 0 && <div title={freezeLabel} className="absolute inset-y-0 w-0.5 bg-red-500" style={{ left: `${frozenPercentage}%` }} />}
     </div>
-  );
+  </div>;
 }

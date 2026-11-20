@@ -1,0 +1,71 @@
+/* The standings set the width of both cards. Long contest titles wrap within it. */
+.contest-board-inner:has(.contest-standings) { width: fit-content; max-width: 100%; }
+.contest-board-inner:has(.contest-standings) > .contest-overview { contain: inline-size; padding-inline: 1rem; }
+
+.contest-standings {
+  --rank-place-width: 4.25rem;
+  --rank-score-min: 2.875rem;
+  --rank-score-width: max(var(--rank-score-min), calc((var(--rank-score-digits) + 1) * .5rem));
+  --rank-fixed-width: calc(var(--rank-place-width) + 2 * var(--rank-score-width));
+  --rank-team-min: 7.5rem;
+  --rank-team-max: 18rem;
+  --rank-problems-min: calc(var(--rank-problems) * 3.25rem);
+  --rank-problems-ideal: calc(var(--rank-problems) * 4.25rem);
+  width: max(78rem, calc(var(--rank-fixed-width) + var(--rank-team-max) + var(--rank-problems-ideal) + 2.25rem));
+  max-width: 100%;
+}
+
+/* All standings sections use the same columns, including a single team's result. */
+.nova-rank-table {
+  --rank-team-width: clamp(var(--rank-team-min), min(32cqw, calc(100cqw - var(--rank-fixed-width) - var(--rank-problems-min))), var(--rank-team-max));
+  --rank-info-width: calc(var(--rank-fixed-width) + var(--rank-team-width));
+  width: clamp(calc(var(--rank-info-width) + var(--rank-problems-min)), 100%, calc(var(--rank-info-width) + var(--rank-problems-ideal)));
+  margin-inline: auto;
+}
+.nova-rank-table .rank-medal-col { width: 2rem; }
+.nova-rank-table .rank-place-col { width: calc(var(--rank-place-width) - 2rem); }
+.nova-rank-table .rank-team-col { width: var(--rank-team-width); }
+.nova-rank-table .rank-score-col { width: var(--rank-score-width); }
+
+@media screen and (width < 48rem) {
+  main:has(.contest-standings) { padding: 0; background: white; }
+  .contest-board:has(.contest-standings) { overflow-x: clip; }
+  .contest-board-inner:has(.contest-standings) {
+    padding: 2rem .5rem 1rem;
+    font-family: "DOMjudge Roboto", Roboto, Arial, "Microsoft YaHei", sans-serif;
+  }
+  .contest-board-inner:has(.contest-standings) > .contest-overview {
+    margin: 0; padding: .5rem 1rem .65rem;
+    border: 1px solid #d2d2d2; border-radius: .375rem; background: #f8f8f8; box-shadow: none;
+
+    & :is(.contest-overview-meta, .contest-overview-deadline, .contest-timer-label) { display: none; }
+    & h1 { margin: 0; font-family: inherit !important; font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere; }
+    & .rank-contest-status { display: block; color: dimgrey; }
+    & .contest-overview-timer { margin-top: .45rem; }
+    & .contest-timer-track { display: block; height: 3px; border: 0; }
+  }
+  .contest-standings {
+    --dj-board-nav-height: 3.5rem;
+    --rank-score-min: 1.5rem;
+    padding: 0; border: 0; box-shadow: none; color: #212529;
+  }
+  .contest-standings .rank-table-viewport { container-type: normal; overflow: visible; }
+  .nova-rank-table.mobile-scoreboard { width: 100%; color: black; font-family: inherit !important; }
+  .nova-rank-table colgroup, .nova-rank-table tfoot { display: none; }
+  .nova-rank-table thead { text-transform: none; letter-spacing: normal; line-height: 1.5; }
+  .nova-rank-table .rank-score-heading { flex: 0 0 calc(2 * var(--rank-score-width)); }
+  .nova-rank-table :is(.dj-board-solved, .dj-board-penalty) { flex: 0 0 var(--rank-score-width); }
+  .nova-rank-table .dj-board-team { position: relative; z-index: auto; }
+  .nova-rank-table .dj-board-team button { min-height: 2rem; gap: .4rem; padding: 2px .35rem; }
+  .nova-rank-table .dj-board-team button > span { gap: 0; }
+  .nova-rank-table .dj-board-team .truncate { line-height: 1.5; }
+  .nova-rank-table .dj-board-team .dj-category { padding: .16em .5em; font-weight: 400; }
+  .nova-rank-table .dj-board-team .text-xs { color: dimgrey; }
+  .nova-rank-table .dj-board-place { padding: 0; }
+  .nova-rank-table tr[aria-current="true"] { background: #ffff99; }
+  .nova-rank-table .rank-cell-lines { display: contents; }
+  .nova-rank-table .rank-cell-lines > span, .nova-rank-table .rank-first-accepted > span { display: none; }
+  .nova-rank-table .rank-first-accepted { position: absolute; inset: 0; }
+  .nova-rank-table .rank-problem-submissions ~ .rank-cell-lines .rank-first-accepted { display: none; }
+  .nova-rank-table .dj-board-problem[data-state="upsolved"]::before { color: #1e3a8a; border-color: #60a5fa; background: #bfdbfe; }
+}

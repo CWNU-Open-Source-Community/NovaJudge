@@ -142,11 +142,6 @@
 .dj-team-score thead a { display: block; padding: 2px 1px; }
 .dj-rank-place { padding-inline: .3em; text-align: right; }
 .dj-rank-place a { display: inline-flex; align-items: center; gap: .35rem; }
-.dj-medal { font-size: 1.5rem; }
-.dj-medal svg { display: inline-block; width: 1.05em; height: 1.05em; vertical-align: -.125em; }
-.dj-medal-gold { color: #eec710; }
-.dj-medal-silver { color: #aaa; }
-.dj-medal-bronze { color: #c08e55; }
 .dj-rank-team { min-width: 16.3rem; padding: 0 .35rem; text-align: right; font-weight: 400; }
 .dj-team-trigger { cursor: pointer; }
 .dj-rank-team .dj-team-trigger, .dj-team-name { display: flex; align-items: center; justify-content: flex-end; gap: .45rem; }

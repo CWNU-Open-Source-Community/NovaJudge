@@ -1,7 +1,8 @@
 import { requireContestAccess } from "@/lib/contest-access";
+import type { CSSProperties } from "react";
 import { getTeamInterface } from "@/lib/contest-interface";
 import DomjudgeScoreboard from "@/components/contest/DomjudgeScoreboard";
-import type { BoardQuery } from "@/lib/domjudge-scoreboard";
+import { boardTeamDetails, boardTeamInfo, type BoardQuery } from "@/lib/domjudge-scoreboard";
 import { getCurrentSuper, getCurrentUser } from "@/lib/auth";
 import {
   ContestRole,
@@ -10,15 +11,16 @@ import {
 } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
+import RankActions from "./RankActions";
 import RankSearch from "./RankSearch";
-import RankTable from "./RankTable";
+import RankTable, { type RankTableTeam } from "./RankTable";
 import { getContestTeamStandings, scoreboardFreezeTime, type TeamRankData } from "@/lib/contest-team-standings";
 import { ContestConfig } from "@/app/(main)/page";
 import UnfreezeButton from "./UnfreezeButton";
 import ExportEventFeedButton from "./ExportEventFeedButton";
 import ExportRankResultsButton from "./ExportRankResultsButton";
-import ExportRankPdfButton from "./ExportRankPdfButton";
 import { getDictionary } from "@/lib/get-dictionary";
+import { formatMessage } from "@/lib/dictionaries";
 import { Metadata } from "next";
 import {
   getLatestVirtualParticipationsForContest,
@@ -27,7 +29,7 @@ import {
 import IncludeVpToggle from "./IncludeVpToggle";
 import { summarizeRankProblems } from "@/lib/rank-problem-stats";
 import { getOrganizationDirectory } from "@/lib/org-mapper";
-import { matchOrganization } from "@/lib/organizations";
+import "./rank.css";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
@@ -55,12 +57,6 @@ function formatTime(startTime: number, submissionTime: number): string {
   const diffMs = submissionTime - startTime;
   const minutes = Math.floor(diffMs / 60000);
   return `${minutes}`;
-}
-
-function getTextDisplayWidth(text: string | null | undefined) {
-  return Array.from(text || "").reduce((width, char) => {
-    return width + (char.charCodeAt(0) > 255 ? 2 : 1);
-  }, 0);
 }
 
 interface Props {
@@ -174,11 +170,10 @@ export default async function Rank({ params, searchParams }: Props) {
   const freezeTimeMs = shouldShowFrozenState ? freezeTime : Infinity;
   const [{ teams: allTeams, problems: contestProblems, rankings: allTeamRankings, firstSolves }, latestVirtualParticipations, organizations] =
     await Promise.all([
-      getContestTeamStandings(contestInfo, { visibleUntil, freezeAt: freezeTimeMs, includeUpsolving: showUpsolving }),
+      getContestTeamStandings(contestInfo, { visibleUntil, freezeAt: freezeTimeMs, includeUpsolving: showUpsolving, includeCoach: true }),
       getLatestVirtualParticipationsForContest(cid),
       getOrganizationDirectory(),
     ]);
-  for (const team of allTeamRankings) team.logoHash = matchOrganization(organizations, team.school)?.logoHash;
 
   let displayTeamRankings = allTeamRankings.filter((team) => {
     if (
@@ -593,70 +588,59 @@ export default async function Rank({ params, searchParams }: Props) {
       freezeAt: shouldShowFrozenState ? freezeTimeMs : undefined,
     },
   );
-  const visibleRankTables = [
-    ...(myRank ? [myRank] : []),
-    ...displayTeamRankings,
-    ...(showUpsolving ? globalUpsolvingRanks : []),
-  ];
-  const maxTeamTextWidth = visibleRankTables.reduce((maxWidth, team) => {
-    const prefixWidth =
-      (team.category === "1" || team.category === "2" ? 2 : 0) +
-      (team.isVirtual ? 4 : 0);
+  function rankRow(team: TeamRankData): RankTableTeam {
+    return {
+      ...boardTeamDetails(team, boardTeamInfo(team, organizations)),
+      rank: team.rank, medal: team.medal, solved: team.solved, penalty: team.penalty, problems: team.problems,
+      contestUserId: team.contestUserId, isVirtual: team.isVirtual,
+    };
+  }
 
-    return Math.max(
-      maxWidth,
-      prefixWidth + getTextDisplayWidth(team.displayName || team.username),
-      getTextDisplayWidth([team.school, team.members || team.username].filter(Boolean).join(" · ")),
-    );
-  }, 0);
-  const teamColumnWidth = Math.max(320, Math.min(440, maxTeamTextWidth * 7 + 32));
-
+  const largestScore = [...allTeamRankings, ...globalRanks, ...globalUpsolvingRanks].reduce(
+    (largest, team) => Math.max(largest, team.solved, team.penalty), 0,
+  );
   return (
-    <div className="contest-panel contest-standings bg-white w-full mx-auto shadow-sm border border-gray-100 rounded-sm p-3 sm:p-4">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="font-serif text-2xl font-bold text-gray-800">{dict.rank.title}</h2>
-          <div className="flex flex-wrap items-center gap-2 print:hidden">
-            {showUnfreezeButton && <UnfreezeButton contest={{ id: contestInfo.id, config: contestInfo.config }} />}
-            {canManageContest && (
-              <>
-                <ExportRankResultsButton contestId={cid} />
-                <ExportEventFeedButton contestId={cid} />
-              </>
-            )}
-            {isGlobalAdmin && (
-              <Link
-                href={`/admin/contests/${cid}/awards`}
-                className="inline-flex items-center gap-1 px-3 py-1 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded hover:bg-amber-100 transition-colors shadow-sm"
-                title={dict.rank.awardsHint}
-              >
-                🏅 {dict.rank.awards}
-              </Link>
-            )}
-          </div>
+    <div className="contest-panel contest-standings bg-white w-full mx-auto shadow-sm border border-gray-100 rounded-sm p-3 sm:p-4"
+      style={{ "--rank-problems": contestProblems.length, "--rank-score-digits": String(Math.floor(largestScore)).length } as CSSProperties}>
+      {shouldShowFrozenState && contestInfo.status !== ContestStatus.PENDING && (
+        <div className="md:hidden print:hidden">
+          <p className="dj-freeze-notice" role="status">{formatMessage(dict.rank.freezeNotice, { minutes: config.frozenDuration })}</p>
         </div>
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-3 sm:w-auto print:hidden">
-          <ExportRankPdfButton contestId={contestId} />
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-2 py-2 md:mb-4 md:border-b md:border-gray-200 md:px-0 md:pt-0 md:pb-4 print:hidden">
+        <h2 className="hidden font-serif text-2xl font-bold text-gray-800 md:block">{dict.rank.title}</h2>
+        <RankActions>
+          {showUnfreezeButton && <UnfreezeButton contest={{ id: contestInfo.id, config: contestInfo.config }} />}
+          {canManageContest && <>
+            <ExportRankResultsButton contestId={cid} />
+            <ExportEventFeedButton contestId={cid} />
+          </>}
+          {isGlobalAdmin && (
+            <Link
+              href={`/admin/contests/${cid}/awards`}
+              className="inline-flex items-center gap-1 px-3 py-1 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded hover:bg-amber-100 transition-colors shadow-sm"
+              title={dict.rank.awardsHint}
+            >
+              🏅 {dict.rank.awards}
+            </Link>
+          )}
           <IncludeVpToggle defaultChecked={shouldIncludeVpInRank} />
-          <RankSearch
-            schools={
-              allSchools.map((s) => s.school).filter(Boolean) as string[]
-            }
-            categories={
-              allCategories.map((c) => c.category).filter(Boolean) as string[]
-            }
-          />
-        </div>
+          {canManageSubmissions && <p className="text-xs text-gray-600 md:hidden">{dict.rank.manageHint}</p>}
+        </RankActions>
+        <RankSearch
+          schools={allSchools.map((s) => s.school).filter(Boolean) as string[]}
+          categories={allCategories.map((c) => c.category).filter(Boolean) as string[]}
+        />
       </div>
 
       {canManageSubmissions && (
-        <p className="mb-3 text-xs text-gray-600 print:hidden">
+        <p className="mb-3 hidden text-xs text-gray-600 md:block print:hidden">
           {dict.rank.manageHint}
         </p>
       )}
 
       {shouldShowFrozenState && (
-        <div className="mb-4 p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
+        <div className="mb-4 hidden p-4 bg-blue-50 border-l-4 border-blue-500 rounded md:block">
           <p className="text-blue-800 font-semibold flex items-center gap-2">
             <span>❄️</span>
             <span>{dict.rank.waitingForUnfreeze}</span>
@@ -674,26 +658,24 @@ export default async function Rank({ params, searchParams }: Props) {
             <div className="mb-4 print:hidden">
               <RankTable
                 contestId={contestId}
-                teams={[myRank]}
+                teams={[rankRow(myRank)]}
                 isMyTeam={true}
                 isContestEnded={canOpenRankSubmissions}
                 canManageSubmissions={canManageSubmissions}
                 contestProblems={contestProblems}
                 isFrozen={isFrozen}
-                teamColumnWidth={teamColumnWidth}
               />
             </div>
           )}
 
           <RankTable
             contestId={contestId}
-            teams={displayTeamRankings}
+            teams={displayTeamRankings.map(rankRow)}
             isMyTeam={false}
             isContestEnded={canOpenRankSubmissions}
             canManageSubmissions={canManageSubmissions}
             contestProblems={contestProblems}
             isFrozen={isFrozen}
-            teamColumnWidth={teamColumnWidth}
             problemStats={problemStats}
             statsBeforeFreeze={shouldShowFrozenState}
           />
@@ -702,13 +684,12 @@ export default async function Rank({ params, searchParams }: Props) {
               <h3 className="mb-2 text-sm font-semibold text-gray-700">{dict.rank.upsolving}</h3>
               <RankTable
                 contestId={contestId}
-                teams={globalUpsolvingRanks}
+                teams={globalUpsolvingRanks.map(rankRow)}
                 isMyTeam={false}
                 isContestEnded={canOpenRankSubmissions}
                 canManageSubmissions={canManageSubmissions}
                 contestProblems={contestProblems}
                 isFrozen={isFrozen}
-                teamColumnWidth={teamColumnWidth}
                 tableLabel={dict.rank.upsolving}
               />
             </section>

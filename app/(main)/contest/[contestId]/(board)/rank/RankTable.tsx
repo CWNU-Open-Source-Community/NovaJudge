@@ -1,14 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { TrophyIcon } from "@heroicons/react/24/solid";
+import { useState } from "react";
 import OrganizationLogo from "@/components/OrganizationLogo";
+import MedalBadge from "@/components/contest/MedalBadge";
+import TeamDetailsDialog from "@/components/contest/TeamDetailsDialog";
+import { CountryFlag } from "@/components/contest/DomjudgeScoreBadges";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatMessage, getLocale, getVerdictLabel, type Dictionary } from "@/lib/dictionaries";
 import type { RankProblemStats } from "@/lib/rank-problem-stats";
 
 import type { TeamRankData } from "@/lib/contest-team-standings";
-import { attemptsLabel, problemColorStyle } from "@/lib/problem-badge";
+import type { BoardTeamDetails } from "@/lib/domjudge-scoreboard";
+import { attemptsLabel, problemColorStyle, scoreboardBadgeStyle } from "@/lib/problem-badge";
 
 interface ContestProblem {
   problemId: number;
@@ -16,25 +20,21 @@ interface ContestProblem {
   color: string | null;
 }
 
+export type RankTableTeam = BoardTeamDetails & Pick<TeamRankData,
+  "rank" | "medal" | "contestUserId" | "isVirtual" | "solved" | "penalty" | "problems">;
+
 interface RankTableProps {
   contestId: string;
-  teams: TeamRankData[];
+  teams: RankTableTeam[];
   isMyTeam: boolean;
   isContestEnded: boolean;
   canManageSubmissions: boolean;
   contestProblems: ContestProblem[];
   isFrozen: boolean;
-  teamColumnWidth: number;
   tableLabel?: string;
   problemStats?: RankProblemStats[];
   statsBeforeFreeze?: boolean;
 }
-
-const medalClasses = {
-  Gold: "text-yellow-500",
-  Silver: "text-slate-400",
-  Bronze: "text-amber-700",
-};
 
 const headerCell = "border-r border-r-slate-300 border-b-2 border-b-slate-800 px-1 py-2 last:border-r-0";
 const rowDivider = "border-b border-b-slate-400";
@@ -49,6 +49,7 @@ function problemResult(problem: TeamRankData["problems"][number], rank: Dictiona
     const elapsed = formatMessage(rank.acceptedAt, { minutes: problem.time });
     const status = problem.firstBlood ? rank.firstSolve : getVerdictLabel("ACCEPTED");
     return {
+      state: problem.firstBlood ? "first" : "correct",
       value: problem.time,
       detail,
       label: `${status} · ${elapsed} · ${detail}`,
@@ -61,6 +62,7 @@ function problemResult(problem: TeamRankData["problems"][number], rank: Dictiona
   if (problem?.upsolved) {
     const detail = problem.tries > 0 ? attemptsLabel(problem.tries) : rank.upsolved;
     return {
+      state: "upsolved",
       value: "+",
       detail,
       label: problem.tries > 0 ? `${rank.upsolved} · ${detail}` : rank.upsolved,
@@ -74,6 +76,7 @@ function problemResult(problem: TeamRankData["problems"][number], rank: Dictiona
     const during = formatMessage(rank.frozenAttempts, { count: problem.frozenTries });
     const suffix = problem.unfrozenTries + problem.frozenTries === 1 ? "try" : "tries";
     return {
+      state: "pending",
       value: null,
       detail: `${problem.unfrozenTries} + ${problem.frozenTries} ${suffix}`,
       label: [status, during, before].filter(Boolean).join(" · "),
@@ -83,15 +86,17 @@ function problemResult(problem: TeamRankData["problems"][number], rank: Dictiona
 
   if (problem && problem.tries > 0) {
     const detail = attemptsLabel(problem.tries);
+    const pending = !!problem.pendingTries;
     return {
+      state: pending ? "pending" : "incorrect",
       value: null,
       detail,
-      label: `${rank.unsolved} · ${detail}`,
-      style: "rank-unsolved bg-[#d32f2f] text-white",
+      label: `${pending ? getVerdictLabel("PENDING") : rank.unsolved} · ${detail}`,
+      style: pending ? "bg-blue-700 text-white" : "rank-unsolved bg-[#d32f2f] text-white",
     };
   }
 
-  return { value: null, detail: null, label: rank.noSubmission, style: "" };
+  return { state: undefined, value: null, detail: null, label: rank.noSubmission, style: "" };
 }
 
 export default function RankTable({
@@ -102,50 +107,42 @@ export default function RankTable({
   canManageSubmissions,
   contestProblems,
   isFrozen,
-  teamColumnWidth,
   tableLabel,
   problemStats,
   statsBeforeFreeze,
 }: RankTableProps) {
   const { dict: { rank, common, virtualParticipation }, lang } = useLanguage();
   const locale = getLocale(lang);
-  const rankColumnWidth = 64;
-  const minimumTeamWidth = 112;
-  const solvedColumnWidth = 40;
-  const penaltyColumnWidth = 52;
-  const problemColumnWidth = 44;
-  const fixedColumnWidth = rankColumnWidth + solvedColumnWidth + penaltyColumnWidth +
-    contestProblems.length * problemColumnWidth;
-  const teamWidth = `clamp(${minimumTeamWidth}px, min(34cqw, calc(100cqw - ${fixedColumnWidth}px)), ${teamColumnWidth}px)`;
-  const medalLabels = { Gold: rank.goldMedal, Silver: rank.silverMedal, Bronze: rank.bronzeMedal };
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedTeam = selectedId && teams.find(team => team.id === selectedId);
+  const statusPath = `/contest/${contestId}/status`;
   const label = tableLabel ?? (isMyTeam ? rank.yourResult : rank.title);
+  const badgeStyles = contestProblems.map(problem => scoreboardBadgeStyle(problem.color));
+  const statsTitle = statsBeforeFreeze ? rank.statsBeforeFreeze : rank.stats;
   const statsRows = [
     { key: "submitted", label: rank.submitted },
     { key: "attempted", label: rank.attempted },
     { key: "accepted", label: rank.acceptedTeams },
   ] as const;
 
-  return (
+  return (<>
     <div
-      className="@container w-full overflow-x-auto overscroll-x-contain focus-visible:outline-2 focus-visible:outline-blue-600"
+      className="rank-table-viewport @container w-full overflow-x-auto overscroll-x-contain focus-visible:outline-2 focus-visible:outline-blue-600"
       role="region"
       aria-label={label}
       tabIndex={0}
     >
-      <table
-        className="w-full table-fixed border-separate border-spacing-0 text-center font-sans text-sm text-slate-800"
-        style={{ minWidth: fixedColumnWidth + minimumTeamWidth }}
-      >
+      <table className="nova-rank-table mobile-scoreboard table-fixed border-separate border-spacing-0 text-center font-sans text-sm text-slate-800">
         <caption className="sr-only">{label}</caption>
         <colgroup>
-          <col style={{ width: rankColumnWidth }} />
+          <col className="rank-medal-col" />
+          <col className="rank-place-col" />
         </colgroup>
         <colgroup>
-          <col style={{ width: teamWidth }} />
+          <col className="rank-team-col" />
         </colgroup>
         <colgroup>
-          <col style={{ width: solvedColumnWidth }} />
-          <col style={{ width: penaltyColumnWidth }} />
+          <col span={2} className="rank-score-col" />
         </colgroup>
         {contestProblems.length > 0 && (
           <colgroup>
@@ -154,16 +151,16 @@ export default function RankTable({
         )}
         <thead className="text-[11px] font-semibold uppercase tracking-wide">
           <tr className={isMyTeam ? "bg-blue-50" : "bg-white"}>
-            <th scope="col" className={headerCell}>{rank.place}</th>
+            <th scope="colgroup" colSpan={2} className={headerCell}>{rank.place}</th>
             <th
               scope="col"
-              className={`${headerCell} sticky left-0 z-20 bg-inherit`}
+              className={`${headerCell} dj-heading-team sticky left-0 z-20 bg-inherit`}
             >
               {common.team}
             </th>
-            <th scope="colgroup" colSpan={2} className={headerCell}>{rank.score}</th>
+            <th scope="colgroup" colSpan={2} className={`${headerCell} rank-score-heading text-center`}>{rank.score}</th>
             {contestProblems.map((problem) => (
-              <th scope="col" key={problem.problemId} className={`${headerCell} normal-case tracking-normal`}>
+              <th scope="col" key={problem.problemId} className={`${headerCell} dj-heading-problem normal-case tracking-normal`}>
                 <Link
                   href={`/contest/${contestId}/problems/${encodeURIComponent(problem.displayId)}`}
                   className="inline-flex h-7 min-w-7 max-w-full items-center justify-center rounded-md bg-slate-200 px-1 text-sm font-bold text-slate-900 ring-1 ring-black/10 ring-inset hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
@@ -179,78 +176,62 @@ export default function RankTable({
         <tbody>
           {teams.length === 0 && (
             <tr>
-              <td colSpan={4 + contestProblems.length} className="bg-white px-4 py-8 text-left text-slate-500">
+              <td colSpan={5 + contestProblems.length} className="bg-white px-4 py-8 text-left text-slate-500">
                 {rank.noTeams}
               </td>
             </tr>
           )}
           {teams.map((team) => {
-            const name = team.displayName || team.username;
-            const members = team.members || (name !== team.username ? team.username : null);
-            const teamDetails = [team.school, members].filter(Boolean).join(" · ");
-            const medal = team.category !== "1" && team.rank !== "*" ? team.medal : null;
+            const name = team.name;
             const teamId = canManageSubmissions ? team.contestUserId : undefined;
-            const teamStatusHref = {
-              pathname: `/contest/${contestId}/status`,
-              query: { viewAll: "true", userId: teamId },
-            };
 
             return (
               <tr
                 key={team.id}
+                aria-current={isMyTeam ? "true" : undefined}
                 className={isMyTeam ? "bg-blue-50 hover:bg-blue-100" : "bg-white hover:bg-slate-50"}
               >
-                <td className={`${bodyCell} align-middle`}>
-                  <div className="grid grid-cols-[18px_minmax(0,1fr)] items-center gap-1 pr-2 pl-1 tabular-nums">
-                    {medal && (
-                      <span className="col-start-1 inline-flex justify-center" title={medalLabels[medal]}>
-                        <TrophyIcon aria-hidden="true" className={`size-4 ${medalClasses[medal]}`} />
-                        <span className="sr-only">{medalLabels[medal]}</span>
-                      </span>
-                    )}
-                    <span className="col-start-2 truncate text-right" title={String(team.rank)}>
-                      {team.rank}
-                    </span>
-                  </div>
+                <td className={`${rowDivider} dj-board-medal text-right align-middle`}>
+                  <MedalBadge medal={team.medal} labels={rank} />
+                </td>
+                <td className={`${bodyCell} dj-board-place px-1 text-right align-middle tabular-nums`}>
+                  {team.rank}
                 </td>
                 <th
                   scope="row"
-                  className={`${bodyCell} sticky left-0 z-20 min-w-0 bg-inherit px-2 text-right align-middle font-normal`}
+                  className={`${bodyCell} dj-board-team sticky left-0 z-20 min-w-0 bg-inherit p-0 text-right align-middle font-normal`}
                 >
-                  <div className="flex items-center gap-2">
+                  <button type="button" aria-haspopup="dialog" title={name} onClick={() => setSelectedId(team.id)}
+                    className="flex min-h-13 w-full cursor-pointer items-center gap-2 px-2 py-1 text-right after:absolute after:inset-0 hover:text-blue-700 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-600">
                     <OrganizationLogo hash={team.logoHash} />
-                    <div className={`${cellLines} min-w-0 flex-1`}>
-                      <div className="flex min-w-0 items-center justify-end gap-1 font-semibold leading-tight text-slate-900">
-                        {team.category === "1" && <span title={rank.unofficialTeam}>⭐</span>}
-                        {team.category === "2" && <span title={rank.womenTeam}>👧</span>}
+                    {team.country && <span className="shrink-0 md:hidden">
+                      <CountryFlag country={team.country} countryName={team.countryName} />
+                    </span>}
+                    <span className="grid min-w-0 flex-1 gap-1">
+                      <span className="flex min-w-0 items-center justify-end gap-1 font-semibold leading-tight">
+                        {(team.category === "1" || team.category === "2") && <>
+                          <span className="hidden md:inline" title={team.category === "1" ? rank.unofficialTeam : rank.womenTeam}>
+                            {team.category === "1" ? "⭐" : "👧"}
+                          </span>
+                          <span className="dj-category shrink-0 md:hidden" data-category={team.category}>
+                            {team.category === "1" ? rank.unofficialTeam : rank.womenTeam}
+                          </span>
+                        </>}
                         {team.isVirtual && (
                           <span className="rounded border border-blue-200 bg-blue-50 px-1 text-[10px] text-blue-700" title={virtualParticipation.title}>
                             VP
                           </span>
                         )}
-                        {teamId ? (
-                          <Link
-                            href={teamStatusHref}
-                            prefetch={false}
-                            className="min-w-0 truncate rounded-sm underline decoration-blue-300 underline-offset-2 hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600"
-                            title={formatMessage(rank.teamSubmissions, { team: name })}
-                          >
-                            {name}
-                          </Link>
-                        ) : (
-                          <span className="min-w-0 truncate" title={name}>{name}</span>
-                        )}
-                      </div>
-                      {teamDetails && (
-                        <div className="truncate text-xs leading-tight text-slate-600" title={teamDetails}>{teamDetails}</div>
-                      )}
-                    </div>
-                  </div>
+                        <span className="min-w-0 truncate">{name}</span>
+                      </span>
+                      {team.school && <span className="truncate text-xs leading-tight text-slate-600">{team.school}</span>}
+                    </span>
+                  </button>
                 </th>
-                <td className={`${rowDivider} font-bold tabular-nums`}>
+                <td className={`${rowDivider} dj-board-solved font-bold tabular-nums`}>
                   <span className="sr-only">{rank.solved} </span>{team.solved}
                 </td>
-                <td className={`${bodyCell} tabular-nums`}>
+                <td className={`${bodyCell} dj-board-penalty tabular-nums`}>
                   <span className="sr-only">{rank.penalty} </span>{Math.floor(team.penalty)}
                 </td>
                 {contestProblems.map((contestProblem, index) => {
@@ -264,32 +245,31 @@ export default function RankTable({
                   return (
                     <td
                       key={contestProblem.problemId}
-                      className={`${rowDivider} relative p-px align-middle`}
+                      className={`${rowDivider} dj-board-problem relative p-px align-middle`}
+                      data-problem={contestProblem.displayId} data-state={result.state} style={badgeStyles[index]}
+                      aria-label={`${contestProblem.displayId} · ${result.label}`}
                       title={result.label}
                     >
+                      {teamId && (
+                        <Link
+                          href={{ pathname: statusPath, query: { viewAll: "true", userId: teamId, problem: contestProblem.displayId } }}
+                          prefetch={false}
+                          className="rank-problem-submissions absolute inset-0 hover:bg-black/5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
+                        >
+                          <span className="sr-only">
+                            {formatMessage(rank.problemSubmissions, { team: name, problem: contestProblem.displayId })} · {result.label}
+                          </span>
+                        </Link>
+                      )}
                       <div className={`${cellLines} justify-items-center px-0.5 ${result.style}`}>
-                        {teamId && (
-                          <Link
-                            href={{
-                              ...teamStatusHref,
-                              query: { ...teamStatusHref.query, problem: contestProblem.displayId },
-                            }}
-                            prefetch={false}
-                            className="absolute inset-0 hover:bg-black/5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current"
-                          >
-                            <span className="sr-only">
-                              {formatMessage(rank.problemSubmissions, { team: name, problem: contestProblem.displayId })} · {result.label}
-                            </span>
-                          </Link>
-                        )}
                         {firstAcceptedSubmissionId ? (
                           <Link
                             href={`/contest/${contestId}/status/${firstAcceptedSubmissionId}`}
-                            className={`${resultValue} relative z-10 rounded-sm underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current`}
-                            aria-label={`${rank.firstAccepted} · ${result.label}`}
+                            className={`rank-first-accepted ${resultValue} relative z-10 rounded-sm underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current`}
+                            aria-label={`${contestProblem.displayId} · ${rank.firstAccepted} · ${result.label}`}
                             title={rank.firstAccepted}
                           >
-                            {result.value}
+                            <span>{result.value}</span>
                           </Link>
                         ) : (
                           <>
@@ -315,8 +295,8 @@ export default function RankTable({
         {problemStats && problemStats.length > 0 && (
           <tfoot className="bg-slate-50 text-xs text-slate-700 tabular-nums">
             <tr className="bg-[#eaf2fb] font-semibold text-slate-800">
-              <th scope="row" colSpan={4} className={`${summaryCell} border-t border-t-slate-600 pr-3 text-right`}>
-                {statsBeforeFreeze ? rank.statsBeforeFreeze : rank.stats}
+              <th scope="row" colSpan={5} className={`${summaryCell} border-t border-t-slate-600 pr-3 text-right`}>
+                {statsTitle}
               </th>
               {contestProblems.map((problem) => (
                 <td key={problem.problemId} className={`${summaryCell} truncate border-t border-t-slate-600`} title={problem.displayId}>
@@ -326,7 +306,7 @@ export default function RankTable({
             </tr>
             {statsRows.map(({ key, label }) => (
               <tr key={key}>
-                <th scope="row" colSpan={4} className={`${summaryCell} pr-3 text-right font-medium`}>{label}</th>
+                <th scope="row" colSpan={5} className={`${summaryCell} pr-3 text-right font-medium`}>{label}</th>
                 {problemStats.map((problem) => (
                   <td key={problem.problemId} className={summaryCell}>{problem[key].toLocaleString(locale)}</td>
                 ))}
@@ -336,5 +316,26 @@ export default function RankTable({
         )}
       </table>
     </div>
-  );
+    {problemStats && problemStats.length > 0 && (
+      <details className="mt-1 text-sm md:hidden print:hidden">
+        <summary className="cursor-pointer py-1">{statsTitle}</summary>
+        <table className="w-full text-center text-xs tabular-nums">
+          <caption className="sr-only">{statsTitle}</caption>
+          <thead><tr><th scope="col">{common.problem}</th>{statsRows.map(stat =>
+            <th key={stat.key} scope="col">{stat.label}</th>)}</tr></thead>
+          <tbody>{problemStats.map((problem, index) => <tr key={problem.problemId} className="border-t border-slate-200">
+            <th scope="row" className="py-1">{contestProblems[index].displayId}</th>
+            {statsRows.map(stat => <td key={stat.key}>{problem[stat.key].toLocaleString(locale)}</td>)}
+          </tr>)}</tbody>
+        </table>
+      </details>
+    )}
+    {selectedTeam && <TeamDetailsDialog team={selectedTeam} language={lang} onClose={() => setSelectedId(null)}
+      action={canManageSubmissions && selectedTeam.contestUserId && (
+        <Link href={{ pathname: statusPath, query: { viewAll: "true", userId: selectedTeam.contestUserId } }}
+          prefetch={false} className="text-blue-700 underline underline-offset-2">
+          {formatMessage(rank.teamSubmissions, { team: selectedTeam.name })}
+        </Link>
+      )} />}
+  </>);
 }
