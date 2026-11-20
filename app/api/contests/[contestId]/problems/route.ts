@@ -42,7 +42,9 @@ export async function GET(
 
       return {
         displayId: cp.displayId,
+        source_problem_id: String(cp.problemId),
         name: cp.problem.title,
+        color: cp.color,
         time: timeLimit,
         memory: memoryLimit,
         score: 100, // 默认分数
