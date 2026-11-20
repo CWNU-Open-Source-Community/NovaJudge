@@ -115,6 +115,11 @@
   .dj-board-problem:is([data-state="first"], [data-state="correct"])::before {
     color: var(--badge-fg); border-color: var(--badge-border); background: var(--badge-bg);
   }
+  .dj-board-problem[data-state="first"]::after {
+    content: "★" / ""; position: absolute; top: -3px; right: -2px;
+    font: bold 11px/1 Arial, sans-serif; color: #ffd34d; -webkit-text-stroke: 1.25px #65430c;
+    paint-order: stroke fill; pointer-events: none;
+  }
   .dj-board-problem[data-state="pending"]::before { background: #6666ff; color: white; }
   .dj-board-problem[data-state="incorrect"]::after {
     content: ""; position: absolute; inset: 50% 0 auto; transform: rotate(-35deg); border-top: 2px solid firebrick; pointer-events: none;
