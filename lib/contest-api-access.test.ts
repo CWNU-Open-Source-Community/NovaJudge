@@ -50,6 +50,25 @@ function baseDependencies() {
   };
 }
 
+test("contest problem export includes each problem's saved balloon color and stable ID", async () => {
+  const problem = { title: "Warmup", defaultTimeLimit: 1000, defaultMemoryLimit: 256 };
+  const route = loadModule<Route>("app/api/contests/[contestId]/problems/route.ts", {
+    ...baseDependencies(),
+    "@/lib/contest-access": { contestAccessResponse: async () => null },
+    "@/lib/prisma": { prisma: { contestProblem: { findMany: async () => [
+      { problemId: 42, displayId: "B", color: "#22aa77", problem },
+      { problemId: 19, displayId: "C", color: null, problem },
+    ] } } },
+  });
+  const response = await route.GET(new NextRequest("http://localhost/api/contests/1/problems"), {
+    params: Promise.resolve({ contestId: "1" }),
+  });
+  assert.deepEqual(await response.json(), [
+    { displayId: "B", source_problem_id: "42", name: "Warmup", color: "#22aa77", time: 1000, memory: 256, score: 100 },
+    { displayId: "C", source_problem_id: "19", name: "Warmup", color: null, time: 1000, memory: 256, score: 100 },
+  ]);
+});
+
 test("submission source export requires an enabled API key owned by a current, non-banned super administrator", async () => {
   const cases = [
     { key: "", role: "SUPER_ADMIN", enabled: true, banned: false, allowed: false },
