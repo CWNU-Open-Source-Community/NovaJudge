@@ -93,7 +93,7 @@ export default async function EditorialPage({ params }: Props) {
   const dict = await getDictionary();
 
   return (
-    <div className="bg-white w-full mx-auto shadow-sm border border-gray-100 rounded-sm p-4 md:p-6">
+    <div className="bg-white w-full mx-auto shadow-sm border border-slate-200 rounded-2xl p-4 md:p-6">
       <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
           <h2 className="text-2xl font-serif font-bold text-gray-800">
@@ -112,7 +112,7 @@ export default async function EditorialPage({ params }: Props) {
       </div>
       <iframe
         src={`/api/contests/${contestId}/editorial`}
-        className="h-[75vh] w-full rounded-sm border border-gray-200"
+        className="h-[75vh] w-full rounded-xl border border-slate-200"
         title={formatMessage(dict.editorial.pdfTitle, { contest: contest.title })}
       />
     </div>

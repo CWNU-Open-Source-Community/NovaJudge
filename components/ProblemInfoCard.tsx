@@ -26,8 +26,8 @@ export default async function ProblemInfoCard({
   const [dict, domjudge] = await Promise.all([getDictionary(), usesDomjudge(Number(contestId))]);
   const memoryLimit = info.memoryLimit;
   return (
-    <div className="bg-white border border-gray-200 shadow-sm rounded-sm overflow-hidden w-full lg:w-72 shrink-0">
-      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+    <div className="bg-white border border-slate-200 shadow-sm rounded-2xl overflow-hidden w-full lg:w-72 shrink-0">
+      <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
         <h3 className="font-bold text-gray-700">{dict.common.information}</h3>
       </div>
       <ul className="text-sm divide-y divide-gray-100 font-serif">
@@ -79,14 +79,14 @@ export default async function ProblemInfoCard({
       </ul>
 
       {/* 操作按钮区 */}
-      <div className="p-4 bg-gray-50 border-t border-gray-100 flex flex-col gap-2 font-serif">
+      <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col gap-2">
         {/* 🔘 动态按钮逻辑 */}
         {type === "problem" ? (
           // 情况 A: 在题目页 -> 显示 "Submit" 按钮，去往提交页
           isAdmin ? (
             <button
               disabled
-              className="w-full bg-gray-400 text-white text-center py-2 rounded-sm font-bold shadow-sm cursor-not-allowed opacity-60"
+              className="w-full bg-slate-400 text-white text-center py-2 rounded-xl font-bold shadow-sm cursor-not-allowed opacity-60"
               title={dict.submit.adminCannotSubmit}
             >
               {dict.common.submit}
@@ -94,7 +94,7 @@ export default async function ProblemInfoCard({
           ) : (
             <Link
               href={`/contest/${contestId}/submit?problem=${problemId}`}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-center py-2 rounded-sm font-bold shadow-sm transition-colors"
+              className="w-full bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-center py-2 rounded-xl font-bold shadow-sm transition-colors"
             >
               {dict.common.submit}
             </Link>
@@ -103,7 +103,7 @@ export default async function ProblemInfoCard({
           // 情况 B: 在提交页 -> 显示 "< Problem" 按钮，回题目页(
           <Link
             href={`/contest/${contestId}/problems/${problemId}`}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white text-center py-2 rounded-sm font-bold shadow-sm transition-colors"
+            className="w-full bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-center py-2 rounded-xl font-bold shadow-sm transition-colors"
           >
             &lt; &nbsp; {dict.common.problem}
           </Link>
@@ -111,7 +111,7 @@ export default async function ProblemInfoCard({
 
         {!domjudge && <Link
           href={`/contest/${contestId}/status?problem=${problemId}`}
-          className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-center py-2 rounded-sm font-medium transition-colors"
+          className="w-full bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-center py-2 rounded-xl font-medium transition-colors"
         >
           {dict.nav.status}
         </Link>}

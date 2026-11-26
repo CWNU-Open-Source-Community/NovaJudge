@@ -13,6 +13,17 @@ import { getOfficialSubmissionWhere } from "@/lib/official-submission";
 import { getDomjudgeContest } from "@/lib/domjudge-contest";
 import { DomjudgeProblemset } from "@/components/contest/DomjudgeProblemset";
 import { scoreboardClock } from "@/lib/domjudge-scoreboard";
+import { formatMessage, getVerdictLabel } from "@/lib/dictionaries";
+import { problemColorStyle } from "@/lib/problem-badge";
+import { verdictPillClass } from "@/lib/verdict-style";
+import { getViewerProblemProgress } from "@/lib/viewer-problem-progress";
+import {
+  ArrowPathIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  CpuChipIcon,
+  XCircleIcon,
+} from "@heroicons/react/24/outline";
 
 interface Props {
   params: Promise<{
@@ -190,135 +201,158 @@ export default async function Problems({ params }: Props) {
     }
   }
 
-  const userStats =
-    userId || globalUserId
-      ? await prisma.submission.findMany({
-          where: {
-            contestId: contestId,
-            verdict: Verdict.ACCEPTED,
-            ...(userId
-              ? { userId }
-              : runningVp
-                ? {
-                    globalUserId: String(globalUserId),
-                    virtualParticipationId: runningVp.id,
-                  }
-                : isExternalUser && isContestEnded
-                  ? {
-                      globalUserId: String(globalUserId),
-                      virtualParticipationId: null,
-                    }
-                  : latestVp
-                    ? {
-                        globalUserId: String(globalUserId),
-                        virtualParticipationId: latestVp.id,
-                      }
-                    : { id: "__never__" }),
-          },
-          select: {
-            problemId: true,
-          },
-        })
-      : [];
-
-  const statsMap = new Map(userStats.map((s) => [s.problemId, 1]));
+  // 当前用户每道题的通过、评测中与尝试次数
+  const { progress } = await getViewerProblemProgress(contestId, {
+    userId,
+    globalUserId,
+    runningVpId: runningVp?.id,
+    latestVpId: latestVp?.id,
+    externalAfterContest: isExternalUser && isContestEnded,
+  });
 
   const dict = await getDictionary();
+  const showPersonal = Boolean(userId || globalUserId);
+  const solvedCount = contestProblem.filter((prob) => progress.get(prob.problemId)?.state === "solved").length;
+  const isPending = contestInfo?.status === ContestStatus.PENDING;
 
   return (
-    <div className="bg-white w-full mx-auto shadow-sm border border-gray-100 rounded-sm p-3 sm:p-6">
-      <h2 className="mb-6 text-2xl font-serif font-bold text-gray-800 sm:pl-2">
-        {dict.problemList.title}
-      </h2>
-      {contestInfo?.status === ContestStatus.PENDING ? (
-        <div className="text-center py-10 text-gray-500">
+    <div className="w-full mx-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-6">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3 sm:px-2">
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+          {dict.problemList.title}
+        </h2>
+        {showPersonal && !isPending && contestProblem.length > 0 && (
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <span className="tabular-nums">
+              {formatMessage(dict.problemList.solvedSummary, {
+                solved: solvedCount,
+                total: contestProblem.length,
+              })}
+            </span>
+            <div
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={contestProblem.length}
+              aria-valuenow={solvedCount}
+              className="h-2 w-28 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200 ring-inset sm:w-36"
+            >
+              <div
+                className="h-full rounded-full bg-linear-to-r from-emerald-400 to-emerald-600"
+                style={{ width: `${(solvedCount / contestProblem.length) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+      {isPending ? (
+        <div className="text-center py-10 text-slate-500">
           {dict.problemList.empty}
         </div>
       ) : (
         <div className="w-full overflow-x-auto overscroll-x-contain">
-          <table className="min-w-190 w-full text-sm font-serif text-left text-gray-600">
-            <thead className="whitespace-nowrap text-base text-gray-700 bg-white border-b border-gray-400 border-t sm:text-lg">
+          <table className="min-w-160 w-full text-left text-sm text-slate-600">
+            <thead className="whitespace-nowrap border-y border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-wider text-slate-500">
               <tr>
-                <th scope="col" className="w-20 px-3 py-2 text-center sm:w-24 sm:px-6">
-                  {dict.problemDetail.status}
-                </th>
-                <th scope="col" className="w-20 px-3 py-2 sm:w-24 sm:px-6">
+                <th scope="col" className="w-20 px-3 py-2.5 text-center sm:px-4">
                   {dict.problemDetail.id}
                 </th>
-                <th scope="col" className="px-3 py-2 sm:px-6">
+                <th scope="col" className="px-3 py-2.5 sm:px-4">
                   {dict.problemDetail.title}
                 </th>
-                <th scope="col" className="w-52 px-3 py-2 sm:w-80 sm:px-6">
+                <th scope="col" className="w-40 px-3 py-2.5 sm:px-4">
+                  {dict.problemDetail.status}
+                </th>
+                <th scope="col" className="w-60 px-3 py-2.5 sm:px-4">
                   {dict.problemDetail.ratio} ({dict.problemDetail.accepted} /{" "}
                   {dict.problemDetail.submissions})
                 </th>
-                <th scope="col" className="w-20 px-3 py-2 text-center sm:w-24 sm:px-6">
-                  {dict.problemDetail.balloon}
-                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {contestProblem.map((prob) => {
                 const acceptedCount = acMap.get(prob.problemId) || 0;
                 const totalCount = totalMap.get(prob.problemId) || 0;
                 const rate =
                   totalCount > 0 ? (acceptedCount / totalCount) * 100 : 0;
+                const entry = progress.get(prob.problemId);
+                const solved = entry?.state === "solved";
+                const pending = entry?.state === "pending";
+                const tries = entry?.tries ?? 0;
+                const href = `/contest/${contestId}/problems/${prob.displayId}`;
                 return (
                   <tr
                     key={prob.id}
-                    className="h-10 border-b border-gray-300 text-sm transition-colors odd:bg-white even:bg-[#f4f7fa] hover:bg-blue-50 sm:text-base"
-                    >
-                    <td className="px-3 py-2 sm:px-6">
-                      <div className="flex min-h-6 items-center justify-center">
-                        {(statsMap.get(prob.problemId) || 0) !== 0 && (
-                          <svg
-                            className="icon"
-                            viewBox="0 0 1024 1024"
-                            version="1.1"
-                            xmlns="http://www.w3.org/2000/svg"
-                            p-id="13161"
-                            width="22"
-                            height="22"
-                          >
-                            <path
-                              d="M86.528 491.666286a45.787429 45.787429 0 0 1 64.731429 0l247.954285 247.954285 506.88-506.806857a45.787429 45.787429 0 0 1 64.731429 64.731429L431.616 836.754286a45.787429 45.787429 0 0 1-64.658286 0L86.528 556.324571a45.787429 45.787429 0 0 1 0-64.658285z"
-                              fill="#2CA641"
-                              p-id="13162"
-                            ></path>
-                          </svg>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-gray-900 sm:px-6">
-                      <div className="flex gap-2 items-center">
-                        {prob.displayId}
-                      </div>
-                    </td>
-                    <td className="max-w-0 px-3 py-2 novajudge-problem-link sm:px-6">
+                    className={`group transition-colors hover:bg-slate-50 ${solved ? "bg-emerald-50/50" : ""}`}
+                  >
+                    <td className="px-3 py-3 text-center sm:px-4">
                       <Link
-                        href={`/contest/${contestId}/problems/${prob.displayId}`}
-                        className="block truncate text-blue-600 hover:underline hover:text-blue-800"
-                        title={prob.problem.title}
+                        href={href}
+                        tabIndex={-1}
+                        aria-hidden="true"
+                        title={prob.color ? `${dict.problemDetail.balloon}: ${prob.color}` : undefined}
+                        className="inline-flex size-10 items-center justify-center rounded-xl bg-slate-100 text-base font-bold text-slate-800 shadow-sm ring-1 ring-black/10 ring-inset transition-transform group-hover:scale-105"
+                        style={problemColorStyle(prob.color)}
                       >
-                        {prob.problem.title}
+                        {prob.displayId}
                       </Link>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-left sm:px-6">
-                      {rate.toFixed(2)}% ({acceptedCount} / {totalCount})
+                    <td className="max-w-0 px-3 py-3 novajudge-problem-link sm:px-4">
+                      <Link
+                        href={href}
+                        className="block truncate text-base font-semibold text-slate-900 hover:underline group-hover:text-blue-700"
+                        title={prob.problem.title}
+                      >
+                        <span className="sr-only">{prob.displayId}. </span>
+                        {prob.problem.title}
+                      </Link>
+                      <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs tabular-nums text-slate-500">
+                        <span className="inline-flex items-center gap-1">
+                          <ClockIcon aria-hidden="true" className="size-3.5" />
+                          {prob.problem.defaultTimeLimit} ms
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <CpuChipIcon aria-hidden="true" className="size-3.5" />
+                          {prob.problem.defaultMemoryLimit} MB
+                        </span>
+                      </div>
                     </td>
-                    <td className="px-3 py-2 sm:px-6">
-                      <div className="flex items-center justify-center">
-                        <svg
-                          viewBox="0 0 512 512"
-                          width="24"
-                          height="24"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            fill={prob?.color || "#6b7280"}
-                            d="M391 307.27c32.75-46.35 46.59-101.63 39-155.68C416.47 55.59 327.38-11.54 231.38 2S68.24 104.53 81.73 200.53c7.57 53.89 36.12 103.16 80.37 138.74c26.91 21.64 57.59 36.1 86.05 41.33l-8.36 45.23a8 8 0 0 0 9 9.38L279 431c15.9 35.87 41.65 60.48 78.41 75l14.88 5.88l11.77-29.75l-14.88-5.89c-26.35-10.42-44.48-26.16-57-49.92l21.84-3.07a8 8 0 0 0 6.05-11.49l-20.49-41.16c25.98-12.87 51.49-35.18 71.42-63.33m-160.82 15.66c-41.26-16.32-76.3-52.7-91.45-94.94l-5.4-15.06l30.12-10.8l5.4 15.06c14.5 40.44 47.27 65.77 73.1 76l14.88 5.88l-11.77 29.76Z"
+                    <td className="px-3 py-3 sm:px-4">
+                      {solved ? (
+                        <span className={verdictPillClass(Verdict.ACCEPTED)}>
+                          <CheckCircleIcon aria-hidden="true" className="size-4" />
+                          {dict.problemDetail.accepted}
+                        </span>
+                      ) : pending ? (
+                        <span className={verdictPillClass(Verdict.JUDGING)}>
+                          <ArrowPathIcon aria-hidden="true" className="size-4 motion-safe:animate-spin" />
+                          {getVerdictLabel(Verdict.PENDING)}
+                        </span>
+                      ) : tries > 0 ? (
+                        <span className={verdictPillClass("REJECTED")}>
+                          <XCircleIcon aria-hidden="true" className="size-4" />
+                          {formatMessage(dict.problemList.attempted, { count: tries })}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">
+                          <span aria-hidden="true">—</span>
+                          <span className="sr-only">{dict.rank.noSubmission}</span>
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 sm:px-4">
+                      <div className="flex items-center gap-3 whitespace-nowrap">
+                        <div className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className="h-full rounded-full bg-emerald-500"
+                            style={{ width: `${rate}%` }}
                           />
-                        </svg>
+                        </div>
+                        <span className="tabular-nums text-slate-700">
+                          <span className="font-semibold text-slate-900">{acceptedCount}</span> / {totalCount}
+                        </span>
+                        <span className="text-xs tabular-nums text-slate-400">
+                          {rate.toFixed(1)}%
+                        </span>
                       </div>
                     </td>
                   </tr>

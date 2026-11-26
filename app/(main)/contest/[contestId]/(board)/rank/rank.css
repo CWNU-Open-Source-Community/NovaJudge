@@ -27,6 +27,18 @@
 .nova-rank-table .rank-team-col { width: var(--rank-team-width); }
 .nova-rank-table .rank-score-col { width: var(--rank-score-width); }
 
+@media screen and (width >= 48rem) {
+  /* Star on first-solve cells and stripes on cells hidden by the freeze. */
+  .nova-rank-table .dj-board-problem[data-state="first"]::after {
+    content: "★" / ""; position: absolute; z-index: 11; top: 2px; right: 3px;
+    font: bold 10px/1 Arial, sans-serif; color: #ffd34d; -webkit-text-stroke: 1px #65430c;
+    paint-order: stroke fill; pointer-events: none;
+  }
+  .nova-rank-table .rank-frozen {
+    background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / .18) 0 6px, transparent 6px 12px);
+  }
+}
+
 @media screen and (width < 48rem) {
   main:has(.contest-standings) { padding: 0; background: white; }
   .contest-board:has(.contest-standings) { overflow-x: clip; }
@@ -38,7 +50,7 @@
     margin: 0; padding: .5rem 1rem .65rem;
     border: 1px solid #d2d2d2; border-radius: .375rem; background: #f8f8f8; box-shadow: none;
 
-    & :is(.contest-overview-meta, .contest-overview-deadline, .contest-timer-label) { display: none; }
+    & :is(.contest-overview-meta, .contest-overview-deadline, .contest-overview-accent, .contest-timer-label, .contest-timer-scale) { display: none; }
     & h1 { margin: 0; font-family: inherit !important; font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere; }
     & .rank-contest-status { display: block; color: dimgrey; }
     & .contest-overview-timer { margin-top: .45rem; }

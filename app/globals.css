@@ -74,6 +74,45 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* ---------- NovaJudge contest UI ---------- */
+/* Interface text uses a sans-serif stack; statements (.prose) keep the serif face. */
+.contest-board {
+  --nova-font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--nova-font-sans);
+}
+.contest-board .font-serif:not(.prose) {
+  font-family: var(--nova-font-sans) !important;
+}
+
+/* Diagonal stripes that mark the scoreboard freeze window. */
+.nova-frozen-zone {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgb(56 189 248 / 0.45) 0 5px,
+    rgb(224 242 254 / 0.6) 5px 10px
+  );
+}
+
+/* Balloons that rise when a team's submission is accepted. */
+@keyframes nova-balloon-rise {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(-6deg); }
+  8% { opacity: 1; }
+  50% { transform: translate3d(var(--sway, 0), -55vh, 0) rotate(5deg); }
+  100% { opacity: 0.85; transform: translate3d(calc(var(--sway, 0) * -0.5), -120vh, 0) rotate(-4deg); }
+}
+.nova-balloon {
+  position: absolute;
+  bottom: -9rem;
+  opacity: 0;
+  filter: drop-shadow(0 6px 10px rgb(15 23 42 / 0.18));
+  animation: nova-balloon-rise var(--duration, 3.4s) cubic-bezier(0.3, 0, 0.45, 1) var(--delay, 0s) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nova-balloon { display: none; }
+}
+
 .print-document {
   max-width: 210mm;
   margin: 0 auto;

@@ -1,5 +1,6 @@
 import { Verdict } from "@/lib/generated/prisma/enums";
 import { getVerdictLabel } from "@/lib/dictionaries";
+import { verdictPillClass } from "@/lib/verdict-style";
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -85,23 +86,18 @@ const VERDICT_CONFIG: Record<
 };
 
 export default function VerdictBadge({ status }: { status: string }) {
-  // 默认配置 (防止未知状态报错)
-  const config = VERDICT_CONFIG[status] || {
-    color: "text-gray-400",
-  };
+  // 未知状态没有图标
+  const Icon = VERDICT_CONFIG[status]?.icon;
 
   // 判断是否需要 Loading 动画
   const isLoading = status === "PENDING" || status === "JUDGING";
-  const Icon = config.icon;
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 ${config.color} text-sm`}
-    >
+    <span className={verdictPillClass(status)}>
       {/* 1. Loading 状态显示旋转图标 */}
-      {isLoading && <ArrowPathIcon className="w-4 h-4 animate-spin" />}
+      {isLoading && <ArrowPathIcon className="w-4 h-4 motion-safe:animate-spin" />}
 
-      {/* 2. 完成状态显示静态图标 (可选，不想要图标可以删掉这行) */}
+      {/* 2. 完成状态显示静态图标 */}
       {!isLoading && Icon && <Icon className="w-4 h-4" />}
 
       {/* 3. 文字 */}

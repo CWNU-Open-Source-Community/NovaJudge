@@ -186,8 +186,10 @@ export default function Navbar({
 
   // 桌面端链接样式
   const desktopLinkClass = (path: string, extraClass: string = "") =>
-    `px-3 py-2 font-bold transition-colors whitespace-nowrap hidden md:block ${
-      isActive(path) ? "text-blue-700" : "text-gray-900 hover:text-blue-700"
+    `px-3 py-1.5 rounded-lg font-bold transition-colors whitespace-nowrap hidden md:block ${
+      isActive(path)
+        ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100 ring-inset"
+        : "text-gray-900 hover:bg-slate-100 hover:text-blue-700"
     } ${extraClass}`;
 
   const desktopMenuLinkClass = (path: string, extraClass: string = "") =>
@@ -198,7 +200,7 @@ export default function Navbar({
     } ${extraClass}`;
 
   const desktopButtonClass = (extraClass: string = "") =>
-    `px-3 py-2 font-bold transition-colors whitespace-nowrap hidden md:block cursor-pointer ${extraClass}`;
+    `px-3 py-1.5 rounded-lg font-bold transition-colors whitespace-nowrap hidden md:block cursor-pointer hover:bg-slate-100 ${extraClass}`;
 
   const desktopMenuButtonClass = (extraClass: string = "") =>
     `block w-full px-4 py-2 text-left text-sm font-bold transition-colors hover:bg-gray-50 cursor-pointer ${extraClass}`;
@@ -472,7 +474,7 @@ export default function Navbar({
           onPrint={() => setShowPrintRequest(true)} onSubmit={() => setSubmitOpen(true)} onLogout={logout} />
       ) : <nav onClick={handleNavClick} className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 nav-trigger">
-          <div className="flex justify-between items-center h-14 font-serif text-xl nav-trigger gap-3">
+          <div className={`flex justify-between items-center h-14 nav-trigger gap-3 ${contestId ? "font-sans text-[17px]" : "font-serif text-xl"}`}>
             <div className="flex min-w-0 flex-1 items-center">
               {/* 移动端汉堡菜单按钮 */}
               <button
@@ -512,7 +514,7 @@ export default function Navbar({
                       <button
                         ref={desktopMoreMeasureRef}
                         type="button"
-                        className="shrink-0 px-3 py-2 font-bold whitespace-nowrap flex items-center gap-1"
+                        className="shrink-0 px-3 py-1.5 font-bold whitespace-nowrap flex items-center gap-1"
                       >
                         {dict.nav.more}
                         <ChevronDownIcon className="h-4 w-4" />
@@ -533,10 +535,10 @@ export default function Navbar({
                           <button
                             type="button"
                             onClick={handleMoreMenuClick}
-                            className={`px-3 py-2 font-bold transition-colors whitespace-nowrap flex items-center gap-1 cursor-pointer ${
+                            className={`px-3 py-1.5 rounded-lg font-bold transition-colors whitespace-nowrap flex items-center gap-1 cursor-pointer ${
                               showMoreMenu
-                                ? "text-blue-700"
-                                : "text-gray-900 hover:text-blue-700"
+                                ? "bg-slate-100 text-blue-700"
+                                : "text-gray-900 hover:bg-slate-100 hover:text-blue-700"
                             }`}
                           >
                             {dict.nav.more}

@@ -10,6 +10,8 @@ import { Verdict } from "@/lib/generated/prisma/enums";
 import VerdictBadge from "./VerdictBadge";
 import { useLanguage } from "@/context/LanguageContext";
 import { getVerdictLabel } from "@/lib/dictionaries";
+import { verdictPillClass } from "@/lib/verdict-style";
+import type { AcceptedEventDetail } from "@/lib/accepted-event";
 
 interface VerdictCellProps {
   submission: {
@@ -21,12 +23,15 @@ interface VerdictCellProps {
   };
   isGuest?: boolean;
   showTestDetails?: boolean;
+  /** Celebrate when this submission (owned by the viewer) becomes accepted. */
+  celebrate?: AcceptedEventDetail;
 }
 
 export default function VerdictCell({
   submission,
   isGuest = false,
   showTestDetails = true,
+  celebrate,
 }: VerdictCellProps) {
   const { dict } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
@@ -56,6 +61,7 @@ export default function VerdictCell({
         initialPassed={submission.passedTests}
         initialTotal={submission.totalTests}
         showTestDetails={showTestDetails}
+        celebrate={celebrate}
       />
     );
   }
@@ -65,11 +71,11 @@ export default function VerdictCell({
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="inline-flex group relative items-center gap-1.5 text-yellow-600 hover:text-yellow-800 transition-colors cursor-pointer"
+        className={`${verdictPillClass(Verdict.COMPILE_ERROR)} group cursor-pointer transition-colors hover:bg-yellow-100`}
         title={dict.submission.viewCompilationError}
       >
         <ExclamationTriangleIcon className="w-4 h-4" />
-        <span className="text-sm whitespace-nowrap font-bold border-b border-dashed border-yellow-600 group-hover:border-yellow-800 text-center">
+        <span className="border-b border-dashed border-yellow-600 group-hover:border-yellow-800">
           {getVerdictLabel(Verdict.COMPILE_ERROR)}
         </span>
       </button>

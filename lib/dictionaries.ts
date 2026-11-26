@@ -56,6 +56,13 @@ export const en = {
   problemList: {
     title: "Problem List",
     empty: "No problems to display.",
+    solvedSummary: "Solved {solved} of {total}",
+    attempted: "Attempted · {count}",
+    answerSheet: "Answer Sheet",
+    legendSolved: "Solved",
+    legendAttempted: "Attempted",
+    legendPending: "Judging",
+    legendUnsubmitted: "Not submitted",
   },
   problemDetail: {
     title: "Title",
@@ -293,6 +300,7 @@ export const en = {
     startsIn: "Starts in {hours}h {minutes}m {seconds}s",
     elapsed: "Elapsed",
     freezesBeforeEnd: "Scoreboard freezes {minutes} min before the end",
+    acceptedCelebration: "Problem {problem} accepted!",
     durationHours: "{hours}h",
     durationHoursMinutes: "{hours}h {minutes}m",
     participantInfo: "Participant Information",
@@ -625,6 +633,13 @@ export const zh: typeof en = {
   problemList: {
     title: "题目列表",
     empty: "暂无可查看的题目。",
+    solvedSummary: "已通过 {solved} / {total}",
+    attempted: "已尝试 {count} 次",
+    answerSheet: "答题卡",
+    legendSolved: "已通过",
+    legendAttempted: "未通过",
+    legendPending: "评测中",
+    legendUnsubmitted: "未提交",
   },
   problemDetail: {
     title: "题目标题",
@@ -862,6 +877,7 @@ export const zh: typeof en = {
     startsIn: "距开始还有 {hours} 小时 {minutes} 分 {seconds} 秒",
     elapsed: "已用时间",
     freezesBeforeEnd: "结束前 {minutes} 分钟封榜",
+    acceptedCelebration: "{problem} 题通过！",
     durationHours: "{hours} 小时",
     durationHoursMinutes: "{hours} 小时 {minutes} 分钟",
     participantInfo: "参赛信息",
