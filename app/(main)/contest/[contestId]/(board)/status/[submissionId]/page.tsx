@@ -10,7 +10,6 @@ import {
 import {
   ContestRole,
   ContestStatus,
-  ContestType,
 } from "@/lib/generated/prisma/client";
 import VerdictBadge from "@/components/VerdictBadge";
 import Link from "next/link";
@@ -42,7 +41,6 @@ export default async function SubmissionDetail({ params }: Props) {
         config: true,
         startTime: true,
         endTime: true,
-        type: true,
       },
     }),
     prisma.submission.findFirst({
@@ -82,9 +80,10 @@ export default async function SubmissionDetail({ params }: Props) {
   const globalUser = await getCurrentSuper();
   const user = globalUser ? null : await getCurrentUser();
   const userPayload = user as UserJwtPayload | null;
+  const now = new Date();
   const isContestEnded =
     contestInfo.status === ContestStatus.ENDED ||
-    new Date() >= contestInfo.endTime;
+    now >= contestInfo.endTime;
 
   const isGlobalSubmissionOwner =
     Boolean(globalUser?.userId) &&
@@ -95,7 +94,7 @@ export default async function SubmissionDetail({ params }: Props) {
   const isGlobalAdmin = !!globalUser?.isGlobalAdmin;
   const runningVp =
     globalUser?.userId && !isGlobalAdmin
-      ? await getRunningVirtualParticipation(cid, String(globalUser.userId))
+      ? await getRunningVirtualParticipation(cid, String(globalUser.userId), now)
       : null;
 
   const config = contestInfo.config as ContestConfig | null;
@@ -103,7 +102,7 @@ export default async function SubmissionDetail({ params }: Props) {
   const freezeTime =
     contestInfo.endTime.getTime() - frozenDuration * 60 * 1000;
   const isFrozen =
-    frozenDuration > 0 && new Date().getTime() >= freezeTime;
+    frozenDuration > 0 && now.getTime() >= freezeTime;
 
   let currentUser = null;
   if (payload?.userId) {
@@ -122,7 +121,7 @@ export default async function SubmissionDetail({ params }: Props) {
     }
   }
 
-  // 进行中的 VP 只允许查看当前轮；赛后详情可见性不受正式赛统计范围限制。
+  // 私有赛访问权限已由 requireContestAccess 校验；赛后解榜且非进行中 VP 时，所有提交及代码均可查看。
   const isContestSubmissionOwner =
     Boolean(currentUser?.id) && submission.userId === currentUser?.id;
   const isOwner =
@@ -137,18 +136,13 @@ export default async function SubmissionDetail({ params }: Props) {
   const canViewEndedSubmission =
     isContestEnded &&
     !isFrozen &&
-    !runningVp &&
-    (contestInfo.type === ContestType.PUBLIC || Boolean(currentUser));
+    !runningVp;
 
   if (!isOwner && !isAdmin && !canViewEndedSubmission) {
     return notFound();
   }
 
-  // 非 VP 的赛后补题沿用公开代码规则；他人的 VP 仅展示提交信息。
-  const canViewCode =
-    isOwner ||
-    isAdmin ||
-    (canViewEndedSubmission && submission.virtualParticipationId === null);
+  const canViewCode = isOwner || isAdmin || canViewEndedSubmission;
 
   const contestProblem = await prisma.contestProblem.findFirst({
     where: {

@@ -6,7 +6,6 @@ import Pagination from "@/components/Pagination";
 import {
   ContestRole,
   ContestStatus,
-  ContestType,
   Verdict,
 } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -96,7 +95,6 @@ export default async function Status({ params, searchParams }: Props) {
       config: true,
       startTime: true,
       endTime: true,
-      type: true,
     },
   });
 
@@ -146,21 +144,19 @@ export default async function Status({ params, searchParams }: Props) {
     contestInfo.status === ContestStatus.ENDED || now >= contestInfo.endTime;
   const isGuest = !currentUser && !globalUser && !isAdmin;
 
-  const config = contestInfo.config as ContestConfig;
-  const freezeTime = config?.frozenDuration
-    ? contestInfo.endTime.getTime() - config?.frozenDuration * 60 * 1000
-    : null;
-  const isFrozen =
-    config?.frozenDuration !== 0 &&
-    (freezeTime ? new Date().getTime() >= freezeTime : false);
+  const config = contestInfo.config as ContestConfig | null;
+  const frozenDuration = Number(config?.frozenDuration || 0);
+  const freezeTime =
+    frozenDuration > 0
+      ? contestInfo.endTime.getTime() - frozenDuration * 60 * 1000
+      : null;
+  const isFrozen = freezeTime !== null && now.getTime() >= freezeTime;
   const showTestDetails = isContestEnded || Boolean(isAdmin);
+  const canViewEndedAll = isContestEnded && !isFrozen;
+  // 私有赛访问权限已由 requireContestAccess 校验；赛后解榜且非进行中 VP 时，所有有权限的访客都可查看全部提交。
   const canViewAll =
     !isRunningVp &&
-    (isAdmin ||
-      ((contestInfo.type === ContestType.PUBLIC || Boolean(currentUser)) &&
-        ((isContestEnded && !isFrozen) ||
-          isGuest ||
-          Boolean(latestVp))));
+    (isAdmin || canViewEndedAll || isGuest);
   const canSearch = canViewAll;
 
   // 用户选择查看所有提交且有权限
@@ -536,9 +532,10 @@ export default async function Status({ params, searchParams }: Props) {
                     ? submission.passedTests + 1
                     : undefined,
                 );
-                // 列表可见性不授予源码/编译信息权限，也不向客户端传整条记录。
+                // 仅管理员、提交者本人，以及赛后解榜且非进行中 VP 的访问者可查看编译/错误信息。
                 const canViewErrorMessage =
                   Boolean(isAdmin) ||
+                  (canViewEndedAll && !isRunningVp) ||
                   (Boolean(currentUser?.id) &&
                     submission.userId === currentUser?.id) ||
                   (Boolean(globalUser?.userId) &&
