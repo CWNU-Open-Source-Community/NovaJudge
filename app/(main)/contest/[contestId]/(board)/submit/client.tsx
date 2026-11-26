@@ -75,8 +75,8 @@ export default function SubmitForm({
 
   return (
     <main className="flex-1 w-full min-w-0">
-      <div className="bg-white border border-gray-200 shadow-sm rounded-sm p-6">
-        <h2 className="text-2xl font-serif font-bold text-gray-800 mb-6 border-b pb-4">
+      <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6">
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900 mb-6 border-b border-slate-200 pb-4">
           {dict.submit.title}
         </h2>
 
@@ -88,7 +88,7 @@ export default function SubmitForm({
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
-              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-sm focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 max-w-xs"
+              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 max-w-xs"
             >
               {contestLanguages.map((lang) => (
                 <option key={lang.value} value={lang.value}>
@@ -119,7 +119,7 @@ export default function SubmitForm({
             {isAdmin ? (
               <button
                 disabled
-                className="bg-gray-400 text-white font-medium rounded-sm text-sm px-8 py-3 shadow-md cursor-not-allowed opacity-60"
+                className="bg-slate-400 text-white font-medium rounded-xl text-sm px-8 py-3 shadow-sm cursor-not-allowed opacity-60"
                 title={dict.submit.unavailable}
               >
                 {dict.common.submit}
@@ -127,7 +127,7 @@ export default function SubmitForm({
             ) : (
               <button
                 type="submit"
-                className="text-white bg-blue-600 hover:bg-blue-700 font-medium rounded-sm text-sm px-8 py-3 shadow-md transition-colors"
+                className="text-white bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 font-semibold rounded-xl text-sm px-8 py-3 shadow-md shadow-blue-600/20 transition active:scale-95"
               >
                 {dict.common.submit}
               </button>
@@ -136,7 +136,7 @@ export default function SubmitForm({
             <button
               type="button"
               onClick={() => setCode("")}
-              className="text-gray-600 bg-gray-100 hover:bg-gray-200 font-medium rounded-sm text-sm px-6 py-3 transition-colors"
+              className="text-slate-600 bg-slate-100 hover:bg-slate-200 font-medium rounded-xl text-sm px-6 py-3 transition-colors"
             >
               {dict.common.cancel}
             </button>

@@ -42,6 +42,12 @@ const bodyCell = `${rowDivider} border-r border-r-slate-300`;
 const cellLines = "rank-cell-lines grid min-h-13 auto-rows-fr grid-cols-1 items-center gap-y-1 py-1";
 const resultValue = "text-base font-medium leading-none tabular-nums";
 const summaryCell = "border-b border-r border-slate-200 px-1 py-1 last:border-r-0";
+// Opaque tints so the sticky team column stays readable while scrolling.
+const medalRow = {
+  Gold: "bg-amber-50 hover:bg-amber-100",
+  Silver: "bg-slate-50 hover:bg-slate-100",
+  Bronze: "bg-orange-50 hover:bg-orange-100",
+} as const;
 
 function problemResult(problem: TeamRankData["problems"][number], rank: Dictionary["rank"]) {
   if (problem?.accepted) {
@@ -189,7 +195,7 @@ export default function RankTable({
               <tr
                 key={team.id}
                 aria-current={isMyTeam ? "true" : undefined}
-                className={isMyTeam ? "bg-blue-50 hover:bg-blue-100" : "bg-white hover:bg-slate-50"}
+                className={isMyTeam ? "bg-blue-50 hover:bg-blue-100" : team.medal ? medalRow[team.medal] : "bg-white hover:bg-slate-50"}
               >
                 <td className={`${rowDivider} dj-board-medal text-right align-middle`}>
                   <MedalBadge medal={team.medal} labels={rank} />
@@ -245,7 +251,7 @@ export default function RankTable({
                   return (
                     <td
                       key={contestProblem.problemId}
-                      className={`${rowDivider} dj-board-problem relative p-px align-middle`}
+                      className={`${rowDivider} dj-board-problem relative p-0.5 align-middle`}
                       data-problem={contestProblem.displayId} data-state={result.state} style={badgeStyles[index]}
                       aria-label={`${contestProblem.displayId} · ${result.label}`}
                       title={result.label}
@@ -261,7 +267,7 @@ export default function RankTable({
                           </span>
                         </Link>
                       )}
-                      <div className={`${cellLines} justify-items-center px-0.5 ${result.style}`}>
+                      <div className={`${cellLines} justify-items-center rounded-md px-0.5 ${result.style}`}>
                         {firstAcceptedSubmissionId ? (
                           <Link
                             href={`/contest/${contestId}/status/${firstAcceptedSubmissionId}`}

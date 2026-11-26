@@ -24,6 +24,7 @@ import { buildContestSubmissionWhere } from "@/lib/contest-submission-query";
 import type { ContestSubmissionFilters as SubmissionFilters } from "@/lib/contest-rejudge-types";
 import ContestSubmissionFilters from "./ContestSubmissionFilters";
 import ContestRejudgePanel from "./ContestRejudgePanel";
+import { problemColorStyle } from "@/lib/problem-badge";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contestId = parseInt((await params).contestId);
@@ -306,6 +307,7 @@ export default async function Status({ params, searchParams }: Props) {
         select: {
           displayId: true,
           problemId: true,
+          color: true,
           problem: { select: { title: true } },
         },
         orderBy: { displayId: "asc" },
@@ -366,6 +368,9 @@ export default async function Status({ params, searchParams }: Props) {
   const problemIdMap = new Map(
     allProblems.map((cp) => [cp.problemId, cp.displayId]),
   );
+  const problemColorMap = new Map(
+    allProblems.map((cp) => [cp.problemId, cp.color]),
+  );
 
   const languageRecord: Record<string, string> = {
     cpp: "C++",
@@ -386,11 +391,11 @@ export default async function Status({ params, searchParams }: Props) {
             : "";
 
   return (
-    <div className="contest-panel bg-white w-full mx-auto shadow-sm border border-gray-100 rounded-sm p-3 sm:p-6">
+    <div className="contest-panel bg-white w-full mx-auto rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-6">
       <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-2xl font-serif font-bold text-gray-800">
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">
           {dict.submission.title}{" "}
-          <span className="block text-sm text-gray-500 sm:inline">
+          <span className="block text-sm font-medium text-slate-500 sm:inline">
             {statusLabel}
           </span>
         </h2>
@@ -465,9 +470,9 @@ export default async function Status({ params, searchParams }: Props) {
               <col className="w-20" />
               <col className="w-24" />
               <col className="w-20" />
-              <col className="w-36" />
+              <col className="w-48" />
             </colgroup>
-            <thead className="whitespace-nowrap bg-white font-serif text-sm font-bold text-gray-800 border-b border-gray-400 border-t-2 sm:text-base">
+            <thead className="whitespace-nowrap border-y border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-wider text-slate-500">
               <tr>
                 <th scope="col" className="px-3 py-2 sm:px-6">
                   {dict.submission.runId}
@@ -538,6 +543,11 @@ export default async function Status({ params, searchParams }: Props) {
                     submission.userId === currentUser?.id) ||
                   (Boolean(globalUser?.userId) &&
                     submission.globalUserId === globalUser?.userId);
+                const ownSubmission =
+                  (Boolean(currentUser?.id) &&
+                    submission.userId === currentUser?.id) ||
+                  (Boolean(globalUser?.userId) &&
+                    submission.globalUserId === globalUser?.userId);
                 const verdictSubmission = {
                   id: submission.id,
                   verdict: submission.verdict,
@@ -551,18 +561,18 @@ export default async function Status({ params, searchParams }: Props) {
                 return (
                   <tr
                     key={submission.id}
-                    className="h-10 border-b border-gray-100 text-center font-[Menlo] text-sm text-gray-700 transition-colors odd:bg-white even:bg-[#e7f3ff] hover:bg-blue-50 sm:text-[18px]"
+                    className="h-12 border-b border-slate-100 text-center text-sm tabular-nums text-slate-700 transition-colors hover:bg-slate-50"
                   >
-                    <td className="overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 sm:px-4">
+                    <td className="overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 font-mono text-slate-500 sm:px-4">
                       {submission.displayId}
                     </td>
                     <td
-                      className="overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 text-sm sm:px-4"
+                      className="overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 text-xs text-slate-500 sm:px-4"
                       title={submitTime}
                     >
                       {submitTime}
                     </td>
-                    <td className="px-3 py-2 text-gray-900 sm:px-4">
+                    <td className="px-3 py-2 font-medium text-slate-900 sm:px-4">
                       <div className="mx-auto flex max-w-32 items-center justify-center gap-2 sm:max-w-36">
                         <span className="truncate" title={submitterName}>
                           {submitterName}
@@ -574,12 +584,13 @@ export default async function Status({ params, searchParams }: Props) {
                         )}
                       </div>
                     </td>
-                    <td className="overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 text-gray-900 sm:px-4">
+                    <td className="overflow-hidden whitespace-nowrap px-3 py-2 sm:px-4">
                       <Link
                         href={`/contest/${contestId}/problems/${problemDisplayId}`}
-                        className="text-blue-500 hover:underline hover:text-blue-800"
+                        className="inline-flex h-7 min-w-7 max-w-full items-center justify-center rounded-lg bg-slate-100 px-1.5 text-sm font-bold text-slate-800 ring-1 ring-black/10 ring-inset transition-transform hover:scale-105"
+                        style={problemColorStyle(problemColorMap.get(submission.problemId) ?? null)}
                       >
-                        {problemDisplayId}
+                        <span className="truncate">{problemDisplayId}</span>
                       </Link>
                     </td>
                     <td
@@ -620,6 +631,10 @@ export default async function Status({ params, searchParams }: Props) {
                           <VerdictCell
                             submission={verdictSubmission}
                             showTestDetails={showTestDetails}
+                            celebrate={ownSubmission ? {
+                              problem: problemDisplayId,
+                              color: problemColorMap.get(submission.problemId) ?? null,
+                            } : undefined}
                           />
                         )}
                       </div>

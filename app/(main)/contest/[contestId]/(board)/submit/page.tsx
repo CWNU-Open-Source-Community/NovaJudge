@@ -1,6 +1,7 @@
 import { requireContestAccess } from "@/lib/contest-access";
 import { notFound } from "next/navigation";
 import ProblemInfoCard from "@/components/ProblemInfoCard";
+import ProblemAnswerSheet from "@/components/contest/ProblemAnswerSheet";
 import { prisma } from "@/lib/prisma";
 import SubmitForm from "./client";
 import { getCurrentSuper, getCurrentUser, UserJwtPayload } from "@/lib/auth";
@@ -202,7 +203,19 @@ export default async function SubmitPage({ params, searchParams }: Props) {
     (!user && !runningVp && !(isExternalUser && isContestEnded));
   return (
     <div className="flex flex-col w-full lg:flex-row gap-6 items-start">
-      <aside>
+      <aside className="w-full lg:w-72 shrink-0 space-y-4">
+        <ProblemAnswerSheet
+          contestId={cid}
+          contestStatus={contestProblem.contest.status}
+          currentDisplayId={displayId}
+          viewer={{
+            userId: (user as unknown as UserJwtPayload)?.userId,
+            globalUserId,
+            runningVpId: runningVp?.id,
+            latestVpId: latestVp?.id,
+            externalAfterContest: isExternalUser && isContestEnded,
+          }}
+        />
         <ProblemInfoCard
           contestId={contestId}
           problemId={displayId}
@@ -222,7 +235,7 @@ export default async function SubmitPage({ params, searchParams }: Props) {
         />
         {isCliEnabled() && <Link
           href="/cli"
-          className="flex items-start gap-3 bg-white border border-gray-200 shadow-sm rounded-sm p-4 hover:border-blue-300 transition-colors"
+          className="flex items-start gap-3 bg-white border border-slate-200 shadow-sm rounded-2xl p-4 hover:border-blue-300 transition-colors"
         >
           <CommandLineIcon className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" />
           <div>

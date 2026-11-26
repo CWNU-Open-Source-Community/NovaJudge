@@ -600,7 +600,7 @@ export default async function Rank({ params, searchParams }: Props) {
     (largest, team) => Math.max(largest, team.solved, team.penalty), 0,
   );
   return (
-    <div className="contest-panel contest-standings bg-white w-full mx-auto shadow-sm border border-gray-100 rounded-sm p-3 sm:p-4"
+    <div className="contest-panel contest-standings bg-white w-full mx-auto rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-4"
       style={{ "--rank-problems": contestProblems.length, "--rank-score-digits": String(Math.floor(largestScore)).length } as CSSProperties}>
       {shouldShowFrozenState && contestInfo.status !== ContestStatus.PENDING && (
         <div className="md:hidden print:hidden">
@@ -608,7 +608,7 @@ export default async function Rank({ params, searchParams }: Props) {
         </div>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3 px-2 py-2 md:mb-4 md:border-b md:border-gray-200 md:px-0 md:pt-0 md:pb-4 print:hidden">
-        <h2 className="hidden font-serif text-2xl font-bold text-gray-800 md:block">{dict.rank.title}</h2>
+        <h2 className="hidden text-2xl font-bold tracking-tight text-slate-900 md:block">{dict.rank.title}</h2>
         <RankActions>
           {showUnfreezeButton && <UnfreezeButton contest={{ id: contestInfo.id, config: contestInfo.config }} />}
           {canManageContest && <>
@@ -640,9 +640,9 @@ export default async function Rank({ params, searchParams }: Props) {
       )}
 
       {shouldShowFrozenState && (
-        <div className="mb-4 hidden p-4 bg-blue-50 border-l-4 border-blue-500 rounded md:block">
-          <p className="text-blue-800 font-semibold flex items-center gap-2">
-            <span>❄️</span>
+        <div className="nova-frozen-zone mb-4 hidden overflow-hidden rounded-xl ring-1 ring-sky-200 ring-inset md:block">
+          <p className="flex items-center gap-2 bg-sky-50/90 px-4 py-3 font-semibold text-sky-800">
+            <span aria-hidden="true">❄️</span>
             <span>{dict.rank.waitingForUnfreeze}</span>
           </p>
         </div>

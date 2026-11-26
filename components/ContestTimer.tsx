@@ -6,7 +6,7 @@ import { faClock } from "@fortawesome/free-solid-svg-icons";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import DomjudgeIcon from "./contest/DomjudgeIcon";
 import { useLanguage } from "@/context/LanguageContext";
-import { formatMessage } from "@/lib/dictionaries";
+import { formatMessage, getLocale } from "@/lib/dictionaries";
 
 interface Props {
   startTime: string | Date;
@@ -16,6 +16,20 @@ interface Props {
   domjudgeState?: { started: boolean; ended: boolean };
 }
 
+const pad = (value: number) => String(value).padStart(2, "0");
+
+function clockText(ms: number) {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(seconds / 3600)}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}`;
+}
+
+const tones = {
+  normal: { clock: "text-slate-900", fill: "from-blue-500 to-indigo-500" },
+  frozen: { clock: "text-sky-600", fill: "from-sky-400 to-blue-500" },
+  warning: { clock: "text-amber-600", fill: "from-amber-400 to-orange-500" },
+  critical: { clock: "text-red-600 motion-safe:animate-pulse", fill: "from-red-500 to-rose-500" },
+};
+
 export default function ContestTimer({
   startTime,
   endTime,
@@ -23,7 +37,7 @@ export default function ContestTimer({
   endedLabel,
   domjudgeState,
 }: Props) {
-  const { dict } = useLanguage();
+  const { dict, lang } = useLanguage();
   const router = useRouter();
   const start = new Date(startTime).getTime();
   const end = new Date(endTime).getTime();
@@ -31,15 +45,13 @@ export default function ContestTimer({
   const refreshAt = domjudgeState && !domjudgeState.ended
     ? (domjudgeState.started ? end : start) : Infinity;
 
-  // 【优化】初始值为 null，代表未挂载/服务端状态
+  // null until mounted, so the server render never shows a stale clock.
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
-    // 客户端挂载后，立即获取一次时间
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setNow(Date.now());
 
-    // 启动定时器
     let nextRefresh = refreshAt;
     const timer = setInterval(() => {
       const time = Date.now();
@@ -53,14 +65,10 @@ export default function ContestTimer({
     return () => clearInterval(timer);
   }, [refreshAt, router]);
 
-  // 计算封榜线的百分比位置
-  let frozenPercentage = 0;
-  if (frozenDuration > 0) {
-    const frozenTime = end - frozenDuration * 60 * 1000; // 结束时间 - 分钟数
-    if (frozenTime > start && frozenTime < end) {
-      frozenPercentage = ((frozenTime - start) / duration) * 100;
-    }
-  }
+  // Position of the freeze boundary on the progress bar.
+  const freezeAt = frozenDuration > 0 ? end - frozenDuration * 60 * 1000 : null;
+  const frozenPercentage = freezeAt !== null && freezeAt > start && freezeAt < end
+    ? ((freezeAt - start) / duration) * 100 : 0;
 
   if (domjudgeState) {
     const ended = domjudgeState.ended || (now !== null && now >= end);
@@ -85,45 +93,101 @@ export default function ContestTimer({
     );
   }
 
+  const locale = getLocale(lang);
+  // Contests spanning more than a day also show the date on the time scale.
+  const scaleFormat: Intl.DateTimeFormatOptions = duration > 20 * 3600 * 1000
+    ? { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }
+    : { hour: "2-digit", minute: "2-digit", hour12: false };
+  const formatClock = (time: number) => new Date(time).toLocaleString(locale, scaleFormat);
   const elapsed = Math.max(0, (now ?? start) - start);
   const progress = duration > 0 ? Math.min(100, elapsed * 100 / duration) : 0;
   const running = now !== null && now >= start && now < end;
+  const remaining = now === null ? 0 : end - now;
+  const frozenPhase = running && freezeAt !== null && (now ?? 0) >= freezeAt;
+  const tone = tones[
+    !running ? "normal"
+      : remaining <= 5 * 60 * 1000 ? "critical"
+        : remaining <= 30 * 60 * 1000 ? "warning"
+          : frozenPhase ? "frozen" : "normal"
+  ];
   const freezeLabel = formatMessage(dict.contest.freezesBeforeEnd, { minutes: frozenDuration });
 
   let clock;
   if (now === null) {
-    clock = <div className="h-6 w-32 bg-gray-100 animate-pulse rounded" />;
+    clock = <div className="h-11 w-52 animate-pulse rounded-lg bg-slate-100" />;
   } else if (now < start) {
-    const diff = start - now;
-    clock = <div className="flex items-center gap-2 text-blue-600 font-mono font-bold bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
-      <ClockIcon className="w-5 h-5" />
-      <span>{formatMessage(dict.contest.startsIn, {
-        hours: Math.floor(diff / 3600000), minutes: Math.floor(diff / 60000) % 60, seconds: Math.floor(diff / 1000) % 60,
-      })}</span>
-    </div>;
+    clock = (
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700 ring-1 ring-blue-200 ring-inset">
+          <ClockIcon className="size-4" aria-hidden="true" />
+          {dict.domjudge.startsIn}
+        </span>
+        <span role="timer" className="font-mono text-3xl font-bold tabular-nums text-slate-900">
+          {clockText(start - now)}
+        </span>
+      </div>
+    );
   } else if (!running) {
-    clock = <div className="flex items-center gap-2 text-gray-500 font-bold bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200">
-      {endedLabel ?? dict.contest.ENDED}
-    </div>;
+    clock = (
+      <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 ring-inset">
+        <span className="size-2 rounded-full bg-slate-400" aria-hidden="true" />
+        {endedLabel ?? dict.contest.ENDED}
+      </span>
+    );
   } else {
-    const remaining = end - now;
-    const elapsedMinutes = String(Math.floor(elapsed / 60000) % 60).padStart(2, "0");
-    const minutes = String(Math.floor(remaining / 60000) % 60).padStart(2, "0");
-    const seconds = String(Math.floor(remaining / 1000) % 60).padStart(2, "0");
-    clock = <div className="flex justify-between text-base font-medium text-gray-600 mb-1">
-      <span>{dict.contest.elapsed} {Math.floor(elapsed / 3600000)}:{elapsedMinutes}</span>
-      <span className="text-red-600 font-mono">-{Math.floor(remaining / 3600000)}:{minutes}:{seconds}</span>
-    </div>;
+    clock = (
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            {dict.domjudge.timeLeft}
+          </div>
+          <div role="timer" className={`font-mono text-4xl font-bold leading-tight tabular-nums ${tone.clock}`}>
+            {clockText(remaining)}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
+          {frozenPhase && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700 ring-1 ring-sky-200 ring-inset">
+              <span aria-hidden="true">❄</span>
+              {dict.contestList.frozen}
+            </span>
+          )}
+          <span>
+            {dict.contest.elapsed}{" "}
+            <span className="font-mono font-semibold tabular-nums text-slate-700">{clockText(elapsed)}</span>
+          </span>
+          <span className="font-mono font-semibold tabular-nums text-slate-700">{Math.floor(progress)}%</span>
+        </div>
+      </div>
+    );
   }
 
   return <div className="w-full">
     <div className="contest-timer-label">{clock}</div>
     <div role="progressbar" aria-label={dict.contest.elapsed} aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={now === null ? undefined : Math.floor(progress)}
-      className={`contest-timer-track relative h-3 w-full overflow-hidden rounded-full border border-gray-300 bg-gray-200 ${running ? "" : "hidden"}`}>
-      <div className="h-full bg-linear-to-r from-green-500 to-green-600 transition-[width] duration-1000 ease-linear motion-reduce:transition-none"
+      className={`contest-timer-track relative h-2.5 w-full overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200 ring-inset ${running ? "" : "hidden"}`}>
+      {frozenPercentage > 0 && (
+        <div title={freezeLabel} className="nova-frozen-zone absolute inset-y-0 right-0"
+          style={{ left: `${frozenPercentage}%` }} />
+      )}
+      <div className={`relative h-full rounded-full bg-linear-to-r ${tone.fill} transition-[width] duration-1000 ease-linear motion-reduce:transition-none`}
         style={{ width: `${progress}%` }} />
-      {frozenPercentage > 0 && <div title={freezeLabel} className="absolute inset-y-0 w-0.5 bg-red-500" style={{ left: `${frozenPercentage}%` }} />}
     </div>
+    {running && (
+      <div className="contest-timer-scale relative mt-1.5 h-4 text-[11px] tabular-nums text-slate-500">
+        <span className="absolute left-0">{formatClock(start)}</span>
+        {frozenPercentage > 12 && frozenPercentage < 88 && freezeAt !== null && (
+          <span title={freezeLabel} className="absolute -translate-x-1/2 whitespace-nowrap font-medium text-sky-600"
+            style={{ left: `${frozenPercentage}%` }}>
+            ❄ {formatClock(freezeAt)}
+          </span>
+        )}
+        <span className="absolute right-0">
+          {frozenPercentage >= 88 && <span title={freezeLabel} className="mr-1 text-sky-600">❄</span>}
+          {formatClock(end)}
+        </span>
+      </div>
+    )}
   </div>;
 }

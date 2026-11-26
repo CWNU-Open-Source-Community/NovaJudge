@@ -9,6 +9,7 @@ import Link from "next/link";
 import CodeBlock from "@/components/CodeBlock";
 import CommunicationSample from "@/components/CommunicationSample";
 import ProblemInfoCard from "@/components/ProblemInfoCard";
+import ProblemAnswerSheet from "@/components/contest/ProblemAnswerSheet";
 import {
   getCommunicationSampleDisplay,
   getPublicProblemSamples,
@@ -29,6 +30,8 @@ import {
   getRunningVirtualParticipation,
 } from "@/lib/virtual-participation";
 import { getOfficialSubmissionWhere } from "@/lib/official-submission";
+import { problemColorStyle } from "@/lib/problem-badge";
+import { ClockIcon, CpuChipIcon } from "@heroicons/react/24/outline";
 
 type StatementSection = { title: string; content: string };
 
@@ -40,7 +43,8 @@ interface Props {
 }
 // 提取公共样式：标题样式 (蓝色竖线)
 const SectionTitle = ({ children }: { children: React.ReactNode }) => (
-  <h3 className="text-lg font-bold text-blue-800 border-l-4 border-blue-600 pl-3 mb-3 font-serif tracking-wide">
+  <h3 className="mb-3 flex items-center gap-2.5 text-lg font-bold tracking-wide text-slate-900">
+    <span aria-hidden="true" className="h-5 w-1 rounded-full bg-linear-to-b from-blue-500 to-indigo-500" />
     {children}
   </h3>
 );
@@ -227,6 +231,22 @@ export default async function ProblemDetail({ params }: Props) {
       <div style={{ display: "none" }}>{safeData}</div>
       {/* --- 左侧：题目基本信息卡片 --- */}
       <aside className="w-full lg:w-72 shrink-0 space-y-4">
+        <ProblemAnswerSheet
+          contestId={cid}
+          contestStatus={contestProblem.contest.status}
+          currentDisplayId={problemId}
+          viewer={{
+            userId: userPayload?.userId,
+            globalUserId,
+            runningVpId: runningVp?.id,
+            latestVpId: latestVp?.id,
+            externalAfterContest:
+              Boolean(globalUser?.externalId) &&
+              !globalUser?.isGlobalAdmin &&
+              (contestProblem.contest.status === ContestStatus.ENDED ||
+                new Date() >= contestProblem.contest.endTime),
+          }}
+        />
         <ProblemInfoCard
           contestId={contestId}
           problemId={problemId}
@@ -240,10 +260,30 @@ export default async function ProblemDetail({ params }: Props) {
       <main className="flex-1 w-full min-w-0">
         {" "}
         {/* min-w-0 防止 flex 子元素溢出 */}
-        <div className="bg-white border border-gray-200 shadow-sm rounded-sm p-6 lg:p-10">
-          <h1 className="text-3xl font-serif font-bold text-gray-900 mb-8 text-center border-b pb-4">
-            {problem?.title}
-          </h1>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:p-10">
+          <header className="mb-8 border-b border-slate-200 pb-6 text-center">
+            <div className="mb-3 flex justify-center">
+              <span
+                className="inline-flex size-12 items-center justify-center rounded-2xl bg-slate-100 text-xl font-bold text-slate-800 shadow-sm ring-1 ring-black/10 ring-inset"
+                style={problemColorStyle(contestProblem.color)}
+              >
+                {problemId}
+              </span>
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900 wrap-break-word">
+              {problem?.title}
+            </h1>
+            <div className="mt-3 flex flex-wrap justify-center gap-2 text-xs font-medium text-slate-600 tabular-nums">
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1">
+                <ClockIcon aria-hidden="true" className="size-3.5" />
+                {dict.problemDetail.timeLimit} · {info.timeLimit} ms
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1">
+                <CpuChipIcon aria-hidden="true" className="size-3.5" />
+                {dict.problemDetail.memoryLimit} · {info.memoryLimit} MB
+              </span>
+            </div>
+          </header>
 
           {problem.type === "communication" && (
             <div className="mb-8 rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
@@ -335,7 +375,7 @@ export default async function ProblemDetail({ params }: Props) {
             {isAdmin ? (
               <button
                 disabled
-                className="bg-gray-400 text-white font-medium rounded-sm text-sm px-8 py-3 shadow-md cursor-not-allowed opacity-60"
+                className="bg-slate-400 text-white font-medium rounded-xl text-sm px-8 py-3 shadow-sm cursor-not-allowed opacity-60"
                 title={dict.submit.adminCannotSubmit}
               >
                 {dict.common.submit}
@@ -343,7 +383,7 @@ export default async function ProblemDetail({ params }: Props) {
             ) : (
               <Link
                 href={`/contest/${contestId}/submit?problem=${problemId}`}
-                className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-sm font-bold shadow-md transition-transform active:scale-95"
+                className="inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-blue-600 to-indigo-600 px-8 py-3 font-bold text-white shadow-md shadow-blue-600/20 transition hover:from-blue-700 hover:to-indigo-700 active:scale-95"
               >
                 {dict.common.submit}
               </Link>

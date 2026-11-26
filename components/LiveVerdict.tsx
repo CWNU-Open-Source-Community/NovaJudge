@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Verdict } from "@/lib/generated/prisma/enums";
 import {
   ArrowPathIcon,
@@ -12,6 +12,8 @@ import {
 import { useRouter } from "next/navigation";
 import { getVerdictLabel } from "@/lib/dictionaries";
 import { notifyContestant } from "@/lib/domjudge-notifications";
+import { verdictPillClass } from "@/lib/verdict-style";
+import { announceAccepted, type AcceptedEventDetail } from "@/lib/accepted-event";
 
 import { domjudgeResult } from "@/lib/domjudge-verdict";
 import DomjudgeSubmissionResult from "./contest/DomjudgeSubmissionResult";
@@ -65,6 +67,8 @@ interface LiveVerdictProps {
   initialTotal?: number;
   showTestDetails?: boolean;
   domjudgeHref?: string;
+  /** Raise the accepted celebration when this submission becomes accepted. */
+  celebrate?: AcceptedEventDetail;
 }
 
 export default function LiveVerdict({
@@ -74,11 +78,17 @@ export default function LiveVerdict({
   initialTotal = 0,
   showTestDetails = true,
   domjudgeHref,
+  celebrate,
 }: LiveVerdictProps) {
   const [status, setStatus] = useState(initialStatus);
   const [passed, setPassed] = useState(initialPassed);
   const [, setTotal] = useState(initialTotal);
   const router = useRouter();
+  // Read the latest value inside the SSE handler without reconnecting.
+  const celebrateRef = useRef(celebrate);
+  useEffect(() => {
+    celebrateRef.current = celebrate;
+  });
 
   // useEffect(() => {
   //   // 只有在 PENDING 或 JUDGING 状态下才轮询
@@ -159,6 +169,7 @@ export default function LiveVerdict({
         ) {
           eventSource.close(); // 关闭连接
           if (domjudgeHref) notifyContestant("Submission judged", domjudgeResult[data.verdict] ?? data.verdict, domjudgeHref);
+          else if (celebrateRef.current && data.verdict === Verdict.ACCEPTED) announceAccepted(celebrateRef.current);
           router.refresh(); // 刷新页面数据
         }
       } catch (err) {
@@ -177,23 +188,18 @@ export default function LiveVerdict({
     };
   }, [router, submissionId, initialStatus, domjudgeHref]);
 
-  const config = VERDICT_CONFIG[status] || {
-    color: "text-gray-400",
-  };
   const isLoading = status === Verdict.PENDING || status === Verdict.JUDGING;
   if (domjudgeHref) {
     return <DomjudgeSubmissionResult result={domjudgeResult[status] ?? status} announce={isLoading} />;
   }
-  const Icon = config.icon;
+  const Icon = VERDICT_CONFIG[status]?.icon;
 
   const displayText = getVerdictLabel(status, showTestDetails ? passed + 1 : undefined);
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 ${config.color} text-sm whitespace-nowrap`}
-    >
+    <span className={verdictPillClass(status)}>
       {/* 1. Loading 动画 */}
-      {isLoading && <ArrowPathIcon className="w-4 h-4 animate-spin" />}
+      {isLoading && <ArrowPathIcon className="w-4 h-4 motion-safe:animate-spin" />}
 
       {/* 2. 静态图标 */}
       {!isLoading && Icon && <Icon className="w-4 h-4" />}

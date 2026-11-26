@@ -182,7 +182,7 @@ export default async function SubmissionDetail({ params }: Props) {
 
 
   return (
-    <div className="bg-white w-full shadow-sm border border-gray-100 rounded-sm p-6">
+    <div className="bg-white w-full shadow-sm border border-slate-200 rounded-2xl p-6">
       <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <h2 className="text-2xl font-serif font-bold text-gray-800">
           {dict.submission.submission} #{submission.displayId}
@@ -203,7 +203,7 @@ export default async function SubmissionDetail({ params }: Props) {
       </div>
 
       {/* 提交信息卡片 */}
-      <div className="bg-gray-50 border border-gray-200 rounded-sm p-6 mb-6">
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 mb-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <span className="font-bold text-gray-600">
